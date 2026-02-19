@@ -2,11 +2,14 @@
 
 import { usePathname } from "next/navigation"
 import { useEffect, useMemo, useState } from "react"
+import { useUser } from "@clerk/nextjs"           // ← add this
 import DockDemo from "@/components/layout/Button"
 import DefaultDemo from "../Navbar"
 
 export default function ClientDockWrapper() {
   const pathname = usePathname()
+  const { isLoaded, isSignedIn } = useUser()     // ← add this
+
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -20,10 +23,6 @@ export default function ClientDockWrapper() {
     const hostname = window.location.hostname
     const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN || "falbor.xyz"
 
-    // Examples:
-    // www.falbor.xyz -> false
-    // falbor.xyz -> false
-    // 69ca20f5-....falbor.xyz -> true
     return (
       hostname.endsWith(`.${baseDomain}`) &&
       hostname !== baseDomain &&
@@ -31,13 +30,28 @@ export default function ClientDockWrapper() {
     )
   }, [mounted])
 
-  const showDock =
-    mounted &&
-    !pathname?.startsWith("/chat/") &&
-    !pathname?.startsWith("/deploy/") &&
-    !isDeploySubdomain
+  // Hide on:
+  // - /chat/* 
+  // - /deploy/*
+  // - deploy subdomains
+  // - landing page (/) WHEN logged in
+  const shouldHide =
+    !mounted ||
+    pathname === "/chat" || pathname?.startsWith("/chat/") ||
+    pathname === "/settings" || pathname?.startsWith("/settings/") ||
+    pathname === "/profile" || pathname?.startsWith("/profile/") ||
+    pathname === "/deploy" || pathname?.startsWith("/deploy/") ||
+    pathname === "/projects" || pathname?.startsWith("/projects/") ||
+    ((pathname === "/templates" || pathname?.startsWith("/templates/")) && isSignedIn) ||
+    isDeploySubdomain ||
+    (pathname === "/" && isSignedIn)   // ← this is the new condition
 
-  if (!showDock) return null
+  if (shouldHide) return null
+
+  // Optional: show a small loading state while Clerk is checking auth
+  if (!isLoaded) {
+    return <div className="h-12" /> // placeholder to avoid layout shift
+  }
 
   return (
     <div>

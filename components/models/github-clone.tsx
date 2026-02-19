@@ -13,11 +13,15 @@ interface CreditsData {
   subscriptionTier: string
 }
 
-export function GithubClone() {
+interface GithubCloneDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps) {
   const [url, setUrl] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
-  const [open, setOpen] = useState(false)
 
   const [creditsData, setCreditsData] = useState<CreditsData | null>(null)
   const [loadingCredits, setLoadingCredits] = useState(false)
@@ -82,6 +86,7 @@ export function GithubClone() {
 
       const { projectId } = await res.json()
       router.push(`/chat/${projectId}`)
+      onOpenChange(false)
     } catch (err) {
       setError("Failed to clone repository")
     } finally {
@@ -92,104 +97,130 @@ export function GithubClone() {
   const hasSubscription = creditsData?.subscriptionTier !== "none"
 
   return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md bg-[#ffffff] border border-[#ececec50] p-1">
+        <DialogTitle className="sr-only">Clone GitHub Repository</DialogTitle>
+
+        <DialogClose className="absolute top-4 right-4 text-black/70 hover:text-black z-10">
+          <X className="w-5 h-5" />
+        </DialogClose>
+
+        {/* HEADER — ONLY FOR SUBSCRIBED USERS */}
+        {hasSubscription && (
+          <div className="bg-gradient-to-r rounded-md from-[#c15f3c] via-[#b69d95] to-[#c15f3c] h-32 flex items-center justify-center">
+            <Github className="w-16 h-16 text-white" />
+          </div>
+        )}
+
+        <div className="">
+          {/* TITLE — ONLY FOR SUBSCRIBED USERS */}
+          {hasSubscription && (
+            <div className="text-center">
+              <p className="text-black">
+                Clone a GitHub repository using just a URL
+              </p>
+              <p className="text-black/70 text-sm mt-[-10px]">
+                Turn your repo into a live web app instantly
+              </p>
+            </div>
+          )}
+
+          {loadingCredits ? (
+            <Loader2 className="w-6 h-6 animate-spin mx-auto text-black/70" />
+          ) : !hasSubscription ? (
+            /* 🔒 NO SUBSCRIPTION VIEW */
+            <div className="text-center space-y-2 px-3 py-3">
+              <p className="text-black">
+                You don’t have a subscription
+              </p>
+              <p className="text-black/70 text-sm mt-[-14px]">
+                Upgrade to unlock GitHub cloning
+              </p>
+              <Button
+                className="w-full bg-[#c15f3c] hover:bg-[#c1603cdc]"
+                onClick={() => {
+                  onOpenChange(false)
+                  router.push("/pricing")
+                }}
+              >
+                Go to Pricing
+              </Button>
+            </div>
+          ) : (
+            /* ✅ FULL GITHUB CLONE UI */
+            <form onSubmit={handleSubmit} className="space-y-4 px-3 py-3">
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="Paste GitHub repository URL"
+                disabled={isLoading}
+                className="bg-[#ececec] border-[#ececec] text-black"
+              />
+
+              {error && <p className="text-red-500 text-sm">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={isLoading || !url.trim()}
+                className="w-full bg-[#c15f3c] hover:bg-[#c1603cdc] text-white py-2 rounded-md"
+              >
+                {isLoading ? "Cloning..." : "Clone Repository into Falbor"}
+              </button>
+              <div className="flex gap-2 text-xs text-black/50">
+                <HelpCircle className="w-3 h-3 mt-0.5" />
+                Copy the URL from the GitHub address bar
+              </div>
+            </form>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+export function GithubClone() {
+  const [open, setOpen] = useState(false)
+  // We need to fetch credits here too just to show the "Pro" badge on the button if needed,
+  // or we can just let the dialog handle it.
+  // The original code passed creditsData to check hasSubscription for the button badge.
+  // Let's replicate that logic briefly or just use SWR/react-query if available, but for now simple fetch.
+
+  const { user, isLoaded } = useUser()
+  const [hasSubscription, setHasSubscription] = useState(false)
+
+  useEffect(() => {
+    if (isLoaded && user?.id) {
+      fetch("/api/user/credits")
+        .then(res => res.json())
+        .then((data: CreditsData) => {
+          setHasSubscription(data.subscriptionTier !== "none")
+        })
+        .catch(() => { })
+    }
+  }, [isLoaded, user?.id])
+
+  return (
     <div>
       {/* MAIN BUTTON */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden h-8 sm:flex text-sm font-medium cursor-pointer bg-[#e4e4e4a8] hover:bg-[#e4e4e480] border border-[#dbd9d965] py-1 px-4 rounded-4xl text-[#000000] items-center gap-2 w-full sm:w-auto"
-        >
+        className="hidden h-8 sm:flex text-sm font-medium cursor-pointer border py-1 px-4 rounded-4xl text-[#000000] items-center gap-2 w-full sm:w-auto"
+      >
         <span className="flex items-center gap-2">
           <Github className="w-4 h-4" />
           <span className="text-sm font-light">Clone from GitHub</span>
         </span>
 
         {!hasSubscription && (
-          <span className="flex items-center gap-1 text-xs font-medium bg-[#c15f3c] ml-2 text-white px-2 py-0.5 rounded-full">
+          <span className="flex items-center gap-1 text-xs font-medium bg-[#0099ff] ml-2 text-white px-2 py-0.5 rounded-full">
             Pro
           </span>
         )}
       </button>
 
       {/* DIALOG */}
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-md bg-[#ffffff] border border-[#ececec50] p-1">
-          <DialogTitle className="sr-only">Clone GitHub Repository</DialogTitle>
-
-          <DialogClose className="absolute top-4 right-4 text-black/70 hover:text-black z-10">
-            <X className="w-5 h-5" />
-          </DialogClose>
-
-          {/* HEADER — ONLY FOR SUBSCRIBED USERS */}
-          {hasSubscription && (
-            <div className="bg-gradient-to-r rounded-md from-[#c15f3c] via-[#b69d95] to-[#c15f3c] h-32 flex items-center justify-center">
-              <Github className="w-16 h-16 text-white" />
-            </div>
-          )}
-
-          <div className="">
-            {/* TITLE — ONLY FOR SUBSCRIBED USERS */}
-            {hasSubscription && (
-              <div className="text-center">
-                <p className="text-black">
-                  Clone a GitHub repository using just a URL
-                </p>
-                <p className="text-black/70 text-sm mt-[-10px]">
-                  Turn your repo into a live web app instantly
-                </p>
-              </div>
-            )}
-
-            {loadingCredits ? (
-              <Loader2 className="w-6 h-6 animate-spin mx-auto text-black/70" />
-            ) : !hasSubscription ? (
-              /* 🔒 NO SUBSCRIPTION VIEW */
-              <div className="text-center space-y-2 px-3 py-3">
-                <p className="text-black">
-                  You don’t have a subscription 
-                </p>
-                <p className="text-black/70 text-sm mt-[-14px]">
-                  Upgrade to unlock GitHub cloning
-                </p>
-                <Button
-                  className="w-full bg-[#c15f3c] hover:bg-[#c1603cdc]"
-                  onClick={() => {
-                    setOpen(false)
-                    router.push("/pricing")
-                  }}
-                >
-                  Go to Pricing
-                </Button>
-              </div>
-            ) : (
-              /* ✅ FULL GITHUB CLONE UI */
-              <form onSubmit={handleSubmit} className="space-y-4 px-3 py-3">
-                <Input
-                  value={url}
-                  onChange={(e) => setUrl(e.target.value)}
-                  placeholder="Paste GitHub repository URL"
-                  disabled={isLoading}
-                  className="bg-[#ececec] border-[#ececec] text-black"
-                />
-
-                {error && <p className="text-red-500 text-sm">{error}</p>}
-
-                <button
-                  type="submit"
-                  disabled={isLoading || !url.trim()}
-                  className="w-full bg-[#c15f3c] hover:bg-[#c1603cdc] text-white py-2 rounded-md"
-                >
-                  {isLoading ? "Cloning..." : "Clone Repository into Falbor"}
-                </button>
-                <div className="flex gap-2 text-xs text-black/50">
-                  <HelpCircle className="w-3 h-3 mt-0.5" />
-                  Copy the URL from the GitHub address bar
-                </div>
-              </form>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      <GithubCloneDialog open={open} onOpenChange={setOpen} />
     </div>
   )
 }

@@ -21,8 +21,14 @@ import {
   Search,
   ChevronUp,
   Lightbulb,
+  ScanSearch,
+  ClipboardCheck,
+  Zap,
+  Circle,
+  Database,
 } from "lucide-react"
 import ReactMarkdown from "react-markdown"
+import { TextShimmer } from "@/components/ui/text-shimmer"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
 import { useState, useEffect, useCallback } from "react"
@@ -31,6 +37,8 @@ import remarkGfm from "remark-gfm"
 import { SandpackProvider, SandpackPreview } from "@codesandbox/sandpack-react"
 import { useUser } from "@clerk/nextjs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { motion, AnimatePresence } from "framer-motion"
+import { Smartphone } from "lucide-react"
 
 interface Message {
   id: string
@@ -96,25 +104,55 @@ function parseAIResponse(content: string) {
     previewButton: /<PreviewButton version="([^"]+)" project="([^"]+)">([\s\S]*?)<\/PreviewButton>/gi,
     importCard: /<ImportCard repo="([^"]+)" \/>/gi,
     testing: /<Testing>([\s\S]*?)<\/Testing>/gi,
+    fileSearch: /<FileSearch query="([^"]+)">([\s\S]*?)<\/FileSearch>/gi,
+    reviewedWork: /<ReviewedWork>([\s\S]*?)<\/ReviewedWork>/gi,
+    finalReasoning: /<FinalReasoning>([\s\S]*?)<\/FinalReasoning>/gi,
+    finalResponsive: /<FinalResponsive>([\s\S]*?)<\/FinalResponsive>/gi,
+    mobileReview: /<MobileReview>([\s\S]*?)<\/MobileReview>/gi,
+    deepConclusion: /<DeepConclusion>([\s\S]*?)<\/DeepConclusion>/gi,
+    internalThought: /<InternalThought>([\s\S]*?)<\/InternalThought>/gi,
+    customAction: /<CustomAction name="([^"]+)">([\s\S]*?)<\/CustomAction>/gi,
+    tasks: /<Tasks>([\s\S]*?)<\/Tasks>/gi,
   }
 
-  const codeRegex = /```(\w+)?\s*(?:file="([^"]+)")?\s*\n([\s\S]*?)```/g
+  let processedContent = content
+    .replace(/<\/InternalFinishCheck>/gi, "")
+    .replace(/<InternalFinishCheck>/gi, "")
+    .replace(/<\/AIOnly>([\s\S]*?)<AIOnly>/gi, "")
+    .replace(/<AIOnly>([\s\S]*?)<\/AIOnly>/gi, "")
 
   const matches: Array<{ type: string; start: number; fullMatch: string; content: any }> = []
 
   for (const [type, regex] of Object.entries(tagRegexes)) {
-    for (const match of content.matchAll(regex)) {
+    for (const match of processedContent.matchAll(regex)) {
       let parsedContent: any
       if (type === "previewButton") {
         parsedContent = { version: match[1], project: match[2], text: match[3].trim() }
       } else if (type === "importCard") {
         parsedContent = { repo: match[1] }
+      } else if (type === "tasks") {
+        const tasksContent = match[1].trim()
+        const tasksList: { text: string; status: "success" | "loading" | "pending" }[] = []
+        tasksContent.split("\n").forEach((line: string) => {
+          if (line.trim()) {
+            const successMatch = line.match(/(.+?)\s*[✓✔]/i)
+            const loadingMatch = line.match(/(.+?)\s*[⏳⌛…]/i)
+            if (successMatch) {
+              tasksList.push({ text: successMatch[1].trim(), status: "success" })
+            } else if (loadingMatch) {
+              tasksList.push({ text: loadingMatch[1].trim(), status: "loading" })
+            } else {
+              tasksList.push({ text: line.trim(), status: "pending" })
+            }
+          }
+        })
+        parsedContent = tasksList
+      } else if (type === "working") {
+        parsedContent = { path: match[1] }
       } else if (type === "fileChecks") {
         const checksContent = match[1].trim()
         const checks: Array<{ file: string; error: string; fix: string; status: string }> = []
-        const checkLines = checksContent
-          .split("\n")
-          .filter((line: string) => line.includes("File:") || line.includes("- Error:"))
+        const checkLines = checksContent.split("\n").filter((line: string) => line.includes("File:") || line.includes("- Error:"))
         let currentFile = ""
         checkLines.forEach((line: string) => {
           if (line.includes("File:")) {
@@ -136,23 +174,22 @@ function parseAIResponse(content: string) {
         parsedContent = checks
       } else if (type === "files") {
         const filesContent = match[1].trim()
-        const filesList: { name: string; path: string; status: "success" | "error" | "loading" }[] = []
+        const filesList: { name: string; path: string; status: "success" | "error" | "loading"; isSql?: boolean }[] = []
         const fileLines = filesContent.split("\n").filter((line: string) => line.trim() !== "")
         fileLines.forEach((line: string) => {
           const successMatch = line.match(/(.+?)\s*[✓✔]/i)
-          const errorMatch = line.match(/(.+?)\s*[✗✘X]/i)
           const loadingMatch = line.match(/(.+?)\s*[⏳⌛…]/i)
           if (successMatch) {
             filesList.push({ name: successMatch[1].trim(), path: successMatch[1].trim(), status: "success" })
-          } else if (errorMatch) {
-            filesList.push({ name: errorMatch[1].trim(), path: errorMatch[1].trim(), status: "error" })
-          } else if (loadingMatch) {
-            filesList.push({ name: loadingMatch[1].trim(), path: loadingMatch[1].trim(), status: "loading" })
+          } else {
+            filesList.push({ name: line.trim(), path: line.trim(), status: "loading" })
           }
         })
         parsedContent = filesList
-      } else if (type === "testing") {
-        parsedContent = match[1].trim()
+      } else if (type === "fileSearch") {
+        parsedContent = { query: match[1], results: match[2].trim() }
+      } else if (type === "customAction") {
+        parsedContent = { name: match[1], content: match[2].trim() }
       } else {
         parsedContent = match[1].trim()
       }
@@ -160,100 +197,121 @@ function parseAIResponse(content: string) {
     }
   }
 
-  for (const match of content.matchAll(codeRegex)) {
+  const codeRegex = /```(\w+)?\s*(?:file="([^"]+)")?\s*\n([\s\S]*?)```/g
+  const codeBlocks: Array<{ filename: string; code: string; language: string; isOpen?: boolean }> = []
+  for (const match of processedContent.matchAll(codeRegex)) {
     const language = match[1] || "typescript"
     const filename = match[2] || `file.${language}`
     const code = match[3].trim()
+    const content = { filename, code, language, isOpen: false }
+    codeBlocks.push(content)
     matches.push({
       type: "codeBlock",
       start: match.index!,
       fullMatch: match[0],
-      content: { filename, code, language },
+      content
     })
   }
 
   matches.sort((a, b) => a.start - b.start)
 
   const parts: Array<{ type: string; content: any }> = []
-  const codeBlocks: Array<{ filename: string; code: string; language: string }> = []
   let lastEnd = 0
   for (const m of matches) {
-    const textBefore = content.substring(lastEnd, m.start).trim()
+    const textBefore = processedContent.substring(lastEnd, m.start).trim()
     if (textBefore) {
       parts.push({ type: "text", content: textBefore })
     }
-    if (m.type === "codeBlock") {
-      codeBlocks.push(m.content)
-    } else {
-      parts.push({ type: m.type, content: m.content })
-    }
+    parts.push({ type: m.type, content: m.content })
     lastEnd = m.start + m.fullMatch.length
   }
-  let finalText = content.substring(lastEnd).trim()
+  let finalText = processedContent.substring(lastEnd).trim()
 
-  // Handle incomplete (open) tags at the end for streaming
+  // Live Code Block Tracking at the end
+  const openCodeRegex = /```(\w+)?\s*(?:file="([^"]+)")?\s*\n([\s\S]*?)$/g
+  const openMatch = openCodeRegex.exec(finalText)
+  if (openMatch) {
+    const textBefore = finalText.substring(0, openMatch.index).trim()
+    if (textBefore) parts.push({ type: "text", content: textBefore })
+
+    const lang = openMatch[1] || "typescript"
+    const file = openMatch[2] || `file.${lang}`
+    const content = { filename: file, code: openMatch[3].trim(), language: lang, isOpen: true }
+    parts.push({ type: "codeBlock", content })
+    codeBlocks.push(content)
+    finalText = "" // consumed
+  }
+
   if (finalText) {
-    const simpleTypes = ["thinking", "commentary", "userMessage", "planning", "search", "fileChecks", "files", "testing"];
+    const simpleTypes = [
+      "thinking", "commentary", "userMessage", "planning", "search",
+      "fileChecks", "files", "testing", "fileSearch", "reviewedWork",
+      "finalReasoning", "finalResponsive", "mobileReview", "deepConclusion",
+      "internalThought", "customAction", "tasks"
+    ]
+
+    let firstOpenTagMatch: { type: string; start: number; content: string } | null = null
     for (const type of simpleTypes) {
-      const openRegex = new RegExp(`<${type.charAt(0).toUpperCase() + type.slice(1)}>([\\s\\S]*)`, "i");
-      const match = finalText.match(openRegex);
-      if (match && match.index === 0) {
-        let parsedContent: any = match[1].trim();
-        // Special parsing for fileChecks, files, etc., if needed (similar to above)
-        if (type === "fileChecks") {
-          // Reuse the parsing logic from above, adapted for incomplete
-          const checksContent = parsedContent;
-          const checks: Array<{ file: string; error: string; fix: string; status: string }> = [];
-          const checkLines = checksContent.split("\n").filter((line: string) => line.includes("File:") || line.includes("- Error:"));
-          let currentFile = "";
-          checkLines.forEach((line: string) => {
-            if (line.includes("File:")) {
-              currentFile = line.match(/File:\s*(.+?)(?:\s*-|$)/)?.[1]?.trim() || "";
-            } else if (line.includes("- Error:")) {
-              const errorMatch = line.match(/-\s*Error:\s*(.+?)(?:\s*-|$)/);
-              const fixMatch = line.match(/-\s*Fix Applied:\s*(.+?)(?:\s*-|$)/);
-              const statusMatch = line.match(/-\s*Status:\s*(.+)/);
-              if (currentFile && errorMatch) {
-                checks.push({
-                  file: currentFile,
-                  error: errorMatch[1].trim(),
-                  fix: fixMatch ? fixMatch[1].trim() : "",
-                  status: statusMatch ? statusMatch[1].trim() : "PENDING",
-                });
-              }
-            }
-          });
-          parsedContent = checks;
-        } else if (type === "files") {
-          // Reuse files parsing
-          const filesContent = parsedContent;
-          const filesList: { name: string; path: string; status: "success" | "error" | "loading" }[] = [];
-          const fileLines = filesContent.split("\n").filter((line: string) => line.trim() !== "");
-          fileLines.forEach((line: string) => {
-            const successMatch = line.match(/(.+?)\s*[✓✔]/i);
-            const errorMatch = line.match(/(.+?)\s*[✗✘X]/i);
-            const loadingMatch = line.match(/(.+?)\s*[⏳⌛…]/i);
-            if (successMatch) {
-              filesList.push({ name: successMatch[1].trim(), path: successMatch[1].trim(), status: "success" });
-            } else if (errorMatch) {
-              filesList.push({ name: errorMatch[1].trim(), path: errorMatch[1].trim(), status: "error" });
-            } else if (loadingMatch) {
-              filesList.push({ name: loadingMatch[1].trim(), path: loadingMatch[1].trim(), status: "loading" });
-            }
-          });
-          parsedContent = filesList;
-        }
-        parts.push({ type, content: parsedContent });
-        finalText = "";
-        break;
+      const tagName = type.charAt(0).toUpperCase() + type.slice(1)
+      const openTagStr = `<${tagName}>`
+      const index = finalText.indexOf(openTagStr)
+      if (index !== -1 && (!firstOpenTagMatch || index < firstOpenTagMatch.start)) {
+        firstOpenTagMatch = { type, start: index, content: finalText.substring(index + openTagStr.length).trim() }
       }
     }
-    if (finalText) {
-      parts.push({ type: "text", content: finalText });
+
+    if (firstOpenTagMatch) {
+      const textBefore = finalText.substring(0, firstOpenTagMatch.start).trim()
+      if (textBefore) parts.push({ type: "text", content: textBefore })
+
+      let parsedContent: any = firstOpenTagMatch.content
+      const type = firstOpenTagMatch.type
+
+      if (type === "fileChecks") {
+        const checks: Array<{ file: string; error: string; fix: string; status: string }> = []
+        const checkLines = parsedContent.split("\n").filter((line: string) => line.includes("File:") || line.includes("- Error:"))
+        let currentFile = ""
+        checkLines.forEach((line: string) => {
+          if (line.includes("File:")) {
+            currentFile = line.match(/File:\s*(.+?)(?:\s*-|$)/)?.[1]?.trim() || ""
+          } else if (line.includes("- Error:")) {
+            const errorMatch = line.match(/-\s*Error:\s*(.+?)(?:\s*-|$)/)
+            if (currentFile && errorMatch) {
+              checks.push({
+                file: currentFile,
+                error: errorMatch[1].trim(),
+                fix: "",
+                status: "PENDING",
+              })
+            }
+          }
+        })
+        parsedContent = checks
+      } else if (type === "tasks") {
+        const tasksList: { text: string; status: "success" | "loading" | "pending" }[] = []
+        parsedContent.split("\n").forEach((line: string) => {
+          if (line.trim()) {
+            const successMatch = line.match(/(.+?)\s*[✓✔]/i)
+            const loadingMatch = line.match(/(.+?)\s*[⏳⌛…]/i)
+            if (successMatch) {
+              tasksList.push({ text: successMatch[1].trim(), status: "success" })
+            } else if (loadingMatch) {
+              tasksList.push({ text: loadingMatch[1].trim(), status: "loading" })
+            } else {
+              tasksList.push({ text: line.trim(), status: "pending" })
+            }
+          }
+        })
+        parsedContent = tasksList
+      }
+
+      parts.push({ type, content: parsedContent })
+    } else {
+      parts.push({ type: "text", content: finalText })
     }
   }
 
-  return { parts, codeBlocks }
+  return { parts, codeBlocks, files: [] }
 }
 
 function parseUserContent(content: string): { parts: UserPart[]; mainText: string } {
@@ -406,6 +464,7 @@ export function MessageList({
     name: string
     content: string
   } | null>(null)
+  const [thinkingTimer, setThinkingTimer] = useState(0)
   const { user, isLoaded } = useUser()
 
   const toggleSection = (messageId: string, section: string) => {
@@ -416,6 +475,14 @@ export function MessageList({
         [section]: !prev[messageId]?.[section],
       },
     }))
+
+    // Auto-scroll logic when opening a section
+    setTimeout(() => {
+      const el = document.getElementById(`section-${section}-${messageId}`)
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      }
+    }, 100)
   }
 
   const openFullMessageModal = useCallback((message: Message) => {
@@ -509,6 +576,22 @@ export function MessageList({
     }))
   }
 
+  useEffect(() => {
+    let interval: NodeJS.Timeout
+    const lastMsg = messages[messages.length - 1]
+    const isAssistantStreaming = lastMsg?.role === "assistant" && lastMsg.id.startsWith("temp-")
+
+    if (isAssistantStreaming && !lastMsg.content) {
+      interval = setInterval(() => {
+        setThinkingTimer(prev => prev + 1)
+      }, 1000)
+    } else {
+      setThinkingTimer(0)
+    }
+
+    return () => clearInterval(interval)
+  }, [messages])
+
   if (messages.length === 0) {
     return (
       <div className="flex items-center justify-center h-full text-muted-foreground" role="status" aria-live="polite">
@@ -530,7 +613,7 @@ export function MessageList({
           messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
 
         const messageWrapperClass = cn(
-          "relative max-w-[100%] rounded-lg px-4 py-3",
+          "relative max-w-[100%] rounded-lg px-1 py-3",
           message.role === "user" ? "BackgroundStyleButton text-[15px] text-black w-full" : "text-[15px] text-black",
         )
 
@@ -541,7 +624,7 @@ export function MessageList({
             aria-label={`${message.role} message`}
           >
             {message.role === "user" ? (
-              <div className="flex items-start gap-2 w-full">
+              <div className="flex items-start gap-2 w-full px-3">
                 <div className="flex-1 space-y-2">
                   {message.imageData?.map((img, idx) => (
                     <button
@@ -779,6 +862,7 @@ export function MessageList({
                 <AIMessageContent
                   message={message}
                   isStreaming={isStreaming}
+                  thinkingTimer={thinkingTimer}
                   expandedSections={expandedSections[message.id] || {}}
                   onToggleSection={(section) => toggleSection(message.id, section)}
                   onArtifactClick={onArtifactClick}
@@ -1050,6 +1134,7 @@ export function MessageList({
               <AIMessageContent
                 message={fullMessageModal}
                 isStreaming={false}
+                thinkingTimer={0}
                 expandedSections={modalExpandedSections}
                 onToggleSection={toggleModalSection}
                 onArtifactClick={onArtifactClick}
@@ -1118,6 +1203,7 @@ export function MessageList({
 function AIMessageContent({
   message,
   isStreaming,
+  thinkingTimer = 0,
   expandedSections,
   onToggleSection,
   onArtifactClick,
@@ -1127,6 +1213,7 @@ function AIMessageContent({
 }: {
   message: Message
   isStreaming: boolean
+  thinkingTimer?: number
   expandedSections: Record<string, boolean>
   onToggleSection: (section: string) => void
   onArtifactClick?: (artifactId: string) => void
@@ -1138,7 +1225,7 @@ function AIMessageContent({
     codeBlocks: Array<{ filename: string; code: string; language: string }>,
   ) => void
 }) {
-  const { parts, codeBlocks } = parseAIResponse(message.content)
+  const { parts, codeBlocks, files } = parseAIResponse(message.content)
 
   const markdownComponents = {
     strong: ({ children }: { children?: React.ReactNode }) => (
@@ -1180,6 +1267,12 @@ function AIMessageContent({
         return "Importing GitHub Repository"
       case "testing":
         return "Live Testing"
+      case "reviewedWork":
+        return "Work Summary"
+      case "finalReasoning":
+        return "Design Analysis"
+      case "finalResponsive":
+        return "Responsive Review"
       default:
         return type.charAt(0).toUpperCase() + type.slice(1)
     }
@@ -1204,6 +1297,16 @@ function AIMessageContent({
         return Globe
       case "testing":
         return Globe
+      case "fileSearch":
+        return ScanSearch
+      case "reviewedWork":
+        return ClipboardCheck
+      case "finalReasoning":
+        return Brain
+      case "finalResponsive":
+        return Smartphone
+      case "customAction":
+        return Zap
       default:
         return FileText
     }
@@ -1222,6 +1325,7 @@ function AIMessageContent({
           </div>
         )
       case "fileChecks":
+        if (!Array.isArray(content)) return null
         return (
           <div className="space-y-2 p-2 border rounded-sm bg-red-50/50">
             {content.map((check: { file: string; error: string; fix: string; status: string }, idx: number) => (
@@ -1250,28 +1354,29 @@ function AIMessageContent({
             ))}
           </div>
         )
-      case "files":
+      case "tasks":
+        if (!Array.isArray(content)) return null
         return (
-          <div className="space-y-2 p-1 bg-[#bebaba18] border w-full rounded-sm shadow-[0px_0px_10px_0px_white]">
-            <h1 className="font-light flex items-center gap-[5px] ml-2 mt-1">
+          <div className="space-y-2 p-3 bg-blue-50/30 border border-blue-100 rounded-md mb-4 shadow-sm">
+            <h1 className="font-semibold flex items-center gap-2 text-blue-700 text-sm">
               <List className="h-4 w-4" />
-              Plan files
+              Progress Tasks
             </h1>
-            {content.map((file: { name: string; path: string; status: string }, idx: number) => (
-              <div
-                key={idx}
-                className="flex items-center gap-2 text-sm rounded-sm cursor-pointer hover:bg-[#e4e4e48c] py-1.5 px-3 hover:underline"
-                onClick={onOpenFullModal}
-                role="button"
-                tabIndex={0}
-                aria-label={`Open full message for file ${file.path}`}
-              >
-                {file.status === "loading" && <Loader2 className="w-3 h-3 animate-spin text-blue-500" />}
-                {file.status === "success" && <CheckCircle2 className="w-3 h-3 text-green-500" />}
-                {file.status === "error" && <XCircle className="w-3 h-3 text-red-500" />}
-                <span className="font-mono text-xs text-black/70">{file.path}</span>
-              </div>
-            ))}
+            <div className="space-y-1.5 mt-2">
+              {content.map((task: { text: string; status: string }, idx: number) => (
+                <div key={idx} className="flex items-center gap-2 text-sm">
+                  {task.status === "loading" && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />}
+                  {task.status === "success" && <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />}
+                  {task.status === "pending" && <Circle className="w-3.5 h-3.5 text-gray-300" />}
+                  <span className={cn(
+                    "text-black/70",
+                    task.status === "success" && "line-through text-black/40"
+                  )}>
+                    {task.text}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         )
       case "importCard":
@@ -1301,6 +1406,104 @@ function AIMessageContent({
             <p className="mt-2 text-sm text-gray-600">{content}</p>
           </div>
         )
+      case "fileSearch":
+        return (
+          <div className="p-3 bg-[#e4e4e433] border rounded-sm space-y-2">
+            <div className="flex items-center gap-2 text-blue-600 font-medium">
+              <Search className="w-4 h-4" />
+              <span>Query: "{content.query}"</span>
+            </div>
+            <div className="text-[13px] text-gray-700 whitespace-pre-wrap">{content.results}</div>
+          </div>
+        )
+      case "reviewedWork":
+      case "finalReasoning":
+      case "finalResponsive":
+        return (
+          <div className="">
+            <div className="flex items-center gap-2 text-gray-700 mb-2">
+              <span>{getTitle(type, content)}</span>
+            </div>
+            <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
+              {content}
+            </div>
+          </div>
+        )
+      case "mobileReview":
+      case "deepConclusion":
+      case "internalThought":
+        return null
+      case "codeBlock": {
+        const isCurrentlyStreaming = isStreaming && parts[parts.length - 1] === content
+        return (
+          <div className="mt-4 mb-6 group relative">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2 bg-[#f8f9fa] border-[#e9ecef] hover:bg-[#e9ecef] text-[#495057] font-medium shadow-sm"
+                  onClick={() => onCodeSelect(content)}
+                >
+                  <FileText className="w-4 h-4" />
+                  <span className="text-xs font-mono">{content.filename}</span>
+                </Button>
+                <div className="flex items-center gap-2">
+                  <AnimatePresence mode="wait">
+                    {content.isOpen ? (
+                      <motion.div
+                        key="writing"
+                        initial={{ opacity: 0, x: -5 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: 5 }}
+                        className="flex items-center gap-2"
+                      >
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                        <TextShimmer className="text-xs text-blue-600 font-medium">Creating file...</TextShimmer>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="completed"
+                        initial={{ opacity: 0, x: -5 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="flex items-center gap-2"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                        <span className="text-xs text-green-600 font-medium">Completed</span>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-[#1E1E21] rounded-lg overflow-hidden border border-[#3A3A3E] shadow-xl">
+              <div className="flex items-center justify-between px-3 py-1.5 bg-[#2A2A2E] border-b border-[#3A3A3E]">
+                <div className="flex items-center gap-2">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
+                </div>
+                <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{content.language}</span>
+              </div>
+              <SyntaxHighlighter
+                language={content.language}
+                style={oneDark}
+                customStyle={{
+                  margin: 0,
+                  padding: "1.25rem",
+                  fontSize: "13px",
+                  lineHeight: "1.6",
+                  backgroundColor: "transparent",
+                }}
+                wrapLongLines={true}
+              >
+                {content.code}
+              </SyntaxHighlighter>
+            </div>
+          </div>
+        )
+      }
       default:
         return null
     }
@@ -1308,114 +1511,110 @@ function AIMessageContent({
 
   return (
     <div className="space-y-3 w-full">
-      {parts.map((part, idx) => {
-        if (part.type === "text") {
-          return (
-            <div key={idx} className="prose prose-sm max-w-none text-black/75">
-              {isStreaming && parts.filter((p) => p.type === "text").every((p) => !p.content) ? (
-                <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span className="text-sm">Generating response...</span>
+      {isStreaming && (!parts || parts.length === 0 || (parts.length === 1 && parts[0].type === "text" && !parts[0].content)) && (
+        <div className="flex items-center gap-2 mb-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="flex items-center gap-2 text-sm font-medium text-black/75 bg-transparent border-none p-0 h-auto cursor-default"
+            disabled
+          >
+            <Brain className="w-4 h-4" />
+            <TextShimmer duration={1.5}>Thinking...</TextShimmer>
+          </Button>
+        </div>
+      )}
+
+      {parts.map((p, idx) => (
+        <div
+          key={`${message.id}-part-${idx}`}
+          className="w-full"
+        >
+          {(() => {
+            const nonCollapsible = ["text", "previewButton", "reviewedWork", "finalReasoning", "finalResponsive", "codeBlock"];
+
+            if (p.type === "text") {
+              return (
+                <div className="prose prose-sm max-w-none text-black/75">
+                  {isStreaming && parts.filter((pt) => pt.type === "text").every((pt) => !pt.content) ? (
+                    <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span className="text-sm">Generating response...</span>
+                    </div>
+                  ) : (
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                      {p.content}
+                    </ReactMarkdown>
+                  )}
                 </div>
-              ) : (
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {part.content}
-                </ReactMarkdown>
-              )}
-            </div>
-          )
-        } else if (part.type === "previewButton") {
-          return (
-            <div key={idx} className="mt-4">
-              <Button
-                onClick={() => onOpenPreview?.(part.content.version, part.content.project, codeBlocks)}
-                className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 hover:text-black bg-transparent hover:bg-transparent border-none p-0 h-auto group"
-              >
-                <div className="relative w-4 h-4">
-                  <Globe
-                    className={cn(
-                      "absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out",
-                      "opacity-100 translate-y-0",
-                      "group-hover:opacity-0 group-hover:-translate-y-1",
-                    )}
-                    aria-hidden="true"
-                  />
-                  <ChevronRight
-                    className={cn(
-                      "absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out",
-                      "opacity-0 translate-y-1",
-                      "group-hover:opacity-100 group-hover:translate-y-0",
-                    )}
-                    aria-hidden="true"
-                  />
+              );
+            }
+
+            if (p.type === "previewButton") {
+              return (
+                <div className="mt-4">
+                  <Button
+                    onClick={() => onOpenPreview?.(p.content.version, p.content.project, codeBlocks)}
+                    className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 hover:text-black bg-transparent hover:bg-transparent border-none p-0 h-auto group"
+                  >
+                    <div className="relative w-4 h-4">
+                      <Globe className="absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-100 translate-y-0 group-hover:opacity-0 group-hover:-translate-y-1" />
+                      <ChevronRight className="absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-0 translate-y-1 group-hover:opacity-100 group-hover:translate-y-0" />
+                    </div>
+                    {p.content.text}
+                  </Button>
                 </div>
-                {part.content.text}
-              </Button>
-            </div>
-          )
-        } else {
-          const collapsibleTypes = [
-            "thinking",
-            "commentary",
-            "userMessage",
-            "planning",
-            "search",
-            "fileChecks",
-            "files",
-            "importCard",
-            "testing",
-          ]
-          if (!collapsibleTypes.includes(part.type)) return null
+              );
+            }
 
-          const collapsibleIndex = parts.slice(0, idx).filter((p) => collapsibleTypes.includes(p.type)).length
-          const sectionKey = `section-${collapsibleIndex}`
+            if (nonCollapsible.includes(p.type)) {
+              return renderPartContent(p.type, p.content);
+            }
 
-          const isLastPart = idx === parts.length - 1
-          const isOpen = expandedSections[sectionKey] ?? (isStreaming && isLastPart ? true : false)
-          const title = getTitle(part.type, part.content)
-          const Icon = getIcon(part.type)
+            const collapsibleTypes = [
+              "thinking", "commentary", "userMessage", "planning", "search",
+              "fileChecks", "importCard", "testing", "fileSearch", "customAction"
+            ];
 
-          return (
-            <Collapsible key={idx} open={isOpen} onOpenChange={() => onToggleSection(sectionKey)}>
-              <CollapsibleTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 hover:text-black bg-transparent hover:bg-transparent border-none p-0 h-auto group"
-                  aria-expanded={isOpen}
-                  aria-controls={`${part.type}-${message.id}-${collapsibleIndex}`}
-                >
-                  <div className="relative w-4 h-4">
-                    <Icon
-                      className={cn(
-                        "absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out",
-                        "opacity-100 translate-y-0",
-                        isOpen ? "opacity-0 -translate-y-1" : "",
-                        "group-hover:opacity-0 group-hover:-translate-y-1",
-                      )}
-                      aria-hidden="true"
-                    />
-                    <ChevronDown
-                      className={cn(
-                        "absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out",
-                        "opacity-0 translate-y-1",
-                        isOpen ? "opacity-100 translate-y-0" : "",
-                        "group-hover:opacity-100 group-hover:translate-y-0",
-                        isOpen && "rotate-180",
-                      )}
-                      aria-hidden="true"
-                    />
-                  </div>
-                  <span>{title}</span>
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">{renderPartContent(part.type, part.content)}</CollapsibleContent>
-            </Collapsible>
-          )
-        }
-      })}
+            if (!collapsibleTypes.includes(p.type)) return null;
+
+            const collapsibleIndex = parts.slice(0, idx).filter((pt) => collapsibleTypes.includes(pt.type)).length;
+            const sectionKey = `section-${collapsibleIndex}`;
+            const isLastPart = idx === parts.length - 1;
+            const isActive = isStreaming && isLastPart;
+            const isOpen = expandedSections[sectionKey] ?? (isActive ? true : false);
+            const title = p.type === "customAction" ? p.content.name : getTitle(p.type, p.content);
+            const Icon = getIcon(p.type);
+
+            return (
+              <Collapsible open={isOpen} onOpenChange={() => onToggleSection(sectionKey)} id={`section-${sectionKey}-${message.id}`}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 hover:text-black bg-transparent hover:bg-transparent border-none p-0 h-auto group"
+                  >
+                    <div className="relative w-4 h-4">
+                      <Icon className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-100 translate-y-0", isOpen && "opacity-0 -translate-y-1", "group-hover:opacity-0 group-hover:-translate-y-1")} />
+                      <ChevronDown className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-0 translate-y-1", isOpen && "opacity-100 translate-y-0 rotate-180", "group-hover:opacity-100 group-hover:translate-y-0")} />
+                    </div>
+                    {isActive ? (
+                      <TextShimmer duration={1.5} className="text-sm font-medium">{title}</TextShimmer>
+                    ) : (
+                      <span>{title}</span>
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                  {renderPartContent(p.type, p.content)}
+                </CollapsibleContent>
+              </Collapsible>
+            );
+          })()}
+        </div>
+      ))}
       {isStreaming && parts.some((p) => p.type === "text" && p.content) && (
-        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1" />
+        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 align-middle" />
       )}
     </div>
   )

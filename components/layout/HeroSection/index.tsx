@@ -29,7 +29,7 @@ const cards: Card[] = [
 
 export default function EuroSection() {
   return (
-    <div className="bg-[#161616] text-white flex flex-col items-center justify-center px-4 py-12">
+    <div className="bg-[#161616] text-white flex flex-col items-center justify-center px-4 py-12 rounded-xl">
       {/* Top glowing icon */}
       <div className="mb-6">
         <button className="button" type="button">
@@ -68,8 +68,8 @@ export default function EuroSection() {
         {cards.slice(1).map((card, idx) => (
           <div key={idx} className="bg-[#1b1b1b] border border-[#272727] rounded-xl flex flex-col space-y-4">
             <div className="p-6 bg-[#1b1b1b] z-50 rounded-xl">
-            <h3 className="font-bold text-lg text-white/90">{card.title}</h3>
-            <p className="text-white/80 text-sm">{card.description}</p>
+              <h3 className="font-bold text-lg text-white/90">{card.title}</h3>
+              <p className="text-white/80 text-sm">{card.description}</p>
             </div>
             {card.image}
           </div>

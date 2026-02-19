@@ -70,7 +70,7 @@ const getLanguage = (filePath: string): string => {
     case "env":
       return "properties"
     default:
-      return "plaintext"
+      return "html"
   }
 }
 
@@ -164,6 +164,28 @@ export function EditorPane({
   React.useEffect(() => {
     const checkConnection = async () => {
       try {
+        // 1. Try project-specific credentials (managed database)
+        const projectRes = await fetch(`/api/projects/${projectId}/supabase`)
+        const projectData = await projectRes.json()
+
+        if (projectData && projectData.supabaseUrl && projectData.anonKey) {
+          setConnectionStatus({
+            connected: true,
+            connection: {
+              supabaseUrl: projectData.supabaseUrl,
+              anonKey: projectData.anonKey,
+              projectName: "Managed Database",
+              projectRef: projectData.projectRef || projectData.supabaseUrl.split("//")[1]?.split(".")[0],
+            }
+          })
+          setDatabaseCredentials({
+            supabaseUrl: projectData.supabaseUrl,
+            anonKey: projectData.anonKey,
+          })
+          return
+        }
+
+        // 2. Fallback to global user connection
         const response = await fetch("/api/user/supabase-connection")
         const data = await response.json()
         setConnectionStatus(data)
@@ -178,8 +200,8 @@ export function EditorPane({
         console.error("Failed to check connection:", error)
       }
     }
-    checkConnection()
-  }, [])
+    if (projectId) checkConnection()
+  }, [projectId])
 
   const handleBreadcrumbClick = (partialPath: string) => {
     if (isSidebarOpen && currentRoot === partialPath) {
@@ -206,7 +228,11 @@ export function EditorPane({
       const response = await fetch("/api/supabase/execute-sql", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sql: editedContent }),
+        body: JSON.stringify({
+          sql: editedContent,
+          projectId,
+          fileName: selectedFile.path
+        }),
       })
 
       const data = await response.json()
@@ -322,7 +348,7 @@ export function EditorPane({
                 className={cn(
                   "flex items-center gap-1.5 text-xs px-3 rounded-2xl cursor-pointer",
                   (isApplying || !connectionStatus?.connected) &&
-                    "opacity-70 cursor-not-allowed"
+                  "opacity-70 cursor-not-allowed"
                 )}
               >
                 {isApplying ? (

@@ -1,10 +1,11 @@
 import { auth } from "@clerk/nextjs/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { db } from "@/config/db"
-import { projects, messages, files, artifacts, userCustomKnowledge } from "@/config/schema"
+import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase } from "@/config/schema"
 import { eq, asc } from "drizzle-orm"
 import { getSystemPrompt } from "@/lib/common/prompts/prompt"
 import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
+import { runMigration } from "@/lib/supabase/management-api"
 
 const GREETING_KEYWORDS = ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"]
 const QUESTION_KEYWORDS = ["what is", "who is", "where is", "when is", "why is", "how does", "explain", "tell me about"]
@@ -28,9 +29,17 @@ const CODE_KEYWORDS = [
   "write code",
 ]
 
+const ZAI_MODELS = {
+  "glm-4.7-flash": "glm-4.7-flash",
+  "glm-4.5-flash": "glm-4.5-flash",
+}
+
 const OPENROUTER_MODELS = {
   "gpt-5.2": "openai/gpt-5.2",
   "gpt-5.1-codex": "openai/gpt-5.1-codex-max",
+  "claude-sonnet-4.6": "anthropic/claude-sonnet-4.6",
+  "claude-opus-4.6": "anthropic/claude-opus-4.6",
+  "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
   "claude-opus-4.5": "anthropic/claude-opus-4.5",
   "claude-sonnet-4.5": "anthropic/claude-sonnet-4.5",
   "claude-opus-4": "anthropic/claude-opus-4",
@@ -64,6 +73,7 @@ export async function POST(request: Request) {
     selectedModel = "gemini",
     supabaseUrl,
     anonKey,
+    selectedMcps = [],
   } = body
 
   if (!message) {
@@ -114,7 +124,7 @@ export async function POST(request: Request) {
   let history: any[]
   try {
     history =
-      (await db.select().from(messages).where(eq(messages.projectId, projectId)).orderBy(asc(messages.createdAt))) ?? []
+      (await db.select().from(messagesTable).where(eq(messagesTable.projectId, projectId)).orderBy(asc(messagesTable.createdAt))) ?? []
   } catch (e) {
     console.error("[API/Chat] History fetch error:", e)
     return new Response(JSON.stringify({ error: "Database error" }), { status: 500 })
@@ -123,7 +133,7 @@ export async function POST(request: Request) {
   const lastMsg = history[history.length - 1]
   if (history.length === 0 || !(lastMsg?.role === "user" && lastMsg.content === message)) {
     try {
-      await db.insert(messages).values({
+      await db.insert(messagesTable).values({
         projectId,
         role: "user",
         content: message,
@@ -149,6 +159,7 @@ export async function POST(request: Request) {
     selectedModel,
     supabaseUrl,
     anonKey,
+    selectedMcps,
   )
 
   return new Response(responseStream, {
@@ -191,6 +202,7 @@ async function handleModelRequest(
   selectedModel: string,
   supabaseUrl?: string,
   anonKey?: string,
+  selectedMcps: any[] = [],
 ) {
   const messageType = detectMessageType(message)
   const isCodeRequest =
@@ -201,23 +213,63 @@ async function handleModelRequest(
   )
 
   let effectiveMessage = message
+  let supabaseConfig: any = undefined
 
-  // If credentials provided and it's a build request, append to message
-  if (supabaseUrl && anonKey && isCodeRequest) {
-    effectiveMessage += `\n\n## Supabase Credentials\nVITE_SUPABASE_URL=${supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${anonKey}`
-  } else if (isCodeRequest) {
-    // For existing projects, fetch credentials if exist
-    try {
-      const res = await fetch(`/api/projects/${projectId}/supabase`)
-      if (res.ok) {
-        const data = await res.json()
-        if (data.supabaseUrl && data.anonKey) {
-          effectiveMessage += `\n\n## Supabase Credentials\nVITE_SUPABASE_URL=${data.supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${data.anonKey}`
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch database credentials:", err)
+  // Always fetch Supabase credentials so the AI always knows the DB is connected
+  try {
+    const [fetchedSupabaseConfig] = await db
+      .select()
+      .from(projectSupabase)
+      .where(eq(projectSupabase.projectId, projectId))
+
+    if (fetchedSupabaseConfig && fetchedSupabaseConfig.anonKey && fetchedSupabaseConfig.anonKey !== "pending") {
+      supabaseConfig = fetchedSupabaseConfig
+      const { supabaseUrl: url, anonKey: key, serviceRoleKey: role } = supabaseConfig
+      console.log(`[Chat] Injecting Supabase credentials for project ${projectId}`)
+      effectiveMessage += `\n\n## Supabase Credentials (Managed by Falbor)\nThis project uses a managed Supabase database. Use these credentials for ALL database operations in your code:\nVITE_SUPABASE_URL=${url}\nVITE_SUPABASE_ANON_KEY=${key}\nSUPABASE_SERVICE_ROLE_KEY=${role}\n\nIMPORTANT: Always use these exact values. Never use placeholder or example values.`
     }
+  } catch (err) {
+    console.error("Failed to fetch database credentials:", err)
+  }
+
+  // Prepare Supabase Context for System Prompt
+  const supabaseContext = supabaseConfig ? {
+    isConnected: true,
+    hasSelectedProject: true,
+    credentials: {
+      anonKey: supabaseConfig.anonKey,
+      supabaseUrl: supabaseConfig.supabaseUrl
+    }
+  } : undefined
+
+  let systemPrompt = discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext)
+
+  // Optimization for Email Template Edits
+  if (message.includes("@Email/")) {
+    systemPrompt += `\n\n### EMAIL EDIT MODE ###
+When editing an email template, focus ONLY on the template content. 
+1. Use the "email_template/template_id" file path.
+2. DO NOT create redundant React components for the email unless explicitly asked.
+3. Be CONCISE in your thinking.
+### END EMAIL EDIT MODE ###`
+  }
+
+  // Add custom knowledge at the end
+  const customKnowledgePrompt = await getCustomKnowledge(userId)
+  systemPrompt += customKnowledgePrompt
+
+  // Inject selected MCP context
+  if (selectedMcps.length > 0) {
+    let mcpPrompt = "\n\n## Connected MCP Context"
+    selectedMcps.forEach(mcp => {
+      mcpPrompt += `\n### ${mcp.name} (${mcp.type})`
+      if (mcp.apiKey) mcpPrompt += `\nAPI_KEY=${mcp.apiKey}`
+      if (mcp.accessToken) mcpPrompt += `\nACCESS_TOKEN=${mcp.accessToken}`
+      if (mcp.metadata && Object.keys(mcp.metadata).length > 0) {
+        mcpPrompt += `\nMETADATA=${JSON.stringify(mcp.metadata)}`
+      }
+    })
+    effectiveMessage += mcpPrompt
   }
 
   if (selectedModel === "gemini") {
@@ -231,6 +283,20 @@ async function handleModelRequest(
       isAutomated,
       isCodeRequest,
       messageType,
+      systemPrompt
+    )
+  } else if (ZAI_MODELS[selectedModel as keyof typeof ZAI_MODELS]) {
+    return handleZaiRequest(
+      history,
+      effectiveMessage,
+      projectId,
+      userId,
+      discussMode,
+      isAutomated,
+      isCodeRequest,
+      selectedModel,
+      messageType,
+      systemPrompt
     )
   } else {
     return handleOpenRouterRequest(
@@ -243,6 +309,7 @@ async function handleModelRequest(
       isCodeRequest,
       selectedModel,
       messageType,
+      systemPrompt
     )
   }
 }
@@ -257,6 +324,7 @@ async function handleGeminiRequest(
   isAutomated: boolean,
   isCodeRequest: boolean,
   messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
 ) {
   const googleKey = process.env.GOOGLE_API_KEY
 
@@ -276,9 +344,6 @@ async function handleGeminiRequest(
   const continueMessage = "Continue exactly from where you left off without repeating any previous content."
 
   try {
-    const customKnowledgePrompt = await getCustomKnowledge(userId)
-    const systemPrompt = discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt + customKnowledgePrompt
-
     const conversationHistory = history.slice(0, -1).map((msg) => ({
       role: msg.role,
       content: msg.content,
@@ -298,6 +363,9 @@ async function handleGeminiRequest(
     return new ReadableStream({
       async start(controller) {
         try {
+          // Immediate heartbeat to trigger UI thinking state
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: "" })}\n\n`))
+
           let userPrompt = message
 
           if (messageType === "greeting") {
@@ -335,6 +403,19 @@ Then generate production-ready code files.`
 
           const contents = [...mapHistoryToGemini(conversationHistory), { role: "user", parts: [{ text: userPrompt }] }]
 
+          // Immediate heartbeat to trigger UI thinking state transition
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " " })}\n\n`))
+
+          // Create initial assistant message entry for persistence
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          let assistantMsgId = assistantMsg.id
+
           let continuationCount = 0
           do {
             const stream = await retryWithBackoff(async () => {
@@ -344,10 +425,19 @@ Then generate production-ready code files.`
             })
 
             let finishReason = null
+            let chunkCount = 0
             for await (const chunk of stream.stream) {
               const part = chunk.candidates?.[0]?.content?.parts?.[0]
               if (part?.text) {
                 fullResponse += part.text
+                chunkCount++
+
+                if (chunkCount % 50 === 0) {
+                  db.update(messagesTable)
+                    .set({ content: fullResponse })
+                    .where(eq(messagesTable.id, assistantMsgId))
+                    .then(() => console.log(`[Gemini] Partial progress saved for ${assistantMsgId}`))
+                }
 
                 if (isCodeRequest && messageType === "build") {
                   accumulatedBuffer += part.text
@@ -405,7 +495,8 @@ Then generate production-ready code files.`
               [],
               controller,
               encoder,
-              undefined,
+              assistantMsgId,
+              [],
               false,
               discussMode,
               isAutomated,
@@ -417,7 +508,8 @@ Then generate production-ready code files.`
               [],
               controller,
               encoder,
-              undefined,
+              assistantMsgId,
+              [],
               false,
               discussMode,
               isAutomated,
@@ -455,6 +547,7 @@ async function handleOpenRouterRequest(
   isCodeRequest: boolean,
   selectedModel: string,
   messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
 ) {
   const openRouterKey = process.env.OPENROUTER_API_KEY
 
@@ -468,9 +561,6 @@ async function handleOpenRouterRequest(
   }
 
   try {
-    const customKnowledgePrompt = await getCustomKnowledge(userId)
-    const systemPrompt = discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt + customKnowledgePrompt
-
     const conversationHistory = history.slice(0, -1).map((msg) => ({
       role: msg.role === "assistant" ? "assistant" : "user",
       content: msg.content,
@@ -492,7 +582,7 @@ async function handleOpenRouterRequest(
       userPrompt = `${message}\n\nRespond with ORGANIC, DYNAMIC thinking - think, search, read, plan multiple times throughout naturally. Then generate clean code files. After code, perform testing with <Testing> tag.`
     }
 
-    const messages = [
+    const chatMessages = [
       { role: "system", content: systemPrompt },
       ...conversationHistory,
       { role: "user", content: userPrompt },
@@ -501,6 +591,19 @@ async function handleOpenRouterRequest(
     return new ReadableStream({
       async start(controller) {
         try {
+          // Immediate heartbeat to trigger UI thinking state
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " " })}\n\n`))
+
+          // Create initial assistant message entry for persistence
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          const assistantMsgId = assistantMsg.id
+
           const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
             method: "POST",
             headers: {
@@ -511,7 +614,7 @@ async function handleOpenRouterRequest(
             },
             body: JSON.stringify({
               model: modelId,
-              messages,
+              messages: chatMessages,
               stream: true,
               max_tokens: 8192,
             }),
@@ -529,6 +632,7 @@ async function handleOpenRouterRequest(
 
           const decoder = new TextDecoder()
           let buffer = ""
+          let chunkCount = 0
 
           while (true) {
             const { done, value } = await reader.read()
@@ -548,6 +652,15 @@ async function handleOpenRouterRequest(
                   const content = parsed.choices?.[0]?.delta?.content
                   if (content) {
                     fullResponse += content
+                    chunkCount++
+
+                    // Periodically persist progress to database for continuity
+                    if (chunkCount % 50 === 0) {
+                      db.update(messagesTable)
+                        .set({ content: fullResponse })
+                        .where(eq(messagesTable.id, assistantMsgId))
+                        .then(() => console.log(`[OpenRouter] Partial progress saved for ${assistantMsgId}`))
+                    }
 
                     if (isCodeRequest && messageType === "build") {
                       accumulatedBuffer += content
@@ -597,7 +710,8 @@ async function handleOpenRouterRequest(
               [],
               controller,
               encoder,
-              undefined,
+              assistantMsgId,
+              [],
               false,
               discussMode,
               isAutomated,
@@ -609,7 +723,8 @@ async function handleOpenRouterRequest(
               [],
               controller,
               encoder,
-              undefined,
+              assistantMsgId,
+              [],
               false,
               discussMode,
               isAutomated,
@@ -630,6 +745,248 @@ async function handleOpenRouterRequest(
   }
 }
 
+async function handleZaiRequest(
+  history: any[],
+  message: string,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  selectedModel: string,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+) {
+  const zaiKey = process.env.ZAI_API_KEY
+
+  if (!zaiKey) {
+    return createErrorStream("Z.ai API key not configured.")
+  }
+
+  const modelId = ZAI_MODELS[selectedModel as keyof typeof ZAI_MODELS]
+  if (!modelId) {
+    return createErrorStream(`Invalid Z.ai model: ${selectedModel}`)
+  }
+
+  try {
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content,
+    }))
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    let userPrompt = message
+
+    if (messageType === "greeting") {
+      userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
+    } else if (messageType === "question") {
+      userPrompt = `${message}\n\nThink through this question step by step. Search for current information if needed. Then provide a clear, detailed answer. No code generation.`
+    } else if (isCodeRequest) {
+      console.log(`[Z.ai/${modelId}] Using for code generation with dynamic flow`)
+      userPrompt = `${message}\n\nRespond with ORGANIC, DYNAMIC thinking - think, search, read, plan multiple times throughout naturally. Then generate clean code files. After code, perform testing with <Testing> tag.`
+    }
+
+    const chatMessages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory,
+      { role: "user", content: userPrompt },
+    ]
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          // Immediate heartbeat to trigger UI thinking state
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " " })}\n\n`))
+
+          // Create initial assistant message entry for persistence
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          const assistantMsgId = assistantMsg.id
+
+          const response = await fetch("https://api.z.ai/api/paas/v4/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${zaiKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: chatMessages,
+              stream: true,
+              max_tokens: 8192,
+            }),
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Z.ai API error: ${response.status} ${errorText}`)
+          }
+
+          const reader = response.body?.getReader()
+          if (!reader) {
+            throw new Error("No response body reader")
+          }
+
+          const decoder = new TextDecoder()
+          let buffer = ""
+          let chunkCount = 0
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6)
+                if (data === "[DONE]") continue
+
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    fullResponse += content
+                    chunkCount++
+
+                    // Periodically persist progress to database for continuity
+                    if (chunkCount % 50 === 0) {
+                      db.update(messagesTable)
+                        .set({ content: fullResponse })
+                        .where(eq(messagesTable.id, assistantMsgId))
+                        .then(() => console.log(`[Z.ai] Partial progress saved for ${assistantMsgId}`))
+                    }
+
+                    if (isCodeRequest && messageType === "build") {
+                      accumulatedBuffer += content
+                      const lines = accumulatedBuffer.split("\n")
+                      let textToSend = ""
+
+                      for (let i = 0; i < lines.length - 1; i++) {
+                        const line = lines[i]
+
+                        if (line.match(/^```\w+\s+file="/)) {
+                          inCodeBlock = true
+                          continue
+                        }
+
+                        if (line.trim() === "```" && inCodeBlock) {
+                          inCodeBlock = false
+                          continue
+                        }
+
+                        if (!inCodeBlock) {
+                          textToSend += line + "\n"
+                        }
+                      }
+
+                      accumulatedBuffer = lines[lines.length - 1]
+
+                      if (textToSend) {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                      }
+                    } else {
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                    }
+                  }
+                } catch (e) {
+                  console.error("[Z.ai] Parse error:", e)
+                }
+              }
+            }
+          }
+
+          console.log(`[Z.ai/${modelId}] Response length: ${fullResponse.length}`)
+
+          if (messageType === "build" && isCodeRequest) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+            )
+          }
+        } catch (error) {
+          console.error(`[Z.ai/${modelId}] Stream error:`, error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[Z.ai] Handler error:", e)
+    return createErrorStream(`Z.ai handler failed: ${e}`)
+  }
+}
+
+
+async function handleSqlAutomation(projectId: string, codeBlocks: Array<{ language: string; path: string; content: string }>, controller: any, encoder: any) {
+  const sqlBlocks = codeBlocks.filter(block => block.path.toLowerCase().endsWith(".sql") || block.language === "sql");
+
+  if (sqlBlocks.length === 0) return;
+
+  console.log(`[SQL Automation] Detected ${sqlBlocks.length} SQL blocks. Checking project for Supabase connection...`);
+
+  try {
+    const [supabaseConfig] = await db
+      .select()
+      .from(projectSupabase)
+      .where(eq(projectSupabase.projectId, projectId));
+
+    if (supabaseConfig && supabaseConfig.supabaseProjectRef && process.env.SUPABASE_ACCESS_TOKEN) {
+      console.log(`[SQL Automation] Project ${projectId} has a Supabase connection. Executing migrations...`);
+
+      for (const block of sqlBlocks) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `\n\n> ⚡ **SQL Automation**: Executing ${block.path} on Supabase...\n` })}\n\n`));
+
+        const result = await runMigration(supabaseConfig.supabaseProjectRef, block.content);
+
+        if (result.success) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `> ✅ Successfully pushed ${block.path} to your server!\n` })}\n\n`));
+          console.log(`[SQL Automation] ✅ Successfully executed ${block.path}`);
+        } else {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `> ❌ Failed to push ${block.path}: ${result.error}\n` })}\n\n`));
+          console.error(`[SQL Automation] ❌ Failed to execute ${block.path}:`, result.error);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[SQL Automation] Error during automation:", err);
+  }
+}
+
 function createErrorStream(errorMsg: string): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder()
   return new ReadableStream({
@@ -647,6 +1004,7 @@ async function saveAssistantMessage(
   searchQueries: any[],
   controller: any,
   encoder: any,
+  existingMessageId?: string,
   uploadedFiles?: any[],
   generateImages?: boolean,
   discussMode = false,
@@ -660,20 +1018,34 @@ async function saveAssistantMessage(
     const cleanContent = discussMode ? fullResponse.trim() : removeCodeBlocks(fullResponse)
     const hasArtifact = codeBlocks.length > 0 && !discussMode
 
-    console.log("[Save] Inserting message into database...")
-    const [newMessage] = await db
-      .insert(messages)
-      .values({
-        projectId,
-        role: "assistant",
-        content: cleanContent,
-        hasArtifact,
-        searchQueries: searchQueries.length > 0 ? searchQueries : null,
-        isAutomated,
-      })
-      .returning()
-
-    console.log("[Save] Message inserted with ID:", newMessage.id)
+    let newMessage: any
+    if (existingMessageId) {
+      console.log("[Save] Updating existing message:", existingMessageId)
+      const [updatedMessage] = await db
+        .update(messagesTable)
+        .set({
+          content: cleanContent,
+          hasArtifact,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+        })
+        .where(eq(messagesTable.id, existingMessageId))
+        .returning()
+      newMessage = updatedMessage
+    } else {
+      console.log("[Save] Inserting message into database...")
+      const [insertedMessage] = await db
+        .insert(messagesTable)
+        .values({
+          projectId,
+          role: "assistant",
+          content: cleanContent,
+          hasArtifact,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          isAutomated,
+        })
+        .returning()
+      newMessage = insertedMessage
+    }
 
     if (hasArtifact && codeBlocks.length > 0) {
       const existingFiles = await db.select().from(files).where(eq(files.projectId, projectId))
@@ -715,6 +1087,9 @@ async function saveAssistantMessage(
         fileIds,
       })
       console.log("[Save] Artifact created")
+
+      // SQL Automation
+      await handleSqlAutomation(projectId, codeBlocks, controller, encoder)
     }
 
     await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId))
@@ -740,6 +1115,7 @@ async function saveAssistantMessageWithParallelGeneration(
   searchQueries: any[],
   controller: any,
   encoder: any,
+  existingMessageId?: string,
   uploadedFiles?: any[],
   generateImages?: boolean,
   discussMode = false,
@@ -755,20 +1131,34 @@ async function saveAssistantMessageWithParallelGeneration(
     const cleanContent = discussMode ? fullResponse.trim() : removeCodeBlocks(fullResponse)
     const hasArtifact = codeBlocks.length > 0 && !discussMode
 
-    console.log("[ParallelGen] Inserting message into database...")
-    const [newMessage] = await db
-      .insert(messages)
-      .values({
-        projectId,
-        role: "assistant",
-        content: cleanContent,
-        hasArtifact,
-        searchQueries: searchQueries.length > 0 ? searchQueries : null,
-        isAutomated,
-      })
-      .returning()
-
-    console.log("[ParallelGen] Message inserted with ID:", newMessage.id)
+    let newMessage: any
+    if (existingMessageId) {
+      console.log("[ParallelGen] Updating existing message:", existingMessageId)
+      const [updatedMessage] = await db
+        .update(messagesTable)
+        .set({
+          content: cleanContent,
+          hasArtifact,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+        })
+        .where(eq(messagesTable.id, existingMessageId))
+        .returning()
+      newMessage = updatedMessage
+    } else {
+      console.log("[ParallelGen] Inserting message into database...")
+      const [insertedMessage] = await db
+        .insert(messagesTable)
+        .values({
+          projectId,
+          role: "assistant",
+          content: cleanContent,
+          hasArtifact,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          isAutomated,
+        })
+        .returning()
+      newMessage = insertedMessage
+    }
 
     if (hasArtifact && codeBlocks.length > 0) {
       const existingFiles = await db.select().from(files).where(eq(files.projectId, projectId))
@@ -818,6 +1208,9 @@ async function saveAssistantMessageWithParallelGeneration(
         fileIds,
       })
       console.log("[ParallelGen] Artifact created")
+
+      // SQL Automation
+      await handleSqlAutomation(projectId, codeBlocks, controller, encoder)
     }
 
     await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId))

@@ -178,9 +178,8 @@ export function TemplateDetail({ template }: TemplateDetailProps) {
                   <button
                     key={index}
                     onClick={() => setCurrentImageIndex(index)}
-                    className={`flex-shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 transition-colors ${
-                      currentImageIndex === index ? "border-primary" : "border-transparent hover:border-primary/50"
-                    }`}
+                    className={`flex-shrink-0 w-20 h-14 rounded-md overflow-hidden border-2 transition-colors ${currentImageIndex === index ? "border-primary" : "border-transparent hover:border-primary/50"
+                      }`}
                   >
                     <img
                       src={img || "/placeholder.svg"}
@@ -221,14 +220,16 @@ export function TemplateDetail({ template }: TemplateDetailProps) {
           {/* Details */}
           <div className="space-y-6">
             <div className="flex items-center gap-3">
-              <Avatar className="w-12 h-12">
-                <AvatarImage src={template.creatorImage || undefined} />
-                <AvatarFallback>{template.creatorName.charAt(0).toUpperCase()}</AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="text-sm text-muted-foreground">Created by</p>
-                <p className="font-medium text-foreground">{template.creatorName}</p>
-              </div>
+              <Link href={`/profile/${template.creatorId}`} className="flex items-center gap-3 group">
+                <Avatar className="w-12 h-12 group-hover:ring-2 ring-indigo-500 transition-all">
+                  <AvatarImage src={template.creatorImage || undefined} />
+                  <AvatarFallback>{template.creatorName.charAt(0).toUpperCase()}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm text-muted-foreground">Created by</p>
+                  <p className="font-medium text-foreground group-hover:text-indigo-600 transition-colors">{template.creatorName}</p>
+                </div>
+              </Link>
             </div>
 
             <div>

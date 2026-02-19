@@ -11,6 +11,7 @@ import { MainHeader } from "./main-header"
 import { CodeTab } from "./code-tab"
 import { SettingsTab } from "./settings-tab"
 import { useAuth } from "@clerk/nextjs"
+import { WebContainerPreview } from "./web-container-preview"
 import {
   SandpackProvider,
   SandpackFileExplorer,
@@ -42,7 +43,9 @@ interface CodePreviewProps {
   onClose?: () => void
   currentVersion?: string
   filesOverride?: Array<{ path: string; content: string; language: string }>
-  isGitHubImport?: boolean // Added flag to detect GitHub imports
+  isGitHubImport?: boolean
+  initialTab?: string
+  onTabChange?: (tab: string) => void
 }
 interface TerminalTab {
   id: number
@@ -147,8 +150,8 @@ function CustomPreviewToolbar({
           onClick={onBack}
           disabled={!canGoBack}
           className={`p-1.5 rounded-md transition-colors ${canGoBack
-              ? "hover:bg-gray-200 text-gray-700"
-              : "text-gray-300 cursor-not-allowed"
+            ? "hover:bg-gray-200 text-gray-700"
+            : "text-gray-300 cursor-not-allowed"
             }`}
           title="Go back"
         >
@@ -158,8 +161,8 @@ function CustomPreviewToolbar({
           onClick={onForward}
           disabled={!canGoForward}
           className={`p-1.5 rounded-md transition-colors ${canGoForward
-              ? "hover:bg-gray-200 text-gray-700"
-              : "text-gray-300 cursor-not-allowed"
+            ? "hover:bg-gray-200 text-gray-700"
+            : "text-gray-300 cursor-not-allowed"
             }`}
           title="Go forward"
         >
@@ -309,7 +312,9 @@ export function CodePreview({
   onClose,
   currentVersion,
   filesOverride,
-  isGitHubImport = false, // Default to false for AI-generated projects
+  isGitHubImport = false,
+  initialTab,
+  onTabChange,
 }: CodePreviewProps) {
   const [files, setFiles] = useState<
     Array<{ path: string; content: string; language: string; type?: string; isLocked?: boolean }>
@@ -328,7 +333,13 @@ export function CodePreview({
   const [terminalError, setTerminalError] = useState<string | null>(null)
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([{ id: 1, title: "Python REPL" }])
   const [activeTerminalTab, setActiveTerminalTab] = useState(1)
-  const [tabValue, setTabValue] = useState("code") // Added for tab change detection
+  const [tabValue, setTabValue] = useState(initialTab || "code") // Initialize with prop
+
+  useEffect(() => {
+    if (initialTab && initialTab !== tabValue) {
+      setTabValue(initialTab)
+    }
+  }, [initialTab])
   const terminals = useRef<Map<number, any>>(new Map())
   const fitAddons = useRef<Map<number, any>>(new Map())
   const terminalRefs = useRef<Map<number, HTMLDivElement>>(new Map())
@@ -346,6 +357,11 @@ export function CodePreview({
   const [historyIndex, setHistoryIndex] = useState(0)
   const [selectedDevice, setSelectedDevice] = useState<DeviceSize>(DEVICE_SIZES[2]) // Default to Desktop
   const [sandpackKey, setSandpackKey] = useState(0) // For forcing refresh
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false)
+
+  const handleToggleTerminal = useCallback(() => {
+    setIsTerminalOpen(prev => !prev)
+  }, [])
 
   const toggleInspectorMode = () => {
     setIsInspectorMode((prev) => !prev);
@@ -817,7 +833,8 @@ sys.stdout = StdoutRedirect(lambda text: js.term_write(text))
       handleSave()
     }
     setTabValue(newValue)
-  }, [tabValue, isDirty, handleSave])
+    if (onTabChange) onTabChange(newValue)
+  }, [tabValue, isDirty, handleSave, onTabChange])
   if (!isOpen) return null
   return (
     <div className="h-full flex flex-col border border-[#d6d6d6] rounded-sm bg-[#ffffff] relative overflow-hidden">
@@ -842,6 +859,8 @@ sys.stdout = StdoutRedirect(lambda text: js.term_write(text))
         <MainHeader
           handleDownload={handleDownload}
           projectId={projectId}
+          onToggleTerminal={handleToggleTerminal}
+          isTerminalOpen={isTerminalOpen}
         />
         <div className="flex-1 flex flex-col overflow-hidden">
           {projectType === null ? (
@@ -883,8 +902,8 @@ sys.stdout = StdoutRedirect(lambda text: js.term_write(text))
                               key={tab.id}
                               onClick={() => setActiveTerminalTab(tab.id)}
                               className={`px-2 py-1 text-xs rounded whitespace-nowrap overflow-hidden text-ellipsis ${activeTerminalTab === tab.id
-                                  ? "bg-[#dad8d8] hover:bg-[#e7e7e7] text-black"
-                                  : "bg-[#e4e4e4] hover:bg-[#e7e7e7] text-black"
+                                ? "bg-[#dad8d8] hover:bg-[#e7e7e7] text-black"
+                                : "bg-[#e4e4e4] hover:bg-[#e7e7e7] text-black"
                                 }`}
                               title={tab.title}
                             >
@@ -956,84 +975,58 @@ sys.stdout = StdoutRedirect(lambda text: js.term_write(text))
               </TabsContent>
             </>
           ) : (
-            <SandpackProvider
-              key={sandpackKey}
-              files={sandpackFiles}
-              template={template}
-              theme={"light"}
-              customSetup={{
-                dependencies: defaultDependencies,
-              }}
-              options={{ externalResources: ["https://cdn.tailwindcss.com"] }}
-            >
-              <div className="h-[100vh] flex flex-col">
-                <TabsContent
-                  value="preview"
-                  className="flex-1 m-0 p-0 border-t border-gray-200 overflow-hidden rounded-bl-lg flex flex-col"
-                >
-                  {/* Custom Preview Toolbar */}
-                  <CustomPreviewToolbar
-                    currentUrl={previewUrl}
-                    setCurrentUrl={handleNavigate}
-                    onRefresh={handleRefresh}
-                    onBack={handleBack}
-                    onForward={handleForward}
-                    canGoBack={canGoBack}
-                    canGoForward={canGoForward}
-                    selectedDevice={selectedDevice}
-                    setSelectedDevice={setSelectedDevice}
-                    availableRoutes={availableRoutes}
-                  />
-                  {/* Preview Container */}
-                  <SandpackPreviewWrapper
-                    previewContainerRef={previewContainerRef}
-                    selectedDevice={selectedDevice}
-                    currentUrl={previewUrl}
-                    onUrlChange={handleNavigate}
-                  />
-                </TabsContent>
-                <TabsContent
-                  value="code"
-                  className="flex-1 m-0 flex overflow-hidden rounded-bl-lg border-t border-gray-200"
-                >
-                  <CodeTab
-                    sidebarView={sidebarView}
-                    setSidebarView={setSidebarView}
-                    files={effectiveFiles}
-                    selectedFile={selectedFile}
-                    setSelectedFile={handleFileSelect} // Updated to use auto-save version
-                    editedContent={editedContent}
-                    setEditedContent={setEditedContent}
-                    isEditorFocused={isEditorFocused}
-                    setIsEditorFocused={setIsEditorFocused}
-                    searchQuery={searchQuery}
-                    setSearchQuery={setSearchQuery}
-                    searchResults={searchResults}
-                    isSearching={isSearching}
-                    highlightMatch={highlightMatch}
-                    isDirty={isDirty}
-                    handleSave={handleSave}
-                    projectId={projectId}
-                    fetchFiles={fetchFiles}
-                    scrollRef={scrollRef}
-                    monacoRef={monacoRef}
-                    editorOptions={editorOptions}
-                  />
-                </TabsContent>
-                <TabsContent
-                  value="settings"
-                  className="flex-1 m-0 flex overflow-hidden rounded-bl-lg border-t border-gray-200"
-                >
-                  <SettingsTab projectId={projectId} />
-                </TabsContent>
-                <TabsContent
-                  value="database"
-                  className="flex-1 m-0 flex overflow-hidden rounded-bl-lg border-t border-gray-200"
-                >
-                  <DatabasePanel projectId={projectId} />
-                </TabsContent>
-              </div>
-            </SandpackProvider>
+            <div className="h-full flex flex-col overflow-hidden">
+              <TabsContent
+                value="preview"
+                className="flex-1 m-0 p-0 border-t border-gray-200 overflow-hidden flex flex-col"
+              >
+                <WebContainerPreview
+                  files={effectiveFiles}
+                  isTerminalOpen={isTerminalOpen}
+                  isCodeGenerating={isCodeGenerating}
+                />
+              </TabsContent>
+              <TabsContent
+                value="code"
+                className="flex-1 m-0 flex overflow-hidden rounded-bl-lg border-t border-gray-200"
+              >
+                <CodeTab
+                  sidebarView={sidebarView}
+                  setSidebarView={setSidebarView}
+                  files={effectiveFiles}
+                  selectedFile={selectedFile}
+                  setSelectedFile={handleFileSelect} // Updated to use auto-save version
+                  editedContent={editedContent}
+                  setEditedContent={setEditedContent}
+                  isEditorFocused={isEditorFocused}
+                  setIsEditorFocused={setIsEditorFocused}
+                  searchQuery={searchQuery}
+                  setSearchQuery={setSearchQuery}
+                  searchResults={searchResults}
+                  isSearching={isSearching}
+                  highlightMatch={highlightMatch}
+                  isDirty={isDirty}
+                  handleSave={handleSave}
+                  projectId={projectId}
+                  fetchFiles={fetchFiles}
+                  scrollRef={scrollRef}
+                  monacoRef={monacoRef}
+                  editorOptions={editorOptions}
+                />
+              </TabsContent>
+              <TabsContent
+                value="settings"
+                className="flex-1 m-0 flex overflow-hidden rounded-bl-lg border-t border-gray-200"
+              >
+                <SettingsTab projectId={projectId} />
+              </TabsContent>
+              <TabsContent
+                value="database"
+                className="flex-1 m-0 flex overflow-hidden rounded-bl-lg border-t border-gray-200"
+              >
+                <DatabasePanel projectId={projectId} filesOverride={filesOverride} />
+              </TabsContent>
+            </div>
           )}
         </div>
       </Tabs>

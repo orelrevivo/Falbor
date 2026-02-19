@@ -206,6 +206,21 @@ export const figmaTokens = pgTable("figma_tokens", {
   expiresAt: timestamp("expires_at").notNull(),
 })
 
+export const userProfiles = pgTable("user_profiles", {
+  userId: text("user_id").primaryKey(),
+  username: text("username"),
+  fullName: text("full_name"),
+  email: text("email").notNull(),
+  bio: text("bio"),
+  websiteUrl: text("website_url"),
+  githubUrl: text("github_url"),
+  twitterUrl: text("twitter_url"),
+  location: text("location"),
+  isPrivate: boolean("is_private").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
 export const userAutomations = pgTable(
   "user_automations",
   {
@@ -453,6 +468,16 @@ export const projectSupabase = pgTable("project_supabase", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
 
+export const projectSupabaseSqlFiles = pgTable("project_supabase_sql_files", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
 /**
  * Stores global Supabase connection for each user (not per project)
  * This allows the database connection to persist across all projects
@@ -483,6 +508,24 @@ export const userGithubConnections = pgTable("user_github_connections", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
+
+export const userMcpConnections = pgTable("user_mcp_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  type: text("type").notNull(), // 'social-media', 'stripe', 'vercel', etc.
+  name: text("name").notNull(), // 'Twitter', 'Stripe', etc.
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  apiKey: text("api_key"),
+  webhookSecret: text("webhook_secret"),
+  metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type UserMcpConnection = typeof userMcpConnections.$inferSelect
+export type NewUserMcpConnection = typeof userMcpConnections.$inferInsert
 
 export type ProjectSupabase = typeof projectSupabase.$inferSelect
 export type NewProjectSupabase = typeof projectSupabase.$inferInsert
@@ -551,3 +594,6 @@ export type ProjectLog = typeof projectLogs.$inferSelect
 export type NewProjectLog = typeof projectLogs.$inferInsert
 export type FigmaToken = typeof figmaTokens.$inferSelect
 export type NewFigmaToken = typeof figmaTokens.$inferInsert
+
+export type UserProfile = typeof userProfiles.$inferSelect
+export type NewUserProfile = typeof userProfiles.$inferInsert

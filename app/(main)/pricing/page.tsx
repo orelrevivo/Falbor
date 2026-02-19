@@ -1,6 +1,6 @@
 "use client"
 
-import { PayPalButtons } from "@paypal/react-paypal-js"
+import { PayPalScriptProvider, PayPalButtons } from "@paypal/react-paypal-js"
 import { Verified, ChevronDown } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -27,7 +27,7 @@ const tiers = [
 
 const CREDIT_RATE = 0.25
 
-export default function Pricing() {
+function PricingContent() {
   const [subscriptionTier, setSubscriptionTier] = useState('none')
   const [isLoading, setIsLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -76,7 +76,7 @@ export default function Pricing() {
     <div className="bg-white h-screen">
       <div className="container mx-auto py-10">
         <h1 className="text-3xl font-bold mb-8 text-center text-black mt-35 ml-2 absolute">
-          <span className="text-[#c15f3c]">Upgrade</span> Plans & Add credits
+          <span className="text-[#c15f3c]">Upgrade</span> Plans &amp; Add credits
         </h1>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-50">
@@ -149,16 +149,16 @@ export default function Pricing() {
                   <ChevronDown className="ml-2" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
-                 className="w-full z-[99999] shadow-lg" 
-                 side="bottom"
-                 align="start"
-                 >
-                  {[100,200,300,400,500,600,700,800,900,1000].map((amt) => (
+                  className="w-full z-[99999] shadow-lg"
+                  side="bottom"
+                  align="start"
+                >
+                  {[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map((amt) => (
                     <DropdownMenuItem
                       key={amt}
                       onSelect={() => setSelectedCredits(amt)}
                     >
-                      {amt} credits - ${ (amt * CREDIT_RATE).toFixed(2) }
+                      {amt} credits - ${(amt * CREDIT_RATE).toFixed(2)}
                     </DropdownMenuItem>
                   ))}
                 </DropdownMenuContent>
@@ -191,5 +191,24 @@ export default function Pricing() {
         </Dialog>
       </div>
     </div>
+  )
+}
+
+export default function Pricing() {
+  const paypalClientId = process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID
+
+  if (!paypalClientId) {
+    return <div>PayPal not configured.</div>
+  }
+
+  return (
+    <PayPalScriptProvider options={{
+      clientId: paypalClientId,
+      currency: "USD",
+      intent: "capture",
+      components: "buttons",
+    }}>
+      <PricingContent />
+    </PayPalScriptProvider>
   )
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import { Globe, Code2, Download, Settings, Database } from "lucide-react"
+import { Globe, Code2, Download, Settings, Database, TerminalIcon } from "lucide-react"
 import { TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -9,12 +9,19 @@ import { SignedIn } from "@clerk/nextjs"
 interface MainHeaderProps {
   handleDownload: () => void
   projectId: string
+  onToggleTerminal?: () => void
+  isTerminalOpen?: boolean
 }
 
 // Toggle this when the database section is ready
-const DATABASE_ENABLED = false
+const DATABASE_ENABLED = true
 
-export function MainHeader({ handleDownload, projectId }: MainHeaderProps) {
+export function MainHeader({
+  handleDownload,
+  projectId,
+  onToggleTerminal,
+  isTerminalOpen,
+}: MainHeaderProps) {
   return (
     <div className="px-2 mt-2 flex items-center justify-between border-gray-200">
       {/* Left side - Tab Navigation */}
@@ -35,18 +42,16 @@ export function MainHeader({ handleDownload, projectId }: MainHeaderProps) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <div>
-                  <TabsTrigger
-                    value="database"
-                    disabled={!DATABASE_ENABLED}
-                    className={cn(
-                      "gap-2",
-                      !DATABASE_ENABLED && "pointer-events-none opacity-50"
-                    )}
-                  >
-                    <Database className="w-4 h-4 text-black" />
-                  </TabsTrigger>
-                </div>
+                <TabsTrigger
+                  value="database"
+                  disabled={!DATABASE_ENABLED}
+                  className={cn(
+                    "gap-2",
+                    !DATABASE_ENABLED && "pointer-events-none opacity-50"
+                  )}
+                >
+                  <Database className="w-4 h-4 text-black" />
+                </TabsTrigger>
               </TooltipTrigger>
 
               {!DATABASE_ENABLED && (
@@ -61,44 +66,19 @@ export function MainHeader({ handleDownload, projectId }: MainHeaderProps) {
 
       {/* Right side - Actions */}
       <div className="flex items-center gap-3">
-        {/* Deploy button (commented out as in your original) */}
-        {/* 
-        <button
-          onClick={handleDeploy}
-          disabled={isDeploying}
-          className={cn(
-            "flex items-center gap-1 text-xs px-3 py-1.5 rounded transition-colors",
-            isDeploying
-              ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-              : "bg-black text-white hover:bg-gray-800"
-          )}
-        >
-          {isDeploying ? "Publishing..." : "Publish"}
-          <Rocket className="w-4 h-4" />
-        </button>
-        */}
-
-        {/* Download button - only visible when signed in */}
-        {/* <SignedIn>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  id="download-button"
-                  onClick={handleDownload}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded transition-colors bg-black text-white hover:bg-gray-800"
-                  title="Download project as ZIP"
-                >
-                  <Download className="w-4 h-4" />
-                  Download
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>Download project as ZIP</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </SignedIn> */}
+        {onToggleTerminal && (
+          <button
+            onClick={onToggleTerminal}
+            className={cn(
+              "flex items-center gap-1 text-xs px-3 py-1.5 rounded transition-colors border",
+              isTerminalOpen ? "bg-black text-white" : "bg-white text-black hover:bg-gray-100"
+            )}
+            title={isTerminalOpen ? "Close Terminal" : "Open Terminal"}
+          >
+            <TerminalIcon className="w-4 h-4" />
+            Terminal
+          </button>
+        )}
       </div>
     </div>
   )

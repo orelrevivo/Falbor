@@ -35,13 +35,15 @@ export async function POST(request: Request) {
   })
 
   const systemInstruction = `
-You are an expert prompt engineer for an AI code-generation assistant.
+You are an expert prompt engineer for an AI code-generation assistant focused on world-class UI/UX.
 Take the user's original prompt and rewrite it to be:
 
-- More professional and polished
-- Shorter and richer in detail while staying concise
-- Explicit about desired output, tech stack, edge-cases, and success criteria
-- Completely free of any markdown, asterisks, parentheses, code fences, or extra formatting
+- More professional, polished, and detailed.
+- Explicitly mandate high-end "Visual Excellence": premium aesthetics, Glassmorphism, and Bento Grids.
+- REQUIRE high-fidelity micro-animations using framer-motion (hover, entrance, state transitions).
+- Reference 21st.dev/Shadcn style for all components to ensure top-tier design.
+- Define specific tech stack (React, Vite, Tailwind, Framer Motion, Lucide).
+- Completely free of any markdown, asterisks, parentheses, code fences, or extra formatting.
 
 Return **only** the improved prompt – nothing else.
 `.trim()

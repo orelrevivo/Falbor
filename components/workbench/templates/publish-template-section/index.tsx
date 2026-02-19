@@ -289,7 +289,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
 
   if (!deployment) {
     return (
-    <div className="p-2 space-y-6">
+      <div className="p-2 space-y-6">
         <div>
           <h2 className="text-xl font-semibold text-foreground">Turn your website into a reusable template</h2>
           <p className="text-sm text-muted-foreground mt-1">
@@ -570,11 +570,6 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
           </Button>
         </div>
       )}
-      <br />
-      <br />
-      <br />
-      <br />
-      <br />
     </div>
   )
 }

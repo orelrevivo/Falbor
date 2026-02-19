@@ -1,36 +1,33 @@
-import { auth } from "@clerk/nextjs/server";
-import { Navbar } from "@/components/navbar/navbar";
-import { InputArea } from "@/components/workbench/input-area";
-import { Globe } from "@/components/ui/globe";
-import Footer from "@/components/layout/footer";
-import HeroSection from "@/components/layout/HeroSection";
-import Features from '@/components/layout/features';
-import FAQ from '@/components/layout/faq';
-import HeroText from "@/components/layout/hero";
-import CompanyLogos from "@/components/layout/LogsCompanySection";
-import SidebarProjects from "@/components/project/SidebarProjects";
-import { neon } from '@neondatabase/serverless';
-import { Suspense } from 'react';
+import { auth } from "@clerk/nextjs/server"
+import { InputArea } from "@/components/workbench/input-area"
+import Footer from "@/components/layout/footer"
+import HeroSection from "@/components/layout/HeroSection"
+import FAQ from "@/components/layout/faq"
+import HeroText from "@/components/layout/hero"
+import CompanyLogos from "@/components/layout/LogsCompanySection"
+import SidebarProjects from "@/components/project/SidebarProjects"
+import { UserProfileMenu } from "@/components/layout/user-profile-menu"
+import { neon } from "@neondatabase/serverless"
+import { Suspense } from "react"
+import "@/styles/bg.css"
 
-// Define the shape of each project (same as in SidebarProjects)
 interface ProjectItem {
-  id: string;
-  title: string;
-  updated_at: string;
-  is_owner: boolean;
-  collaborator_count?: number;
+  id: string
+  title: string
+  updated_at: string
+  is_owner: boolean
+  collaborator_count?: number
 }
 
-// Server-side data fetching function
 async function getUserProjects(userId: string): Promise<ProjectItem[]> {
-  const sql = neon(process.env.NEON_NEON_DATABASE_URL!);
+  const sql = neon(process.env.NEON_NEON_DATABASE_URL!)
 
   try {
     const owned = await sql`
       SELECT id, title, updated_at, TRUE AS is_owner,
       (SELECT COUNT(*) FROM project_collaborators pc WHERE pc.project_id = projects.id AND pc.status='accepted') AS collaborator_count
       FROM projects WHERE user_id = ${userId} ORDER BY updated_at DESC LIMIT 12
-    ` as ProjectItem[];
+    ` as ProjectItem[]
 
     const collab = await sql`
       SELECT p.id, p.title, p.updated_at, FALSE AS is_owner, 0 AS collaborator_count
@@ -38,69 +35,97 @@ async function getUserProjects(userId: string): Promise<ProjectItem[]> {
       JOIN project_collaborators pc ON p.id = pc.project_id
       WHERE pc.user_id = ${userId} AND pc.status='accepted'
       ORDER BY p.updated_at DESC LIMIT 12
-    ` as ProjectItem[];
+    ` as ProjectItem[]
 
-    // Combine and sort by updated_at descending
     return [...owned, ...collab].sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    );
+      (a, b) =>
+        new Date(b.updated_at).getTime() -
+        new Date(a.updated_at).getTime()
+    )
   } catch (err) {
-    console.error('Failed to fetch projects:', err);
-    return []; // Return empty array on error → graceful fallback
+    console.error("Failed to fetch projects:", err)
+    return []
   }
 }
 
 export default async function HomePage() {
-  const { userId } = await auth();
-  const isAuthenticated = !!userId;
+  const { userId } = await auth()
+  const isAuthenticated = !!userId
 
-  // Only fetch if authenticated
-  let projects: ProjectItem[] = [];
+  let projects: ProjectItem[] = []
   if (isAuthenticated && userId) {
-    projects = await getUserProjects(userId);
+    projects = await getUserProjects(userId)
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col bg-white overflow-hidden">
-      <div className="relative z-10 flex flex-col min-h-screen">
-        <main
-          className="flex flex-1 flex-col items-center justify-center px-4 w-full"
-          // style={{ ... }}  ← your commented background
-        >
-          <div className="absolute">
-            {isAuthenticated && (
-              <Suspense fallback={<div className="w-[350px] h-screen bg-gray-100/50 animate-pulse" />}>
-                <SidebarProjects userId={userId!} initialProjects={projects} />
+    <div
+      className={`relative min-h-screen flex flex-col overflow-hidden ${isAuthenticated ? "bg-[#FAF9F5]" : "Bg-main"
+        }`}
+    >
+      <main className="flex flex-1 flex-col items-center px-4 w-full">
+        {isAuthenticated && (
+          <>
+            <div className="absolute inset-y-0 left-0 z-20">
+              <Suspense
+                fallback={
+                  <div className="w-[320px] lg:w-[350px] h-screen bg-gray-100/60 animate-pulse" />
+                }
+              >
+                <SidebarProjects
+                  userId={userId!}
+                  initialProjects={projects}
+                />
               </Suspense>
-            )}
-          </div>
+            </div>
+            <div className="absolute top-[-20px] left-2">
+              <img src="/logo_light.png" width={140} alt="" />
+            </div>
+            <div className="absolute top-3 right-4 z-50">
+              <UserProfileMenu />
+            </div>
+          </>
+        )}
 
-          <div className="w-full flex flex-col items-center space-y-8 mt-[-140px] ml-5 relative z-10">
-            {/* <img src="/bg/bg-text.png" ... /> ← keep commented if needed */}
-
-            <div className="w-full flex flex-col mt-[-140px] items-center space-y-3 z-10">
-              <HeroText />
-              <div className="w-full flex justify-center">
-                <div className="w-full sm:w-[55%] md:w-[45%] lg:w-[35%] xl:w-[30%]">
-                  <InputArea isAuthenticated={isAuthenticated} />
+        {!isAuthenticated && (
+          <div className="w-full flex flex-col">
+            <div className="w-full min-h-screen flex flex-col items-center justify-center">
+              <div className="w-full max-w-4xl px-4 flex flex-col items-center mt-[-200px]">
+                <HeroText />
+                <div className="w-full flex justify-center mt-6">
+                  <InputArea isAuthenticated={false} />
                 </div>
               </div>
             </div>
+
+            <div className="w-full space-y-20 pb-20">
+              <HeroSection />
+              <FAQ />
+              <CompanyLogos />
+            </div>
           </div>
-        </main>
-      </div>
+        )}
 
-      <div className="top-[-10px] relative">
-        {!userId && <HeroSection />}
-      </div>
-      <div className="top-[-60px] relative">
-        {!userId && <FAQ />}
-      </div>
-      <div className="top-[-60px] relative">
-        {!userId && <CompanyLogos />}
-      </div>
+        {isAuthenticated && (
+          <div
+            className="absolute z-10 backdrop-blur-md border rounded-md shadow-sm p-6 sm:p-8 overflow-auto bg-white"
+            style={{
+              top: "60px",
+              left: "300px",
+              right: "10px",
+              bottom: "10px",
+            }}
+          >
+            <div className="flex flex-col items-center h-full justify-center top-[-120px] relative">
+              <HeroText />
+              <div className="w-full flex justify-center mt-6">
+                <InputArea isAuthenticated />
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
 
-      <Footer />
+      {!isAuthenticated && <Footer />}
     </div>
-  );
+  )
 }

@@ -7,7 +7,7 @@ import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(
   request: NextRequest,
-  context: { params?: {} } // ← Next.js expects context with optional params here
+  context: { params?: {} }
 ) {
   try {
     const { userId } = await auth()
@@ -15,42 +15,47 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { sql, projectId } = await request.json()
+    const { sql, projectId, fileName } = await request.json()
 
     if (!sql) {
       return NextResponse.json({ error: "SQL content is required" }, { status: 400 })
     }
 
-    // Get the stored Supabase connection from DB
-    const [connection] = await db
-      .select()
-      .from(userSupabaseConnections)
-      .where(eq(userSupabaseConnections.userId, userId))
-      .limit(1)
+    let targetProjectRef = ""
+    let targetAccessToken = ""
 
-    if (!connection || !connection.isActive) {
-      return NextResponse.json(
-        { error: "No active Supabase connection found. Please connect your Supabase account first." },
-        { status: 401 },
-      )
+    // 1. Try to get project-specific credentials (managed database)
+    if (projectId) {
+      const { projectSupabase } = await import("@/config/schema")
+      const [supabaseConfig] = await db
+        .select()
+        .from(projectSupabase)
+        .where(eq(projectSupabase.projectId, projectId))
+
+      if (supabaseConfig?.supabaseProjectRef && process.env.SUPABASE_ACCESS_TOKEN) {
+        targetProjectRef = supabaseConfig.supabaseProjectRef
+        targetAccessToken = process.env.SUPABASE_ACCESS_TOKEN
+      }
     }
 
-    const { accessToken, selectedProjectRef } = connection
+    // 2. Fallback to global user connection
+    if (!targetProjectRef || !targetAccessToken) {
+      const [connection] = await db
+        .select()
+        .from(userSupabaseConnections)
+        .where(eq(userSupabaseConnections.userId, userId))
+        .limit(1)
 
-    if (!accessToken) {
-      return NextResponse.json(
-        { error: "No access token found. Please reconnect your Supabase account." },
-        { status: 401 },
-      )
+      if (connection && connection.isActive && connection.accessToken && connection.selectedProjectRef) {
+        targetProjectRef = connection.selectedProjectRef
+        targetAccessToken = connection.accessToken
+      }
     }
 
-    // Use the project from connection or the provided projectId
-    const targetProjectRef = projectId || selectedProjectRef
-
-    if (!targetProjectRef) {
+    if (!targetProjectRef || !targetAccessToken) {
       return NextResponse.json(
-        { error: "No project selected. Please select a Supabase project first." },
-        { status: 400 },
+        { error: "No active Supabase connection or project found. Please connect your project or sign in to Supabase." },
+        { status: 401 },
       )
     }
 
@@ -60,7 +65,7 @@ export async function POST(
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${accessToken}`,
+          Authorization: `Bearer ${targetAccessToken}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query: sql }),
@@ -77,6 +82,20 @@ export async function POST(
     }
 
     const result = await response.json()
+
+    // 4. Save the SQL file to the database for the SQL Editor view
+    if (projectId && fileName) {
+      const { projectSupabaseSqlFiles } = await import("@/config/schema")
+      try {
+        await db.insert(projectSupabaseSqlFiles).values({
+          projectId,
+          fileName,
+          content: sql,
+        })
+      } catch (dbError) {
+        console.error("Failed to save SQL migration to database:", dbError)
+      }
+    }
 
     return NextResponse.json({
       success: true,

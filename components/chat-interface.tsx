@@ -53,12 +53,14 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   const [isResizingState, setIsResizingState] = useState(false)
   const [isStreaming, setIsStreaming] = useState(false)
   const [isCodeGenerating, setIsCodeGenerating] = useState(false)
+  const [extractedFiles, setExtractedFiles] = useState<Array<{ path: string; content: string; language: string }>>([])
   const [previewError, setPreviewError] = useState<{
     message: string
     file?: string
     line?: string
   } | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [workbenchTab, setWorkbenchTab] = useState<string>("preview") // New state to control workbench tabs
   const [hasProjectFiles, setHasProjectFiles] = useState(false)
   const hasAutoTriggered = useRef(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -67,7 +69,17 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   const isResizing = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
+  const abortControllerRef = useRef<AbortController | null>(null)
   const { getToken } = useAuth()
+
+  const handleStopAutoGenerate = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setIsStreaming(false)
+      setIsCodeGenerating(false)
+      abortControllerRef.current = null
+    }
+  }
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -196,6 +208,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
       isAutomated: true,
     }
     setMessages((prev) => [...prev, tempAssistant])
+    abortControllerRef.current = new AbortController()
     try {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -203,8 +216,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
         body: JSON.stringify({
           projectId: project.id,
           message: userContent,
-          model: project.selectedModel || "gemini",
+          selectedModel: project.selectedModel || "gemini",
         }),
+        signal: abortControllerRef.current.signal,
       })
       if (!res.ok) {
         throw new Error(`API error: ${res.status}`)
@@ -256,6 +270,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
     } finally {
       setIsStreaming(false)
       setIsCodeGenerating(false)
+      abortControllerRef.current = null
       // Remove prompt query param if exists
       if (searchParams.has("prompt")) {
         const params = new URLSearchParams(searchParams.toString())
@@ -264,6 +279,11 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
       }
     }
   }
+
+  const handleCodeExtracted = (files: Array<{ filename: string; code: string; language: string }>) => {
+    setExtractedFiles(files.map(f => ({ path: f.filename, content: f.code, language: f.language })))
+  }
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
@@ -375,6 +395,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
                   createdAt: msg.createdAt instanceof Date ? msg.createdAt.toISOString() : msg.createdAt,
                 }))}
                 projectId={project.id}
+                onCodeExtracted={handleCodeExtracted}
               />
             </div>
             <div ref={messagesEndRef} />
@@ -391,6 +412,13 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
                 initialModel={project.selectedModel || "gemini"}
                 onNewMessage={handleNewMessage}
                 onDismissError={handleDismissError}
+                onOpenDatabase={() => {
+                  setIsPreviewOpen(true)
+                  setWorkbenchTab("database")
+                }}
+                externalIsLoading={isStreaming}
+                onStop={handleStopAutoGenerate}
+                messages={messages}
               />
             </div>
           </div>
@@ -406,6 +434,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
               onError={handlePreviewError}
               isOpen={isPreviewOpen}
               onClose={handlePreviewClose}
+              initialTab={workbenchTab}
+              onTabChange={setWorkbenchTab}
+              filesOverride={extractedFiles.length > 0 ? extractedFiles : undefined}
             />
           </div>
         )}

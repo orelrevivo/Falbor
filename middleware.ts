@@ -2,7 +2,11 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-const isProtectedRoute = createRouteMatcher(["/chat(.*)"])
+const isProtectedRoute = createRouteMatcher(["/chat(.*)", "/api/supabase/provision"])
+
+// Routes that need cross-origin isolation for WebContainer (SharedArrayBuffer)
+const needsIsolation = (pathname: string) =>
+  pathname.startsWith("/chat") || pathname.startsWith("/preview")
 
 export default clerkMiddleware(async (auth, req: NextRequest) => {
   const { pathname } = req.nextUrl
@@ -20,12 +24,6 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   const hostname = req.headers.get("host") || ""
   const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN || "falbor.xyz"
 
-  /**
-   * Examples:
-   * eccf34b9.falbor.app  -> subdomain = eccf34b9
-   * www.falbor.app      -> ignore
-   * falbor.app          -> ignore
-   */
   const isSubdomain =
     hostname.endsWith(`.${baseDomain}`) &&
     !hostname.startsWith("www.") &&
@@ -52,7 +50,16 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
     await auth.protect()
   }
 
-  return NextResponse.next()
+  // 4. Add Cross-Origin Isolation headers ONLY for WebContainer routes
+  // These headers enable SharedArrayBuffer (needed by WebContainer)
+  // They are NOT applied to pricing or other pages so PayPal works normally
+  const response = NextResponse.next()
+  if (needsIsolation(pathname)) {
+    response.headers.set("Cross-Origin-Opener-Policy", "same-origin")
+    response.headers.set("Cross-Origin-Embedder-Policy", "credentialless")
+  }
+
+  return response
 })
 
 export const config = {

@@ -4,7 +4,8 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "re
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp } from "lucide-react"
 import {
   Loader,
   X,
@@ -19,16 +20,27 @@ import {
   Download,
   Copy,
   Edit,
+  Check,
+  Shield,
+  List,
+  Square,
+  CheckCircle2,
+  StopCircle,
+  Mail
 } from "lucide-react"
+import { Link1Icon } from "@radix-ui/react-icons"
 import type { Message } from "@/config/schema"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Link1Icon } from "@radix-ui/react-icons"
 import { Editor } from "@monaco-editor/react"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
+import { getMcpConnections } from "@/app/actions/mcp"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 
 interface ChatInputProps {
   isAuthenticated: boolean
@@ -45,6 +57,10 @@ interface ChatInputProps {
     line?: string
   } | null
   onDismissError?: () => void
+  onOpenDatabase?: () => void
+  externalIsLoading?: boolean
+  onStop?: () => void
+  messages?: Message[]
 }
 interface CreditsData {
   subscriptionTier: string
@@ -144,7 +160,20 @@ const designPresets: Record<string, DesignConfig> = {
     borderStyle: "solid",
   },
 }
+
+const EMAIL_TEMPLATES = [
+  { id: "confirmation", label: "Confirm Sign Up" },
+  { id: "invite", label: "Invite User" },
+  { id: "magic_link", label: "Magic Link" },
+  { id: "email_change", label: "Change Email" },
+  { id: "recovery", label: "Reset Password" },
+  { id: "reauthentication", label: "Reauthentication" },
+]
+
 const MODEL_OPTIONS: ModelOption[] = [
+  { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4", label: "Claude Opus 4", isPremium: true, iconUrl: "/icons/claude.png" },
@@ -152,9 +181,12 @@ const MODEL_OPTIONS: ModelOption[] = [
   // { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "gemini", label: "Gemini 3 Flash", isPremium: false, iconUrl: "/icons/gemini.png" },
   { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: true, iconUrl: "/icons/openai.png" },
   // { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
   // { id: "grok-4.1", label: "Grok 4.1 Fast", isPremium: true, iconUrl: "https://x.ai/favicon.ico" },
   // { id: "grok-3-mini", label: "Grok 3 Mini", isPremium: false, iconUrl: "https://x.ai/favicon.ico" },
+  { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: true, iconUrl: "/icons/zAI.png" },
+  { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: true, iconUrl: "/icons/zAI.png" },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -284,18 +316,33 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     isAuthenticated,
     projectId,
     onNewMessage,
-    placeholder = "What would you like to build today?",
+    placeholder = "Ask anything... to get started",
     initialModel = "gemini",
     connected = false,
     onCloseIdeas,
     isAutomated = false,
     previewError,
     onDismissError,
+    onOpenDatabase,
+    externalIsLoading = false,
+    onStop,
+    messages = [],
   },
   ref,
 ) {
   const [message, setMessage] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+
+  const effectiveIsLoading = isLoading || externalIsLoading
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastAssistant = [...messages].reverse().find(m => m.role === "assistant")
+      if (lastAssistant) {
+        parseTasksFromContent(lastAssistant.content)
+      }
+    }
+  }, [messages])
   const [isImproving, setIsImproving] = useState(false)
   const [isFocused, setIsFocused] = useState(false)
   const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null)
@@ -320,7 +367,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
-  const [menuMode, setMenuMode] = useState<"main" | "design">("main")
+  const [menuMode, setMenuMode] = useState<"main" | "design" | "database">("main")
+  const [isFalborDb, setIsFalborDb] = useState(true)
   const [showDesignModal, setShowDesignModal] = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
   const [designConfig, setDesignConfig] = useState<DesignConfig | null>(null)
@@ -330,6 +378,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [showDatabaseModal, setShowDatabaseModal] = useState(false)
   const [databaseCredentials, setDatabaseCredentials] = useState<DatabaseCredentials>({ supabaseUrl: "", anonKey: "" })
   const [isSavingCredentials, setIsSavingCredentials] = useState(false)
+  const [isProvisioning, setIsProvisioning] = useState(false)
   const [credentialsSaved, setCredentialsSaved] = useState(false)
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [pendingSubmitData, setPendingSubmitData] = useState<{
@@ -338,6 +387,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     isDiscussMode: boolean
     selectedModel: string
     isAutomated: boolean
+    isFalborDb: boolean
   } | null>(null)
   const [isActive, setIsActive] = useState(false)
   const [accessToken, setAccessToken] = useState<string>("")
@@ -350,7 +400,47 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [showTokenModal, setShowTokenModal] = useState(false)
   const [tempAccessToken, setTempAccessToken] = useState<string>("")
   const [isFetchingApiKeys, setIsFetchingApiKeys] = useState(false)
+  const [mcpConnections, setMcpConnections] = useState<any[]>([])
+  const [mentionMenu, setMentionMenu] = useState<{ isOpen: boolean; filter: string; position: { top: number; left: number }; startIndex: number }>({
+    isOpen: false,
+    filter: "",
+    position: { top: 0, left: 0 },
+    startIndex: -1
+  })
+  const [selectedMcpIds, setSelectedMcpIds] = useState<string[]>([])
+  const [mentionTab, setMentionTab] = useState<"mcps" | "emails">("mcps")
   const [isLoadingConnection, setIsLoadingConnection] = useState(true)
+  const [showTaskPanel, setShowTaskPanel] = useState(false)
+  const [tasks, setTasks] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
+  const tasksKey = projectId ? `chat-tasks-${projectId}` : "chat-tasks-global"
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setIsLoading(false)
+      abortControllerRef.current = null
+    }
+    if (onStop) {
+      onStop()
+    }
+  }
+
+  const parseTasksFromContent = (content: string) => {
+    const tasksRegex = /<Tasks>([\s\S]*?)<\/Tasks>/i
+    const match = content.match(tasksRegex)
+    if (match) {
+      const lines = match[1].trim().split("\n")
+      const tasksList = lines.map(line => {
+        if (!line.trim()) return null
+        const successMatch = line.match(/(.+?)\s*[✓✔]/i)
+        const loadingMatch = line.match(/(.+?)\s*[⏳⌛…]/i)
+        if (successMatch) return { text: successMatch[1].trim(), status: "success" as const }
+        if (loadingMatch) return { text: loadingMatch[1].trim(), status: "loading" as const }
+        return { text: line.trim(), status: "pending" as const }
+      }).filter(Boolean) as { text: string; status: "success" | "loading" | "pending" }[]
+      setTasks(tasksList)
+    }
+  }
   const fileInputRef = useRef<HTMLInputElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
@@ -370,7 +460,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const filesKey = projectId ? `chat-files-${projectId}` : "chat-files-global"
   const pastedKey = projectId ? `chat-pasted-${projectId}` : "chat-pasted-global"
   const designKey = "chat-design-config"
-  const modelKey = "chat-selected-model"
+  const modelKey = projectId ? `chat-selected-model-${projectId}` : "chat-selected-model-global"
   // Load saved connection from server on mount
   useEffect(() => {
     const loadUserConnection = async () => {
@@ -404,6 +494,13 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       }
     }
     loadUserConnection()
+
+    const loadMcpConnections = async () => {
+      if (!isAuthenticated) return
+      const data = await getMcpConnections()
+      setMcpConnections(data)
+    }
+    loadMcpConnections()
   }, [isAuthenticated])
   useEffect(() => {
     const savedDraft = localStorage.getItem(draftKey)
@@ -447,10 +544,52 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   useEffect(() => {
     localStorage.setItem(pastedKey, JSON.stringify(pastedContents))
   }, [pastedContents, pastedKey])
+  useEffect(() => {
+    const savedTasks = localStorage.getItem(tasksKey)
+    if (savedTasks) {
+      setTasks(JSON.parse(savedTasks))
+    }
+  }, [tasksKey])
+  useEffect(() => {
+    localStorage.setItem(tasksKey, JSON.stringify(tasks))
+  }, [tasks, tasksKey])
   const createProject = async (withCredentials: boolean) => {
     if (!pendingSubmitData) return
     setIsLoading(true)
+
+    let supabaseUrl = ""
+    let anonKey = ""
+    let serviceRoleKey = ""
+    let projectRef = ""
+    let dbPassword = ""
+
     try {
+      // Handle Falbor Database Provisioning (Synchronous wait for Keys)
+      if (pendingSubmitData.isFalborDb) {
+        setIsProvisioning(true)
+        try {
+          const provRes = await fetch("/api/supabase/provision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: `project-${Math.random().toString(36).slice(2, 10)}` })
+          })
+
+          if (!provRes.ok) {
+            const err = await provRes.json().catch(() => ({}))
+            throw new Error(err.error || "Failed to provision database")
+          }
+
+          const creds = await provRes.json()
+          supabaseUrl = creds.supabaseUrl
+          anonKey = creds.anonKey
+          serviceRoleKey = creds.serviceRoleKey
+          projectRef = creds.projectRef
+          dbPassword = creds.dbPassword
+        } finally {
+          setIsProvisioning(false)
+        }
+      }
+
       if (!pendingSubmitData.isAutomated) {
         const deductRes = await fetch("/api/user/credits", {
           method: "POST",
@@ -480,6 +619,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       setImageSize(0)
       setUploadedFiles([])
       setPastedContents([])
+
       const body: any = {
         message: pendingSubmitData.userMessage,
         imageData: pendingSubmitData.selectedImage,
@@ -487,12 +627,24 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
         discussMode: pendingSubmitData.isDiscussMode,
         isAutomated: pendingSubmitData.isAutomated,
         selectedModel: pendingSubmitData.selectedModel,
+        isFalborDb: pendingSubmitData.isFalborDb,
       }
-      // Always include credentials if they're saved (global for user)
-      if (withCredentials || credentialsSaved) {
+
+      // Inject credentials directly into the project creation (so they are saved immediately)
+      if (pendingSubmitData.isFalborDb) {
+        body.supabaseUrl = supabaseUrl
+        body.anonKey = anonKey
+        body.serviceRoleKey = serviceRoleKey
+        body.projectRef = projectRef
+        body.dbPassword = dbPassword
+
+        // Also inject into the first message content so it's visible in history
+        body.message += `\n\n## Database Connection (Managed by Falbor)\nDatabase provisioned successfully.\nVITE_SUPABASE_URL=${supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${anonKey}\nSUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`
+      } else if (withCredentials || credentialsSaved) {
         body.supabaseUrl = databaseCredentials.supabaseUrl
         body.anonKey = databaseCredentials.anonKey
       }
+
       const res = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -502,13 +654,21 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
         throw new Error(`API returned ${res.status}: ${res.statusText}`)
       }
       const { projectId: newId } = await res.json()
+
+      // Transfer tasks to the new project key
+      const globalTasks = localStorage.getItem("chat-tasks-global")
+      if (globalTasks) {
+        localStorage.setItem(`chat-tasks-${newId}`, globalTasks)
+      }
+
       setPendingSubmitData(null)
       router.push(`/chat/${newId}`)
     } catch (err) {
       console.error("Project creation failed:", err)
-      alert("Failed to create project. Please try again.")
+      alert(err instanceof Error ? err.message : "Failed to create project. Please try again.")
     } finally {
       setIsLoading(false)
+      setIsProvisioning(false)
     }
   }
   const handleSupabaseOAuthConnect = (
@@ -838,7 +998,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       setTempConfig(designConfig ?? designPresets["Base"])
     }
   }, [showDesignModal, designConfig])
-  const handleModelSelect = (modelId: string) => {
+  const handleModelSelect = async (modelId: string) => {
     const model = MODEL_OPTIONS.find((m) => m.id === modelId)
     if (!model) return
     const hasSubscription = creditsData?.subscriptionTier !== "none"
@@ -846,8 +1006,25 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       setShowPremiumAlert(true)
       return
     }
+
     setSelectedModel(modelId)
     setShowModelDropdown(false)
+
+    // Persist to DB if we are in a project
+    if (projectId) {
+      try {
+        const res = await fetch(`/api/projects/${projectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selectedModel: modelId })
+        })
+        if (!res.ok) {
+          console.error("Failed to update project model in DB")
+        }
+      } catch (err) {
+        console.error("Error updating project model:", err)
+      }
+    }
   }
   const parseAndSetPendingMigrations = (content: string) => {
     const migrations: string[] = []
@@ -935,10 +1112,11 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
         isDiscussMode,
         selectedModel,
         isAutomated,
+        isFalborDb,
       })
-      // Skip confirmation if database is already connected
-      if (credentialsSaved) {
-        await createProject(true)
+      // Skip confirmation if database is already connected or using Falbor DB
+      if (credentialsSaved || isFalborDb) {
+        await createProject(isFalborDb)
       } else {
         setShowConfirmation(true)
       }
@@ -1015,6 +1193,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
               discussMode: isDiscussMode,
               isAutomated,
               selectedModel,
+              selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
             }),
             signal: abortControllerRef.current.signal,
           })
@@ -1053,6 +1232,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
                     }
                     if (data.text) {
                       accumulated += data.text
+                      parseTasksFromContent(accumulated)
                       onNewMessage({
                         ...tempAssistant,
                         content: accumulated,
@@ -1111,6 +1291,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
             discussMode: isDiscussMode,
             isAutomated,
             selectedModel,
+            selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
           }),
           signal: abortControllerRef.current.signal,
         })
@@ -1303,18 +1484,18 @@ Please analyze this error and fix it in the code. Make sure to:
       /* TOP border (colored section only) */
       linear-gradient(
         to right,
-        ${isActive ? "#f3581f" : "rgba(193,95,60,0.35)"} 0%,
-        rgba(193, 95, 60, ${isActive ? "1" : "0.45"}) 18%,
-        rgba(193, 95, 60, ${isActive ? "0.85" : "0.25"}) 35%,
+        ${isActive ? "#0099ff" : "rgba(0, 153, 255, 1)"} 0%,
+        rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 18%,
+        rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 35%,
         rgba(219, 219, 217, 0.7) 50%,
         #dbd9d9b2 60%
       ),
       /* LEFT border (colored section only) */
       linear-gradient(
         to bottom,
-        ${isActive ? "#c15f3c" : "rgba(193,95,60,0.35)"} 0%,
-        rgba(193, 95, 60, ${isActive ? "1" : "0.45"}) 22%,
-        rgba(193, 95, 60, ${isActive ? "0.85" : "0.25"}) 40%,
+        ${isActive ? "#0099ff" : "rgba(0, 153, 255, 1)"} 0%,
+        rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 22%,
+        rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 40%,
         rgba(219, 219, 217, 0.7) 55%,
         #dbd9d9b2 65%
       )
@@ -1323,35 +1504,293 @@ Please analyze this error and fix it in the code. Make sure to:
           backgroundClip: "padding-box, border-box, border-box",
         }}
       >
-        {(uploadedFiles.length > 0 || pastedContents.length > 0) && (
-          <div>
-            <div className="flex flex-wrap gap-[2px] justify-start px-2 pt-2 pb-1">
-              {pastedContents.map((content) => (
-                <PastedContentButton
-                  key={content.id}
-                  content={content}
-                  onClick={() => openFileModal(content, true)}
-                  onRemove={() => setPastedContents((prev) => prev.filter((c) => c.id !== content.id))}
-                />
-              ))}
-              {uploadedFiles.map((file) => (
-                <FilePreviewButton
-                  key={file.id}
-                  file={file}
-                  onClick={() => openFileModal(file, false)}
-                  onRemove={() => setUploadedFiles((prev) => prev.filter((f) => f.id !== file.id))}
-                />
-              ))}
-            </div>
+        {mentionMenu.isOpen && (
+          <div
+            className="absolute z-50 bg-white border rounded-lg shadow-xl w-64 overflow-hidden"
+            style={{
+              bottom: "100%",
+              left: mentionMenu.position.left,
+              marginBottom: "10px"
+            }}
+          >
+            <Command className="border-none">
+              <div className="flex bg-gray-50 border-b p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMentionTab("mcps")}
+                  className={cn(
+                    "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
+                    mentionTab === "mcps" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
+                  )}
+                >
+                  <Database className="w-3 h-3" />
+                  MCPs
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMentionTab("emails")}
+                  className={cn(
+                    "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
+                    mentionTab === "emails" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
+                  )}
+                >
+                  <Mail className="w-3 h-3" />
+                  Emails
+                </button>
+              </div>
+
+              {mentionTab === "mcps" ? (
+                <>
+                  <CommandInput placeholder="Search MCPs..." className="h-9" autoFocus />
+                  <CommandList className="max-h-48">
+                    <CommandEmpty>No MCPs found.</CommandEmpty>
+                    <CommandGroup heading="Connected MCPs">
+                      {mcpConnections.length === 0 ? (
+                        <div className="p-2 text-xs text-muted-foreground text-center">
+                          No connected MCPs. <Link href="/settings/mcp" className="text-indigo-600 underline">Connect one now.</Link>
+                        </div>
+                      ) : (
+                        mcpConnections
+                          .filter(c => c.name.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
+                          .map((mcp) => (
+                            <CommandItem
+                              key={mcp.id}
+                              onSelect={() => {
+                                const before = message.slice(0, mentionMenu.startIndex)
+                                const after = message.slice(textareaRef.current?.selectionStart || 0)
+                                const newMessage = `${before}@${mcp.name}${after}`
+                                setMessage(newMessage)
+                                setSelectedMcpIds(prev => [...new Set([...prev, mcp.id])])
+                                setMentionMenu(prev => ({ ...prev, isOpen: false }))
+                                textareaRef.current?.focus()
+                              }}
+                              className="flex items-center gap-2 cursor-pointer"
+                            >
+                              <Database className="w-4 h-4 text-indigo-500" />
+                              <span>{mcp.name}</span>
+                              <span className="text-[10px] text-muted-foreground ml-auto">{mcp.type}</span>
+                            </CommandItem>
+                          ))
+                      )}
+                    </CommandGroup>
+                  </CommandList>
+                </>
+              ) : (
+                <>
+                  <CommandInput placeholder="Search Email Templates..." className="h-9" autoFocus />
+                  <CommandList className="max-h-48">
+                    <CommandEmpty>No templates found.</CommandEmpty>
+                    <CommandGroup heading="Email Templates">
+                      {EMAIL_TEMPLATES
+                        .filter(t => t.label.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
+                        .map((t) => (
+                          <CommandItem
+                            key={t.id}
+                            onSelect={() => {
+                              const before = message.slice(0, mentionMenu.startIndex)
+                              const after = message.slice(textareaRef.current?.selectionStart || 0)
+                              // Descriptive tag for the AI to pick up
+                              const newMessage = `${before}@Email/${t.id}${after}`
+                              setMessage(newMessage)
+                              setMentionMenu(prev => ({ ...prev, isOpen: false }))
+                              textareaRef.current?.focus()
+                            }}
+                            className="flex items-center gap-2 cursor-pointer"
+                          >
+                            <Mail className="w-4 h-4 text-blue-500" />
+                            <span>{t.label}</span>
+                          </CommandItem>
+                        ))}
+                    </CommandGroup>
+                  </CommandList>
+                </>
+              )}
+            </Command>
           </div>
         )}
+        <AnimatePresence>
+          {tasks.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 10 }}
+              className="px-2 pb-2"
+            >
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowTaskPanel(!showTaskPanel)}
+                className="w-full flex items-center justify-between h-9 bg-blue-50/50 border-blue-100 hover:bg-blue-100/50 text-blue-700 rounded-lg group"
+              >
+                <div className="flex items-center gap-2">
+                  <List className="w-4 h-4" />
+                  <span className="text-sm font-medium">View AI Tasks Breakdown</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] py-0.5 px-2 bg-blue-100 rounded-full font-bold">
+                    {tasks.filter(t => t.status === "success").length}/{tasks.length} Complete
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform", showTaskPanel && "rotate-180")} />
+                </div>
+              </Button>
+            </motion.div>
+          )}
+
+          {showTaskPanel && tasks.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              className="px-2 pb-4 overflow-hidden"
+            >
+              <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold flex items-center gap-2 text-black/70">
+                    <Square className="w-4 h-4 fill-blue-500 text-blue-500" />
+                    Task Execution Plan
+                  </h3>
+                  {effectiveIsLoading && (
+                    <div className="flex items-center gap-2 text-xs text-blue-600 font-medium">
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      AI Generating...
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-2">
+                  {tasks.map((task, idx) => (
+                    <motion.div
+                      key={idx}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className={cn(
+                        "flex items-center gap-3 p-2.5 rounded-lg border transition-all",
+                        task.status === "loading" ? "bg-blue-50 border-blue-200" :
+                          task.status === "success" ? "bg-green-50/50 border-green-100" : "bg-gray-50/30 border-gray-100"
+                      )}
+                    >
+                      {task.status === "loading" ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                      ) : task.status === "success" ? (
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                      ) : (
+                        <Circle className="w-4 h-4 text-gray-300" />
+                      )}
+                      <span className={cn(
+                        "text-sm",
+                        task.status === "success" ? "text-gray-500 line-through" : "text-gray-700 font-medium"
+                      )}>
+                        {task.text}
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence initial={false}>
+          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0) && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              className="overflow-hidden"
+            >
+              <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
+                {selectedMcpIds.map(id => {
+                  const mcp = mcpConnections.find(c => c.id === id)
+                  if (!mcp) return null
+                  return (
+                    <motion.div
+                      key={id}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0.8, opacity: 0 }}
+                    >
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 py-1"
+                      >
+                        <Database className="w-3 h-3" />
+                        @{mcp.name}
+                        <button
+                          onClick={() => setSelectedMcpIds(prev => prev.filter(i => i !== id))}
+                          className="ml-1 hover:text-indigo-900"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Badge>
+                    </motion.div>
+                  )
+                })}
+                {pastedContents.map((content) => (
+                  <motion.div
+                    key={content.id}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.8, opacity: 0 }}
+                  >
+                    <PastedContentButton
+                      content={content}
+                      onClick={() => openFileModal(content, true)}
+                      onRemove={() => setPastedContents((prev) => prev.filter((c) => c.id !== content.id))}
+                    />
+                  </motion.div>
+                ))}
+                {uploadedFiles.map((file) => (
+                  <motion.div
+                    key={file.id}
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.8, opacity: 0 }}
+                  >
+                    <FilePreviewButton
+                      file={file}
+                      onClick={() => openFileModal(file, false)}
+                      onRemove={() => setUploadedFiles((prev) => prev.filter((f) => f.id !== file.id))}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <textarea
           ref={textareaRef}
           value={message}
           onChange={(e) => {
             const newMessage = e.target.value
+            const cursorPosition = e.target.selectionStart
             setMessage(newMessage)
             localStorage.setItem(draftKey, newMessage)
+
+            // @ Mention Logic
+            const lastChar = newMessage[cursorPosition - 1]
+            const textBeforeCursor = newMessage.slice(0, cursorPosition)
+            const atIndex = textBeforeCursor.lastIndexOf("@")
+
+            if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
+              const filter = textBeforeCursor.slice(atIndex + 1)
+              if (!filter.includes(" ")) {
+                // Calculate position for menu (simplified - usually needs a hidden div measurement)
+                const rect = textareaRef.current?.getBoundingClientRect()
+                if (rect) {
+                  setMentionMenu({
+                    isOpen: true,
+                    filter,
+                    position: { top: -160, left: 10 }, // Relative to absolute container
+                    startIndex: atIndex
+                  })
+                }
+              } else {
+                setMentionMenu(prev => ({ ...prev, isOpen: false }))
+              }
+            } else {
+              setMentionMenu(prev => ({ ...prev, isOpen: false }))
+            }
+
             if (newMessage.trim().length > 0) {
               setIsActive(true)
             }
@@ -1407,7 +1846,7 @@ Please analyze this error and fix it in the code. Make sure to:
                   <DropdownMenuContent
                     align="start"
                     side="top"
-                    className="w-52"
+                    className="w-56"
                   >
                     {menuMode === "main" ? (
                       <>
@@ -1428,14 +1867,18 @@ Please analyze this error and fix it in the code. Make sure to:
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => {
-                            setShowDatabaseModal(true)
-                            setShowMenu(false)
+                            if (projectId && onOpenDatabase) {
+                              onOpenDatabase()
+                            } else {
+                              setMenuMode("database")
+                            }
                           }}
                           className="w-full"
                         >
                           <Database className="h-4 w-4" />
                           Database
-                          {credentialsSaved && <span className="ml-auto text-green-600 text-xs">Connected</span>}
+                          {isFalborDb && <span className="ml-auto text-blue-600 text-[10px] font-bold">Falbor</span>}
+                          {credentialsSaved && !isFalborDb && <span className="ml-auto text-green-600 text-[10px] font-bold">Connected</span>}
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           onSelect={() => {
@@ -1453,7 +1896,7 @@ Please analyze this error and fix it in the code. Make sure to:
                           Enhance Prompt
                         </DropdownMenuItem>
                       </>
-                    ) : (
+                    ) : menuMode === "design" ? (
                       <>
                         <DropdownMenuItem onSelect={() => setMenuMode("main")} className="w-full">
                           <ArrowLeft className="h-4 w-4 mr-2" />
@@ -1485,6 +1928,48 @@ Please analyze this error and fix it in the code. Make sure to:
                           New Design System
                         </DropdownMenuItem>
                       </>
+                    ) : (
+                      <>
+                        <DropdownMenuItem onSelect={() => setMenuMode("main")} className="w-full">
+                          <ArrowLeft className="h-4 w-4 mr-2" />
+                          Back
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setIsFalborDb(true)
+                            setShowMenu(false)
+                          }}
+                          className="w-full"
+                        >
+                          <img src="/icons/falbor.png" className="w-5 h-5" alt="" />
+                          Falbor Database
+                          {isFalborDb && <Check className="ml-auto h-4 w-4" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setIsFalborDb(false)
+                            setShowDatabaseModal(true)
+                            setShowMenu(false)
+                          }}
+                          className="w-full"
+                        >
+                          <img src="/icons/supabase.png" className="w-5 h-5" alt="" />
+                          Connect Own
+                          {!isFalborDb && credentialsSaved && <Check className="ml-auto h-4 w-4 text-green-600" />}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => {
+                            setIsFalborDb(false)
+                            setCredentialsSaved(false)
+                            setShowMenu(false)
+                            // This will essentially send the message without isFalborDb or credentials
+                          }}
+                          className="w-full"
+                        >
+                          <img src="/icons/database-off.png" className="w-5 h-5" alt="" />
+                          Create without Database
+                        </DropdownMenuItem>
+                      </>
                     )}
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -1510,7 +1995,7 @@ Please analyze this error and fix it in the code. Make sure to:
                   <DropdownMenuContent
                     align="start"
                     side="top"
-                    className="w-64 p-0"
+                    className="w-64 p-0 shadow-xs border"
                   >
                     {/* Claude Agent Title */}
                     <div className="px-2.5 py-1 mt-1 text-xs font-semibold text-muted-foreground">
@@ -1519,7 +2004,7 @@ Please analyze this error and fix it in the code. Make sure to:
 
                     {/* Claude Models */}
                     <div className="p-0.5">
-                      {MODEL_OPTIONS.slice(0, 3).map((model) => (
+                      {MODEL_OPTIONS.slice(0, 6).map((model) => (
                         <DropdownMenuItem
                           key={model.id}
                           onSelect={() => handleModelSelect(model.id)}
@@ -1543,7 +2028,7 @@ Please analyze this error and fix it in the code. Make sure to:
 
                     {/* Other Models */}
                     <div className="p-0.5">
-                      {MODEL_OPTIONS.slice(3).map((model) => (
+                      {MODEL_OPTIONS.slice(6).map((model) => (
                         <DropdownMenuItem
                           key={model.id}
                           onSelect={() => handleModelSelect(model.id)}
@@ -1598,23 +2083,31 @@ Please analyze this error and fix it in the code. Make sure to:
               </Button>
             )}
             <Button
-              type={isListening ? "button" : "submit"}
-              onClick={isListening ? stopVoiceInput : undefined}
-              size="icon"
-              className={`h-7 w-7 p-1.5 rounded-md mr-1 ${isListening ? "bg-red-500 hover:bg-red-600" : "bg-[#c1603cdc] dark:bg-[#c1603cdc]"}`}
+              type={isListening ? "button" : effectiveIsLoading ? "button" : "submit"}
+              onClick={isListening ? stopVoiceInput : effectiveIsLoading ? handleStop : undefined}
+              size={isProvisioning ? "default" : "icon"}
+              className={cn(
+                "h-7 p-1.5 rounded-md mr-1",
+                isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-red-500 hover:bg-red-600" : "bg-black"),
+                isProvisioning ? "w-auto px-4 gap-2" : "w-7"
+              )}
               disabled={
-                isLoading ||
-                (!isListening &&
+                (!effectiveIsLoading && !isListening &&
                   ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
                     !isAuthenticated))
               }
             >
-              {isLoading ? (
-                <Loader className="w-4 h-4 animate-spin text-white" />
+              {isProvisioning ? (
+                <>
+                  <Loader className="w-4 h-4 animate-spin text-white" />
+                  <span className="text-[10px] text-white font-bold uppercase tracking-wider">Provisioning DB...</span>
+                </>
+              ) : effectiveIsLoading ? (
+                <StopCircle className="w-5 h-5 text-white" />
               ) : isListening ? (
                 <Circle className="w-4 h-4 text-white" />
               ) : (
-                <img width={16} height={16} src="/mouse-cursor.png" alt="" />
+                <ArrowUp className="w-5 h-5 text-white" />
               )}
             </Button>
           </div>

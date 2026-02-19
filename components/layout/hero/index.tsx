@@ -1,80 +1,96 @@
-import React from 'react'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+"use client"
+
+import React, { useEffect, useState } from "react"
 
 function HeroText() {
+  const words = [
+    "websites",
+    "apps",
+    "platforms",
+    "dashboards",
+    "products",
+    "interfaces",
+    "landing pages",
+    "portals",
+    "SaaS tools",
+    "digital systems",
+    "online businesses",
+    "web applications",
+    "internal tools",
+    "startup products",
+    "client portals",
+    "admin panels",
+    "marketing sites",
+    "company platforms",
+    "AI products",
+    "automation tools",
+    "data platforms",
+    "commerce sites",
+    "brand experiences",
+    "interactive pages",
+    "software products",
+    "content platforms",
+    "digital services",
+    "user experiences",
+    "full-stack projects",
+    "custom solutions",
+    "modern interfaces",
+    "scalable systems",
+    "web infrastructure",
+    "online products",
+    "business tools",
+    "production systems",
+    "creative platforms",
+    "internet products",
+    "web solutions",
+    "digital platforms",
+  ]
+
+  const [index, setIndex] = useState(0)
+  const [visible, setVisible] = useState(true)
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setVisible(false)
+      setTimeout(() => {
+        setIndex((prev) => (prev + 1) % words.length)
+        setVisible(true)
+      }, 250)
+    }, 1000)
+
+    return () => clearInterval(interval)
+  }, [])
+
   return (
     <div className="relative p-2 rounded-4xl">
-      {/* Background image behind text */}
-      <div className='relative left-[-32px] top-11'>
-        <img
-          src="/bg/bg-text.png"
-          alt=""
-          width={800}
-          className="absolute top-1/2 left-3/5 transform -translate-x-1/2 -translate-y-1/2  pointer-events-none"
-        />
-      </div>
-      <span
-        className="relative inline-flex items-center justify-center mx-[-0.02em]"
-        style={{
-          filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.25)) drop-shadow(0 2px 4px rgba(0,0,0,0.15))",
-        }}
-      >
-        <span className="absolute inset-0 flex items-center justify-center">
-          <svg
-            viewBox="0 0 100 100"
-            className="w-[0.32em] h-[0.32em] animate-diamond-rotate"
-            filter="url(#diamondGlow)"
+      <h2 className="font-medium text-black tracking-tight text-4xl montserrat text-center whitespace-nowrap leading-tight">
+        Turn your ideas into{" "}
+        <span className="relative inline-block align-baseline min-w-[280px]">
+          <span className="invisible block">digital infrastructure</span>
+          <span
+            className={`absolute left-0 top-0 transition-all duration-300 ease-out ${visible
+                ? "opacity-100 translate-y-0"
+                : "opacity-0 -translate-y-1"
+              }`}
           >
-            {/* Main diamond shape with clean gradient */}
-            <path d="M50 8 L92 50 L50 92 L8 50 Z" fill="url(#diamondGradient)" />
-            {/* Top-left shine facet for 3D polish */}
-            <path d="M50 8 L8 50 L50 50 Z" fill="url(#diamondShine)" />
-            {/* Subtle inner edge highlight */}
-            <path d="M50 18 L82 50 L50 82 L18 50 Z" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-          </svg>
+            {words[index]}
+          </span>
         </span>
-      </span>
-      <h2 className="font-medium text-muted-foreground tracking-tight relative text-3xl font-sans text-center">
-        Create any website, App or project from anywhere like a{" "} <span className="font-semibold text-primary">pro.</span>
+
         <svg
           viewBox="0 0 100 100"
-          className="w-[0.32em] h-[0.32em] animate-diamond-rotate"
-          filter="url(#diamondGlow)"
+          className="inline-block w-[0.32em] h-[0.32em] animate-diamond-rotate ml-2 align-baseline"
         >
-          {/* Main diamond shape with clean gradient */}
           <path d="M50 8 L92 50 L50 92 L8 50 Z" fill="url(#diamondGradient)" />
-          {/* Top-left shine facet for 3D polish */}
           <path d="M50 8 L8 50 L50 50 Z" fill="url(#diamondShine)" />
-          {/* Subtle inner edge highlight */}
-          <path d="M50 18 L82 50 L50 82 L18 50 Z" fill="none" stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+          <path
+            d="M50 18 L82 50 L50 82 L18 50 Z"
+            fill="none"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth="1.5"
+          />
         </svg>
-        {/* <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span>
-                <img
-                  src="/icons/pro.png"
-                  alt=""
-                  width={30}
-                  className="inline-block align-baseline mb-[-5px] ml-[6px]"
-                />
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Pro</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider> */}
       </h2>
-
-      <p className="relative text-black/70 font-medium text-[13px] text-center w-full mt-[-10px]">
-        Build full projects with one prompt. Launch complete websites with one link.
-      </p>
     </div>
   )
 }

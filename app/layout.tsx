@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
+import "@/styles/bg.css"
 import Providers from "./providers"
 import ClientDockWrapper from "@/components/layout/Button/ClientDockWrapper"
 import DefaultDemo from "@/components/layout/Button/Navbar"

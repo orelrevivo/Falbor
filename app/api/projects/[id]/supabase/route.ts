@@ -36,13 +36,15 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       .select({
         supabaseUrl: projectSupabase.supabaseUrl,
         anonKey: projectSupabase.anonKey,
+        serviceRoleKey: projectSupabase.serviceRoleKey,
+        projectRef: projectSupabase.supabaseProjectRef,
       })
       .from(projectSupabase)
       .where(eq(projectSupabase.projectId, projectId))
       .limit(1)
 
     if (credentials.length === 0) {
-      return NextResponse.json({ supabaseUrl: null, anonKey: null })
+      return NextResponse.json({ supabaseUrl: null, anonKey: null, serviceRoleKey: null })
     }
 
     return NextResponse.json(credentials[0])

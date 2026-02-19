@@ -24,16 +24,29 @@ function isMonthPassed(lastClaim: Date | null): boolean {
 }
 
 async function getPayPalAccessToken() {
-  const response = await fetch('https://api.paypal.com/v1/oauth2/token', {
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_SECRET;
+
+  if (!clientId || !clientSecret) {
+    console.error('PayPal credentials missing');
+    throw new Error('PayPal configuration error');
+  }
+
+  const isSandbox = clientId.startsWith('EJ');
+  const baseUrl = isSandbox ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+
+  const response = await fetch(`${baseUrl}/v1/oauth2/token`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
-      'Authorization': `Basic ${Buffer.from(`${process.env.PAYPAL_CLIENT_ID}:${process.env.PAYPAL_SECRET}`).toString('base64')}`,
+      'Authorization': `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
     },
     body: 'grant_type=client_credentials',
   });
 
   if (!response.ok) {
+    const errorData = await response.text();
+    console.error('PayPal OAuth error:', errorData);
     throw new Error('Failed to get PayPal access token');
   }
 
@@ -45,8 +58,12 @@ async function isSubscriptionActive(subscriptionId: string | null): Promise<bool
   if (!subscriptionId) return false;
 
   try {
+    const clientId = process.env.PAYPAL_CLIENT_ID;
+    const isSandbox = clientId?.startsWith('EJ');
+    const baseUrl = isSandbox ? 'https://api-m.sandbox.paypal.com' : 'https://api-m.paypal.com';
+
     const accessToken = await getPayPalAccessToken();
-    const response = await fetch(`https://api.paypal.com/v1/billing/subscriptions/${subscriptionId}`, {
+    const response = await fetch(`${baseUrl}/v1/billing/subscriptions/${subscriptionId}`, {
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
@@ -54,11 +71,12 @@ async function isSubscriptionActive(subscriptionId: string | null): Promise<bool
     });
 
     if (!response.ok) {
+      console.error(`PayPal subscription check failed with status: ${response.status}`);
       return false;
     }
 
     const data = await response.json();
-    return data.status === 'ACTIVE';
+    return data.status === 'ACTIVE' || data.status === 'APPROVED';
   } catch (error) {
     console.error('Error checking PayPal subscription status:', error);
     return false;
@@ -87,12 +105,12 @@ async function applyRegeneration(userId: string) {
       paypalSubscriptionId: null,
       stripeCustomerId: null,
     })
-    record = { 
+    record = {
       userId,
-      credits: 10, 
-      lastRegenTime: new Date(), 
+      credits: 10,
+      lastRegenTime: new Date(),
       lastClaimedGiftId: null,
-      lastMonthlyClaim: null, 
+      lastMonthlyClaim: null,
       lastDispense: null,
       subscriptionTier: 'none',
       creditsPerMonth: 0,
@@ -112,7 +130,7 @@ async function applyRegeneration(userId: string) {
       // Deactivate if not active
       await db
         .update(userCredits)
-        .set({ 
+        .set({
           subscriptionTier: 'none',
           creditsPerMonth: 0,
           paypalSubscriptionId: null,
@@ -133,7 +151,7 @@ async function applyRegeneration(userId: string) {
       // Update DB
       await db
         .update(userCredits)
-        .set({ 
+        .set({
           credits: newCredits,
           lastDispense: now,
         })
@@ -154,8 +172,8 @@ async function applyRegeneration(userId: string) {
       lastDispense: lastDispense,
     }
 
-    return { 
-      credits: newCredits, 
+    return {
+      credits: newCredits,
       secondsUntilNextRegen,
       record: updatedRecord,
       pendingMonthly: 0 // No pending for paid
@@ -176,7 +194,7 @@ async function applyRegeneration(userId: string) {
       // Update db
       await db
         .update(userCredits)
-        .set({ 
+        .set({
           credits: newCredits,
           lastRegenTime: new Date(newLastTimeMs),
         })
@@ -209,8 +227,8 @@ async function applyRegeneration(userId: string) {
     // Calculate pending monthly credits
     const pendingMonthly = isMonthPassed(updatedRecord.lastMonthlyClaim) ? 10 : 0
 
-    return { 
-      credits: newCredits, 
+    return {
+      credits: newCredits,
       lastRegenTime: updatedRecord.lastRegenTime,
       secondsUntilNextRegen: secondsUntilNext,
       record: updatedRecord,
@@ -295,12 +313,12 @@ export async function POST(request: NextRequest) {
       paypalSubscriptionId: null,
       stripeCustomerId: null,
     })
-    record = { 
+    record = {
       userId,
-      credits: 10, 
-      lastRegenTime: new Date(), 
+      credits: 10,
+      lastRegenTime: new Date(),
       lastClaimedGiftId: null,
-      lastMonthlyClaim: null, 
+      lastMonthlyClaim: null,
       lastDispense: null,
       subscriptionTier: 'none',
       creditsPerMonth: 0,
@@ -314,7 +332,7 @@ export async function POST(request: NextRequest) {
   let body: any = null
   try {
     body = await request.json()
-  } catch {}
+  } catch { }
 
   // Handle adding a new gift (admin action) - only non-paid
   if (body?.addGift !== undefined && typeof body.addGift === 'number' && body.addGift > 0 && !isPaid) {
@@ -350,16 +368,16 @@ export async function POST(request: NextRequest) {
     const newCredits = data.credits + pendingGift
     await db
       .update(userCredits)
-      .set({ 
+      .set({
         credits: newCredits,
-        lastClaimedGiftId: latestGift.id 
+        lastClaimedGiftId: latestGift.id
       })
       .where(eq(userCredits.userId, userId))
 
-    return NextResponse.json({ 
-      success: true, 
-      claimed: pendingGift, 
-      newCredits 
+    return NextResponse.json({
+      success: true,
+      claimed: pendingGift,
+      newCredits
     })
   }
 
@@ -377,16 +395,16 @@ export async function POST(request: NextRequest) {
     const now = new Date()
     await db
       .update(userCredits)
-      .set({ 
+      .set({
         credits: newCredits,
-        lastMonthlyClaim: now 
+        lastMonthlyClaim: now
       })
       .where(eq(userCredits.userId, userId))
 
-    return NextResponse.json({ 
-      success: true, 
-      claimed: 10, 
-      newCredits 
+    return NextResponse.json({
+      success: true,
+      claimed: 10,
+      newCredits
     })
   }
 

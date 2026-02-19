@@ -19,10 +19,10 @@ export function SettingsTab({ projectId }: SettingsTabProps) {
   >("project-settings")
 
   return (
-    <div className="flex w-full">
+    <div className="flex w-full h-full overflow-hidden">
       <SettingsSidebar activeSection={activeSection} onSectionChange={setActiveSection} />
 
-      <div className="flex-1 overflow-auto w-full p-6">
+      <div className="flex-1 overflow-y-auto w-full p-6">
         {activeSection === "project-settings" && <ProjectSettings projectId={projectId} />}
         {activeSection === "custom-knowledge" && <CustomKnowledgeSection />}
         {activeSection === "ai-models" && <AIModelsSection />}

@@ -1,8 +1,9 @@
 import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { db } from "@/config/db"
-import { projects, messages } from "@/config/schema"
+import { projects, messages, projectSupabase } from "@/config/schema"
 import { eq } from "drizzle-orm"
+import { createSupabaseProject } from "@/lib/supabase/management-api"
 
 export async function GET() {
   const { userId } = await auth()
@@ -29,26 +30,58 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { message, model = "gemini", isAutomated = false } = await request.json() // New: isAutomated
+    const {
+      message,
+      selectedModel = "gemini",
+      isAutomated = false,
+      isFalborDb = false,
+      supabaseUrl,
+      anonKey,
+      serviceRoleKey,
+      projectRef,
+      dbPassword,
+    } = await request.json()
 
     const [project] = await db
       .insert(projects)
       .values({
         userId,
         title: message.slice(0, 50),
-        selectedModel: model,
-        isAutomated, // New
+        selectedModel,
+        isAutomated,
       })
       .returning()
 
-    await db.insert(messages).values({
+    let finalMessage = message
+
+    // If Falbor Database is requested, prepare placeholder message
+    if (isFalborDb && !supabaseUrl) {
+      finalMessage += `\n\n## Database Connection (Managed by Falbor)\nSetting up your database... Credentials will be available in a few seconds.`
+    }
+
+    const [userMessage] = await db.insert(messages).values({
       projectId: project.id,
       role: "user",
-      content: message,
-      isAutomated, // New
-    })
+      content: finalMessage,
+      isAutomated,
+    }).returning()
 
-    // Removed hardcoded assistant message; let /api/chat generate the real AI response
+    // If Falbor Database is requested, save the credentials provided by the frontend
+    if (isFalborDb && supabaseUrl && anonKey) {
+      try {
+        await db.insert(projectSupabase).values({
+          projectId: project.id,
+          supabaseProjectRef: projectRef || supabaseUrl.split("//")[1].split(".")[0],
+          supabaseUrl,
+          anonKey,
+          serviceRoleKey: serviceRoleKey || "",
+          dbPassword: dbPassword || "managed-by-falbor",
+          region: "us-east-1",
+        })
+      } catch (provisionError) {
+        console.error("[Projects API] Supabase Record Creation Error:", provisionError)
+      }
+    }
 
     return NextResponse.json({ projectId: project.id })
   } catch (error) {
