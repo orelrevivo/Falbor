@@ -978,7 +978,8 @@ sys.stdout = StdoutRedirect(lambda text: js.term_write(text))
             <div className="h-full flex flex-col overflow-hidden">
               <TabsContent
                 value="preview"
-                className="flex-1 m-0 p-0 border-t border-gray-200 overflow-hidden flex flex-col"
+                forceMount={true}
+                className={tabValue === "preview" ? "flex-1 m-0 p-0 border-t border-gray-200 overflow-hidden flex flex-col" : "hidden"}
               >
                 <WebContainerPreview
                   files={effectiveFiles}

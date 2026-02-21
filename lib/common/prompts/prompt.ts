@@ -94,8 +94,8 @@ ${"```"}
 ${"```"}typescript file="src/lib/supabase.ts"
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL
-const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error('Missing Supabase environment variables')
@@ -430,8 +430,7 @@ ${"```"}
 ## IMPORTANT RULES
 
 - ALWAYS create auth files (Login, Signup, useAuth, ProtectedRoute) and .env ONLY if Supabase is connected and a project is selected.
-- In src/lib/supabase.ts ALWAYS use process.env.VITE_SUPABASE_URL and process.env.VITE_SUPABASE_ANON_KEY
-- VERY IMPORTANT: NEVER change to import.meta.env.VITE_SUPABASE_URL / import.meta.env.VITE_SUPABASE_ANON_KEY - it breaks this specific project setup
+- In src/lib/supabase.ts ALWAYS use import.meta.env.VITE_SUPABASE_URL and import.meta.env.VITE_SUPABASE_ANON_KEY (Vite syntax).
 - ALWAYS use Row Level Security (RLS) for database tables if using Supabase.
 - NEVER use localStorage for persistent data - use Supabase if connected.
 - SQL migrations go in a SINGLE file supabase/migrations/database.sql - editing the same one.
@@ -553,9 +552,6 @@ import react from '@vitejs/plugin-react'
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  define: {
-    'process.env': 'import.meta.env'
-  }
 })
 ${"```"}
 

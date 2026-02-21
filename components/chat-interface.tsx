@@ -20,33 +20,14 @@ interface ChatInterfaceProps {
 function isCodeGenerationRequest(content: string): boolean {
   const lowerContent = content.toLowerCase()
   const codeKeywords = [
-    "build",
-    "create",
-    "make",
-    "develop",
-    "generate",
-    "code",
-    "app",
-    "website",
-    "component",
-    "page",
-    "design",
-    "implement",
-    "add",
-    "update",
-    "fix",
-    "change",
-    "modify",
-    "refactor",
-    "style",
-    "layout",
-    "form",
-    "button",
-    "navbar",
-    "footer",
+    "build", "create", "make", "develop", "generate", "code", "app",
+    "website", "component", "page", "design", "implement", "add", "update",
+    "fix", "change", "modify", "refactor", "style", "layout", "form",
+    "button", "navbar", "footer",
   ]
   return codeKeywords.some((keyword) => lowerContent.includes(keyword))
 }
+
 export function ChatInterface({ project, initialMessages, initialUserMessage }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<StrictMessage[]>([])
   const [windowWidth, setWindowWidth] = useState(0)
@@ -54,15 +35,15 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   const [isStreaming, setIsStreaming] = useState(false)
   const [isCodeGenerating, setIsCodeGenerating] = useState(false)
   const [extractedFiles, setExtractedFiles] = useState<Array<{ path: string; content: string; language: string }>>([])
-  const [previewError, setPreviewError] = useState<{
-    message: string
-    file?: string
-    line?: string
-  } | null>(null)
+  const [previewError, setPreviewError] = useState<{ message: string; file?: string; line?: string } | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [workbenchTab, setWorkbenchTab] = useState<string>("preview") // New state to control workbench tabs
+  const [workbenchTab, setWorkbenchTab] = useState<string>("preview")
   const [hasProjectFiles, setHasProjectFiles] = useState(false)
+
+  // Guard refs — prevent duplicate triggers across re-renders
   const hasAutoTriggered = useRef(false)
+  const hasInitialized = useRef(false)     // Prevents initialMessages effect from running more than once
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const [leftWidth, setLeftWidth] = useState(500)
@@ -71,133 +52,97 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   const startWidth = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const { getToken } = useAuth()
+  const router = useRouter()
 
-  const handleStopAutoGenerate = () => {
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  // ─── Stop auto-generate ───────────────────────────────────────────────────
+  const handleStopAutoGenerate = useCallback(() => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort()
       setIsStreaming(false)
       setIsCodeGenerating(false)
       abortControllerRef.current = null
     }
-  }
-  const router = useRouter()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const isNarrow = isPreviewOpen && leftWidth < windowWidth * 0.4
+  }, [])
+
+  // ─── Check project files on mount (once) ─────────────────────────────────
   useEffect(() => {
-    async function checkProjectFiles() {
-      try {
-        const res = await fetch(`/api/projects/${project.id}/files`)
-        if (res.ok) {
-          const data = await res.json()
-          const hasFiles = data.files && data.files.length > 0
-          setHasProjectFiles(hasFiles)
-          if (hasFiles) {
-            setIsPreviewOpen(true)
+    if (!project.id) return
+      ; (async () => {
+        try {
+          const res = await fetch(`/api/projects/${project.id}/files`)
+          if (res.ok) {
+            const data = await res.json()
+            const hasFiles = data.files && data.files.length > 0
+            setHasProjectFiles(hasFiles)
+            if (hasFiles) setIsPreviewOpen(true)
           }
+        } catch (err) {
+          console.error("[ChatInterface] Failed to check project files:", err)
         }
-      } catch (err) {
-        console.error("[v0] Failed to check project files:", err)
-      }
-    }
-    if (project.id) {
-      checkProjectFiles()
-    }
+      })()
   }, [project.id])
+
+  // ─── Window resize ────────────────────────────────────────────────────────
   useEffect(() => {
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth)
-    }
+    const handleResize = () => setWindowWidth(window.innerWidth)
     handleResize()
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [])
+
+  // ─── Load initial messages ONCE ──────────────────────────────────────────
+  // We use a ref guard so that if Next.js re-renders the server component
+  // (e.g. due to router cache), we do NOT reset the live message list.
   useEffect(() => {
-    const validMessages = initialMessages.filter((msg): msg is SchemaMessage & { role: "user" | "assistant" } => {
-      if (!msg || typeof msg !== "object") return false
-      if (msg.id === undefined || msg.id === null) return false
-      return msg.role === "user" || msg.role === "assistant"
-    })
+    if (hasInitialized.current) return   // ← Key fix: only run on very first mount
+    hasInitialized.current = true
+
+    const validMessages = initialMessages.filter(
+      (msg): msg is SchemaMessage & { role: "user" | "assistant" } => {
+        if (!msg || typeof msg !== "object") return false
+        if (msg.id === undefined || msg.id === null) return false
+        return msg.role === "user" || msg.role === "assistant"
+      }
+    )
     const strictMessages: StrictMessage[] = validMessages.map((msg) => ({
       ...msg,
       role: msg.role as "user" | "assistant",
     }))
     setMessages(strictMessages)
-  }, [initialMessages])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])  // ← EMPTY dependency array — only fires on mount, never on re-render
+
+  // ─── Preview error persistence ────────────────────────────────────────────
   useEffect(() => {
-    if (initialUserMessage && !hasAutoTriggered.current && project.id) {
-      const assistantMessages = messages.filter((m) => m.role === "assistant")
-      if (assistantMessages.length > 0) {
-        return
-      }
-      hasAutoTriggered.current = true
-      const existingUserMessage = messages.find((m) => m.role === "user" && m.content === initialUserMessage)
-      if (existingUserMessage) {
-        if (isCodeGenerationRequest(initialUserMessage)) {
-          setIsPreviewOpen(true)
-        }
-        handleAutoGenerate(initialUserMessage)
-      } else {
-        const userMessage: StrictMessage = {
-          id: `initial-user-${Date.now()}`,
-          projectId: project.id,
-          role: "user",
-          content: initialUserMessage,
-          hasArtifact: false,
-          createdAt: new Date(),
-          thinking: null,
-          searchQueries: null,
-          isAutomated: false,
-        }
-        setMessages([userMessage])
-        if (isCodeGenerationRequest(initialUserMessage)) {
-          setIsPreviewOpen(true)
-        }
-        handleAutoGenerate(initialUserMessage)
-      }
-    }
-  }, [initialUserMessage, project.id, messages])
-  useEffect(() => {
-    if (!hasAutoTriggered.current && messages.length > 0 && !isStreaming) {
-      const lastMessage = messages[messages.length - 1]
-      const assistantMessages = messages.filter((m) => m.role === "assistant")
-      if (lastMessage.role === "user" && assistantMessages.length === 0) {
-        hasAutoTriggered.current = true
-        if (isCodeGenerationRequest(lastMessage.content)) {
-          setIsPreviewOpen(true)
-        }
-        handleAutoGenerate(lastMessage.content)
-      }
-    }
-  }, [messages, isStreaming])
-  useEffect(() => {
-    if (project.id) {
-      const savedError = localStorage.getItem(`preview-error-${project.id}`)
-      if (savedError) {
-        try {
-          setPreviewError(JSON.parse(savedError))
-        } catch (e) {
-          console.error("[v0] Failed to parse saved error:", e)
-        }
-      }
+    if (!project.id) return
+    const savedError = localStorage.getItem(`preview-error-${project.id}`)
+    if (savedError) {
+      try { setPreviewError(JSON.parse(savedError)) } catch { /* ignore */ }
     }
   }, [project.id])
+
   useEffect(() => {
-    if (project.id) {
-      if (previewError) {
-        localStorage.setItem(`preview-error-${project.id}`, JSON.stringify(previewError))
-      } else {
-        localStorage.removeItem(`preview-error-${project.id}`)
-      }
+    if (!project.id) return
+    if (previewError) {
+      localStorage.setItem(`preview-error-${project.id}`, JSON.stringify(previewError))
+    } else {
+      localStorage.removeItem(`preview-error-${project.id}`)
     }
   }, [previewError, project.id])
-  const handleAutoGenerate = async (userContent: string) => {
+
+  // ─── Core auto-generate function ─────────────────────────────────────────
+  // useCallback with stable deps — does NOT depend on `messages`
+  const handleAutoGenerate = useCallback(async (userContent: string) => {
     setIsStreaming(true)
     if (isCodeGenerationRequest(userContent)) {
       setIsCodeGenerating(true)
     }
+    const tempId = `temp-auto-${Date.now()}`
     const tempAssistant: StrictMessage = {
-      id: `temp-auto-${Date.now()}`,
+      id: tempId,
       projectId: project.id,
       role: "assistant",
       content: "",
@@ -220,74 +165,131 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
         }),
         signal: abortControllerRef.current.signal,
       })
-      if (!res.ok) {
-        throw new Error(`API error: ${res.status}`)
-      }
+      if (!res.ok) throw new Error(`API error: ${res.status}`)
+
       const reader = res.body?.getReader()
       if (!reader) throw new Error("No stream")
       const decoder = new TextDecoder()
       let accumulated = ""
+      let lineBuffer = ""
+
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
-        const chunk = decoder.decode(value)
-        const lines = chunk.split("\n").filter(Boolean)
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6))
-              if (data.text) {
-                accumulated += data.text
-                setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: accumulated } : m)))
-              }
-              if (data.done) {
-                setMessages((prev) => {
-                  const lastIndex = prev.length - 1
-                  const lastMsg = prev[lastIndex]
-                  return [
-                    ...prev.slice(0, lastIndex),
-                    {
-                      ...lastMsg,
-                      id: data.messageId || `final-${Date.now()}`,
-                      content: accumulated,
-                      hasArtifact: data.hasArtifact ?? false,
-                    },
-                  ]
-                })
-                if (data.hasArtifact) {
-                  setHasProjectFiles(true)
-                }
-              }
-            } catch (e) {
-              console.error("[v0] JSON parse error:", e)
+        lineBuffer += decoder.decode(value, { stream: true })
+        const lines = lineBuffer.split("\n")
+        lineBuffer = lines[lines.length - 1]
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i]
+          if (!line.startsWith("data: ")) continue
+          try {
+            const data = JSON.parse(line.slice(6))
+            if (data.text) {
+              accumulated += data.text
+              setMessages((prev) =>
+                prev.map((m) => (m.id === tempId ? { ...m, content: accumulated } : m))
+              )
             }
-          }
+            if (data.done) {
+              const finalId = data.messageId || `final-${Date.now()}`
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === tempId
+                    ? { ...m, id: finalId, content: accumulated, hasArtifact: data.hasArtifact ?? false }
+                    : m
+                )
+              )
+              if (data.hasArtifact) setHasProjectFiles(true)
+              router.refresh()
+            }
+          } catch { /* ignore malformed SSE */ }
         }
       }
-    } catch (err) {
-      console.error("[Auto-Generate] Error:", err)
-      setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-")))
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        console.error("[Auto-Generate] Error:", err)
+      }
+      // Remove the dead temp message on error
+      setMessages((prev) => prev.filter((m) => m.id !== tempId))
     } finally {
       setIsStreaming(false)
       setIsCodeGenerating(false)
       abortControllerRef.current = null
-      // Remove prompt query param if exists
+      // Remove ?prompt param silently — no re-render, no page refresh
       if (searchParams.has("prompt")) {
         const params = new URLSearchParams(searchParams.toString())
         params.delete("prompt")
-        router.replace(`${pathname}${params.toString() ? "?" + params.toString() : ""}`, { scroll: false })
+        const newUrl = `${pathname}${params.toString() ? "?" + params.toString() : ""}`
+        window.history.replaceState(null, "", newUrl)
       }
     }
-  }
+  }, [project.id, project.selectedModel, pathname, searchParams])
 
-  const handleCodeExtracted = (files: Array<{ filename: string; code: string; language: string }>) => {
-    setExtractedFiles(files.map(f => ({ path: f.filename, content: f.code, language: f.language })))
-  }
+  // ─── Auto-trigger: initial user message from URL prompt ──────────────────
+  // Runs only if initialUserMessage is present and we haven't triggered yet.
+  // Depends on messages only to read current state once — does NOT cause re-runs
+  // because we bail out immediately via hasAutoTriggered ref.
+  useEffect(() => {
+    if (!initialUserMessage || hasAutoTriggered.current || !project.id) return
+    // Wait for the messages to be loaded from initialMessages first
+    if (!hasInitialized.current) return
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }
-  const handleNewMessage = (message: SchemaMessage | null) => {
+    const assistantMessages = messages.filter((m) => m.role === "assistant")
+    if (assistantMessages.length > 0) return  // AI already responded — don't re-trigger
+
+    hasAutoTriggered.current = true
+
+    const existingUserMsg = messages.find(
+      (m) => m.role === "user" && m.content === initialUserMessage
+    )
+
+    if (!existingUserMsg) {
+      // Add the user message to the list if it's not already there
+      const newUserMsg: StrictMessage = {
+        id: `initial-user-${Date.now()}`,
+        projectId: project.id,
+        role: "user",
+        content: initialUserMessage,
+        hasArtifact: false,
+        createdAt: new Date(),
+        thinking: null,
+        searchQueries: null,
+        isAutomated: false,
+      }
+      setMessages((prev) => [...prev, newUserMsg])
+    }
+
+    if (isCodeGenerationRequest(initialUserMessage)) {
+      setIsPreviewOpen(true)
+    }
+    handleAutoGenerate(initialUserMessage)
+    // Only re-run when messages stabilizes after init — NOT on every message update
+  }, [initialUserMessage, project.id, messages.length, handleAutoGenerate])
+
+  // ─── Auto-trigger: last message is user with no assistant reply ───────────
+  // This handles the case where the page loads with a user message but no response
+  // stored in the DB yet (e.g. a brand new project loaded via hard refresh).
+  useEffect(() => {
+    if (hasAutoTriggered.current) return
+    if (messages.length === 0) return
+    if (isStreaming) return
+
+    const lastMessage = messages[messages.length - 1]
+    const assistantMessages = messages.filter((m) => m.role === "assistant")
+
+    // Only auto-trigger if last message is from user AND there has never been an assistant reply
+    if (lastMessage.role !== "user" || assistantMessages.length > 0) return
+
+    hasAutoTriggered.current = true
+    if (isCodeGenerationRequest(lastMessage.content)) {
+      setIsPreviewOpen(true)
+    }
+    handleAutoGenerate(lastMessage.content)
+    // Use messages.length not messages itself to avoid running on every content update
+  }, [messages.length, isStreaming, handleAutoGenerate])
+
+  // ─── Handle new messages from ChatInput ──────────────────────────────────
+  const handleNewMessage = useCallback((message: SchemaMessage | null) => {
     if (!message || !message.id || (message.role !== "user" && message.role !== "assistant")) return
     const safeMessage: StrictMessage = {
       ...message,
@@ -315,43 +317,53 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
       }
       return [...filteredPrev, safeMessage]
     })
-    setTimeout(() => scrollToBottom(), 0)
-  }
+    setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 0)
+  }, [])
+
+  // ─── Scroll to bottom when messages change ────────────────────────────────
   useEffect(() => {
-    scrollToBottom()
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages])
-  const handleDismissError = () => {
-    setPreviewError(null)
-  }
-  const handlePreviewError = (error: { message: string; file?: string; line?: string }) => {
-    setPreviewError(error)
-  }
-  const handlePreviewClose = () => {
-    if (!hasProjectFiles) {
-      setIsPreviewOpen(false)
-    }
-  }
-  const handleMouseMove = (e: MouseEvent) => {
+
+  // ─── Code extraction ──────────────────────────────────────────────────────
+  const handleCodeExtracted = useCallback(
+    (files: Array<{ filename: string; code: string; language: string }>) => {
+      setExtractedFiles(files.map((f) => ({ path: f.filename, content: f.code, language: f.language })))
+    },
+    []
+  )
+
+  // ─── Mouse drag for resizer ───────────────────────────────────────────────
+  const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing.current) return
     const newWidth = startWidth.current + (e.clientX - startX.current)
     setLeftWidth(Math.max(200, Math.min(newWidth, window.innerWidth - 200)))
-  }
-  const handleMouseUp = () => {
+  }, [])
+
+  const handleMouseUp = useCallback(() => {
     isResizing.current = false
     setIsResizingState(false)
     document.body.style.userSelect = "auto"
     document.removeEventListener("mousemove", handleMouseMove)
     document.removeEventListener("mouseup", handleMouseUp)
-  }
-  const handleMouseDown = (e: React.MouseEvent) => {
-    isResizing.current = true
-    setIsResizingState(true)
-    startX.current = e.clientX
-    startWidth.current = leftWidth
-    document.body.style.userSelect = "none"
-    document.addEventListener("mousemove", handleMouseMove)
-    document.addEventListener("mouseup", handleMouseUp)
-  }
+  }, [handleMouseMove])
+
+  const handleMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      isResizing.current = true
+      setIsResizingState(true)
+      startX.current = e.clientX
+      startWidth.current = leftWidth
+      document.body.style.userSelect = "none"
+      document.addEventListener("mousemove", handleMouseMove)
+      document.addEventListener("mouseup", handleMouseUp)
+    },
+    [leftWidth, handleMouseMove, handleMouseUp]
+  )
+
+  const isNarrow = isPreviewOpen && leftWidth < windowWidth * 0.4
+
+  // ─── Download ─────────────────────────────────────────────────────────────
   const handleDownload = useCallback(async () => {
     const JSZip = (await import("jszip")).default
     const zip = new JSZip()
@@ -374,12 +386,13 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
       console.error("[ChatInterface] Download error:", e)
     }
   }, [project.id, getToken])
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
       <Navbar projectId={project.id} handleDownload={handleDownload} />
       <div className="flex-1 flex overflow-hidden">
         <div
-          className={`flex flex-col overflow-hidden ${isPreviewOpen ? "" : "flex-1"}`} //${isResizingState ? "transition-none" : "transition-all duration-200"}
+          className={`flex flex-col overflow-hidden ${isPreviewOpen ? "" : "flex-1"}`}
           style={{ width: isPreviewOpen ? leftWidth : "100%" }}
         >
           <div
@@ -411,7 +424,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
                 projectId={project.id}
                 initialModel={project.selectedModel || "gemini"}
                 onNewMessage={handleNewMessage}
-                onDismissError={handleDismissError}
+                onDismissError={() => setPreviewError(null)}
                 onOpenDatabase={() => {
                   setIsPreviewOpen(true)
                   setWorkbenchTab("database")
@@ -431,9 +444,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
             <CodePreview
               projectId={project.id}
               isCodeGenerating={isCodeGenerating}
-              onError={handlePreviewError}
+              onError={(error) => setPreviewError(error)}
               isOpen={isPreviewOpen}
-              onClose={handlePreviewClose}
+              onClose={() => { if (!hasProjectFiles) setIsPreviewOpen(false) }}
               initialTab={workbenchTab}
               onTabChange={setWorkbenchTab}
               filesOverride={extractedFiles.length > 0 ? extractedFiles : undefined}

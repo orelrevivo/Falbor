@@ -54,37 +54,41 @@ export default async function DeployPage({
     }
 
     const sandpackFiles = projectFiles.reduce<Record<string, string>>((acc, file) => {
-        acc[`/${file.path.replace(/^\/+/, "")}`] = file.content
+        if (!file.path.startsWith("dist/")) {
+            acc[`/${file.path.replace(/^\/+/, "")}`] = file.content
+        }
         return acc
     }, {})
+
+    const distHtmlFile = projectFiles.find(f => f.path === "dist/index.html");
+
+    // Serve HTML from the dist API
+    if (distHtmlFile) {
+        return (
+            <div className="relative w-full h-screen overflow-hidden">
+                <iframe
+                    title="Site Preview"
+                    className="w-full h-full border-none m-0 p-0"
+                    srcDoc={distHtmlFile.content}
+                />
+                {!hasSubscription && (
+                    <div className="absolute h-12 bottom-0 right-2 flex justify-center py-2 bg-white/80 text-center">
+                        <button className="bg-black/90 text-white px-4 py-1 rounded-sm text-sm font-medium flex items-center">
+                            <span className="mt-[-3px] font-semibold">Made in</span>
+                            <img src="/logo.png" width={80} alt="" className="ml-[2px]" />
+                        </button>
+                    </div>
+                )}
+            </div>
+        )
+    }
 
     const hasTs = projectFiles.some((f) => f.path.endsWith(".ts") || f.path.endsWith(".tsx"))
 
     return (
-        <div className="relative h-screen">
-            <SandpackProvider
-                template={hasTs ? "react-ts" : "react"}
-                files={sandpackFiles}
-                customSetup={{
-                    dependencies: {
-                        react: "^18.2.0",
-                        "react-dom": "^18.2.0",
-                    },
-                }}
-                options={{
-                    externalResources: ["https://cdn.tailwindcss.com"],
-                    initMode: "lazy",
-                }}
-            >
-                <SandpackPreview
-                    style={{ height: "100vh" }}
-                    showOpenInCodeSandbox={false}
-                    showRefreshButton={false}
-                    showNavigator={false}
-                    showOpenNewtab={false}
-                />
-            </SandpackProvider>
-
+        <div className="relative flex flex-col items-center justify-center p-8 bg-gray-50 h-[100vh]">
+            <h1 className="text-xl font-bold mb-4">Site Building or Not Published Correctly</h1>
+            <p>Please open the Preview tab and click Publish to build the project files correctly.</p>
             {!hasSubscription && (
                 <div className="absolute h-12 bottom-0 right-2 flex justify-center py-2 bg-white/80 text-center">
                     <button className="bg-black/90 text-white px-4 py-1 rounded-sm text-sm font-medium flex items-center">

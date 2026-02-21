@@ -24,7 +24,8 @@ import {
   Star,
   ChevronDown,
   Circle,
-  UserCircle
+  UserCircle,
+  ParkingCircleIcon
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUser, useClerk } from '@clerk/nextjs';
@@ -345,20 +346,38 @@ export default function SidebarProjects({
                   <span className="font-medium text-sm">Templates</span>
                 </Button>
               </Link>
-              {user && (
-                <Link href={`/profile/${user.id}`}>
-                  <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                    <UserCircle className="h-4 w-4" />
-                    <span className="font-medium text-sm">Profile</span>
-                  </Button>
-                </Link>
-              )}
+              <Link href="/pricing">
+                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
+                  <ParkingCircleIcon className="h-4 w-4" />
+                  <span className="font-medium text-sm">Pricing</span>
+                </Button>
+              </Link>
               <Link href="/settings">
                 <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
                   <Settings2 className="h-4 w-4" />
                   <span className="font-medium text-sm">Settings</span>
                 </Button>
               </Link>
+              {user && (
+                <Link href={`/profile/${user.id}`}>
+                  <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
+                    <div className="ml-1 flex items-center gap-2">
+                      {user?.imageUrl ? (
+                        <img
+                          src={user.imageUrl}
+                          alt={user.fullName || "User"}
+                          className="lex items-center gap-2 justify-start h-4 w-4 rounded-full object-cover shadow-sm"
+                        />
+                      ) : (
+                        <div className="h-4 w-4 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
+                          {user?.firstName?.slice(0, 1) || userId.slice(0, 1).toUpperCase()}
+                        </div>
+                      )}
+                      <span className="font-medium text-sm">Profile</span>
+                    </div>
+                  </Button>
+                </Link>
+              )}
             </>
           ) : (
             <>

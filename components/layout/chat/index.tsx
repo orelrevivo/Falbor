@@ -5,11 +5,10 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp } from "lucide-react"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon } from "lucide-react"
 import {
   Loader,
   X,
-  Mic,
   Plus,
   Circle,
   MoreHorizontal,
@@ -41,7 +40,7 @@ import { Badge } from "@/components/ui/badge"
 import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
 import { getMcpConnections } from "@/app/actions/mcp"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 interface ChatInputProps {
   isAuthenticated: boolean
   projectId?: string
@@ -662,7 +661,11 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       }
 
       setPendingSubmitData(null)
-      router.push(`/chat/${newId}`)
+      if (typeof window !== "undefined" && !window.crossOriginIsolated) {
+        window.location.href = `/chat/${newId}`
+      } else {
+        router.push(`/chat/${newId}`)
+      }
     } catch (err) {
       console.error("Project creation failed:", err)
       alert(err instanceof Error ? err.message : "Failed to create project. Please try again.")
@@ -1253,6 +1256,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
                         searchQueries: null,
                         isAutomated: false,
                       })
+                      router.refresh()
                     }
                   } catch (parseError) {
                     console.error("[ChatInput] JSON parse error:", parseError, "Line:", line)
@@ -1934,41 +1938,65 @@ Please analyze this error and fix it in the code. Make sure to:
                           <ArrowLeft className="h-4 w-4 mr-2" />
                           Back
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            setIsFalborDb(true)
-                            setShowMenu(false)
-                          }}
-                          className="w-full"
-                        >
-                          <img src="/icons/falbor.png" className="w-5 h-5" alt="" />
-                          Falbor Database
-                          {isFalborDb && <Check className="ml-auto h-4 w-4" />}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            setIsFalborDb(false)
-                            setShowDatabaseModal(true)
-                            setShowMenu(false)
-                          }}
-                          className="w-full"
-                        >
-                          <img src="/icons/supabase.png" className="w-5 h-5" alt="" />
-                          Connect Own
-                          {!isFalborDb && credentialsSaved && <Check className="ml-auto h-4 w-4 text-green-600" />}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            setIsFalborDb(false)
-                            setCredentialsSaved(false)
-                            setShowMenu(false)
-                            // This will essentially send the message without isFalborDb or credentials
-                          }}
-                          className="w-full"
-                        >
-                          <img src="/icons/database-off.png" className="w-5 h-5" alt="" />
-                          Create without Database
-                        </DropdownMenuItem>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setIsFalborDb(true)
+                                  setShowMenu(false)
+                                }}
+                                className="w-full"
+                              >
+                                <img src="/icons/falbor.png" className="w-5 h-5" alt="" />
+                                Falbor Database
+                                {isFalborDb && <Check className="ml-auto h-4 w-4" />}
+                              </DropdownMenuItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Use the Falbor built-in database</p>
+                            </TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setIsFalborDb(false)
+                                  setShowDatabaseModal(true)
+                                  setShowMenu(false)
+                                }}
+                                className="w-full"
+                              >
+                                <img src="/icons/supabase.png" className="w-5 h-5" alt="" />
+                                Connect Supabase
+                                {!isFalborDb && credentialsSaved && <Check className="ml-auto h-4 w-4 text-green-600" />}
+                              </DropdownMenuItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Connect your own Supabase database</p>
+                            </TooltipContent>
+                          </Tooltip>
+
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuItem
+                                onSelect={() => {
+                                  setIsFalborDb(false)
+                                  setCredentialsSaved(false)
+                                  setShowMenu(false)
+                                }}
+                                className="w-full"
+                              >
+                                <img src="/icons/database-off.png" className="w-5 h-5" alt="" />
+                                Create without Database
+                              </DropdownMenuItem>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Proceed without connecting any database</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
                       </>
                     )}
                   </DropdownMenuContent>
@@ -2079,7 +2107,7 @@ Please analyze this error and fix it in the code. Make sure to:
                 variant="ghost"
                 size="sm"
               >
-                <Mic className="w-4 h-4" />
+                <AudioLinesIcon className="w-4 h-4" />
               </Button>
             )}
             <Button

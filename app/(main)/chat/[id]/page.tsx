@@ -5,6 +5,10 @@ import { projects, messages, projectCollaborators } from "@/config/schema"
 import { eq, asc, and } from "drizzle-orm"
 import { ChatInterface } from "@/components/chat-interface"
 
+export const dynamic = "force-dynamic"
+export const revalidate = 0
+
+
 export default async function ChatPage({
   params,
 }: {

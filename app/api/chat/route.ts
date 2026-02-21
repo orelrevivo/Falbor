@@ -357,7 +357,7 @@ async function handleGeminiRequest(
     const geminiModel = genAI.getGenerativeModel({
       model: "gemini-3-flash-preview",
       systemInstruction: systemPrompt,
-      generationConfig: { maxOutputTokens: 8192 },
+      generationConfig: { maxOutputTokens: 32768 },
     })
 
     return new ReadableStream({
@@ -376,27 +376,7 @@ async function handleGeminiRequest(
             userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
           } else if (isCodeRequest) {
             console.log("[Gemini] Responding to build request with dynamic flow")
-            userPrompt = `${message}\n\nIMPORTANT: Respond with ORGANIC, DYNAMIC thinking process:
-            
-1. Think multiple times throughout your response (not just once at the start)
-2. Search for information as you need it during planning
-3. Read and analyze in a natural, messy order
-4. Your response should show: Think → partial answer → Search → Think again → Read → Plan → Think → Write code
-5. Make it feel like natural problem-solving, not a rigid template
-
-Use these tags organically throughout:
-- <Thinking>your reasoning</Thinking> - Use MULTIPLE times
-- <Search>search query and results</Search> - Use when you need info
-- <UserMessage>understanding</UserMessage> - Once at start
-- <Planning>file list</Planning> - Once when ready
-- <FileChecks>validation</FileChecks> - If needed
-- Response text - Your explanation
-- Code blocks - The actual files
-
-After generating code, perform testing:
-- <Testing>Describe test steps and results. If issues, update files accordingly.</Testing>
-
-Then generate production-ready code files.`
+            userPrompt = buildCodePrompt(message)
           } else {
             console.log("[Gemini] Using Gemini for conversational response")
           }
@@ -576,10 +556,10 @@ async function handleOpenRouterRequest(
     if (messageType === "greeting") {
       userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
     } else if (messageType === "question") {
-      userPrompt = `${message}\n\nThink through this question step by step. Search for current information if needed. Then provide a clear, detailed answer. No code generation.`
+      userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
     } else if (isCodeRequest) {
       console.log(`[OpenRouter/${modelId}] Using for code generation with dynamic flow`)
-      userPrompt = `${message}\n\nRespond with ORGANIC, DYNAMIC thinking - think, search, read, plan multiple times throughout naturally. Then generate clean code files. After code, perform testing with <Testing> tag.`
+      userPrompt = buildCodePrompt(message)
     }
 
     const chatMessages = [
@@ -616,7 +596,7 @@ async function handleOpenRouterRequest(
               model: modelId,
               messages: chatMessages,
               stream: true,
-              max_tokens: 8192,
+              max_tokens: 32768,
             }),
           })
 
@@ -784,10 +764,10 @@ async function handleZaiRequest(
     if (messageType === "greeting") {
       userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
     } else if (messageType === "question") {
-      userPrompt = `${message}\n\nThink through this question step by step. Search for current information if needed. Then provide a clear, detailed answer. No code generation.`
+      userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
     } else if (isCodeRequest) {
       console.log(`[Z.ai/${modelId}] Using for code generation with dynamic flow`)
-      userPrompt = `${message}\n\nRespond with ORGANIC, DYNAMIC thinking - think, search, read, plan multiple times throughout naturally. Then generate clean code files. After code, perform testing with <Testing> tag.`
+      userPrompt = buildCodePrompt(message)
     }
 
     const chatMessages = [
@@ -822,7 +802,7 @@ async function handleZaiRequest(
               model: modelId,
               messages: chatMessages,
               stream: true,
-              max_tokens: 8192,
+              max_tokens: 32768,
             }),
           })
 
@@ -1246,8 +1226,47 @@ function extractCodeBlocks(content: string) {
   return blocks
 }
 
+/**
+ * Shared code-prompt builder — all models use the same detailed instructions.
+ */
+function buildCodePrompt(message: string): string {
+  return `${message}
+
+IMPORTANT: Follow these steps ORGANICALLY and DYNAMICALLY throughout your response:
+
+1. Think multiple times as you work — not just once at the start.
+2. Search for information as you need it.
+3. Plan files before writing them.
+4. Interleave tags with your plain-text explanation naturally.
+5. NEVER stop code mid-way — always finish every file completely.
+6. Do NOT write raw code blocks inside your plain-text response. Code goes ONLY inside fenced blocks with a file path.
+7. Do NOT repeat content from previous messages — continue from where you left off.
+
+Use these tags throughout:
+- <Thinking>your reasoning</Thinking> — multiple times
+- <Search>search query and results</Search> — when you need info
+- <UserMessage>your understanding of the request</UserMessage> — once at the start
+- <Planning>list of files to create/update</Planning> — once when ready
+- <FileChecks>validation notes</FileChecks> — if needed
+- <Testing>test steps and results</Testing> — after generating code
+- <ReviewedWork>deep professional summary of what was built</ReviewedWork> — at the very end
+
+After ALL code is generated, write a detailed <ReviewedWork> summary. Do NOT output any raw code or file contents inside <ReviewedWork> — only prose.
+
+Generate production-ready, complete code files now.`
+}
+
 function removeCodeBlocks(content: string) {
-  return content.replace(/```(\w+)\s+file="([^"]+)"\n[\s\S]*?```/g, "").trim()
+  // Remove fenced code blocks that have a file path (those become file buttons)
+  let cleaned = content.replace(/```(\w+)\s+file="([^"]+)"\n[\s\S]*?```/g, "")
+
+  // Remove trailing garbage: sequences of 3+ repeated identical non-word chars (_, -, *, etc.)
+  cleaned = cleaned.replace(/([_\-*=~`#]){3,}\s*$/gm, "")
+
+  // Remove lines that are ONLY whitespace at end
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n")
+
+  return cleaned.trim()
 }
 
 async function getCustomKnowledge(userId: string): Promise<string> {

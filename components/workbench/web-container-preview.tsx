@@ -464,6 +464,87 @@ export default {
         return () => clearTimeout(timeout)
     }, [files, webcontainerInstance, status, isCodeGenerating])
 
+    // Listen for build requests from Navbar
+    useEffect(() => {
+        const handleBuildAndDeploy = async (e: any) => {
+            if (!webcontainerInstance) {
+                window.dispatchEvent(new CustomEvent('build-deploy-error', { detail: { message: 'Preview environment not running. Please open the Preview tab FIRST before publishing.' } }));
+                return;
+            }
+
+            const { projectId, subdomain, republish, token } = e.detail;
+
+            try {
+                const terminal = xtermRef.current;
+                terminal?.writeln('\r\n\x1b[34m[Deploy] Preparing production build...\x1b[0m');
+
+                // 1. Install vite-plugin-singlefile
+                const installProc = await webcontainerInstance.spawn("npm", ["install", "vite-plugin-singlefile", "--save-dev"]);
+                installProc.output.pipeTo(new WritableStream({ write(data) { terminal?.write(data) } }));
+                if (await installProc.exit !== 0) throw new Error("Failed to install vite-plugin-singlefile");
+
+                // 2. Modify vite config
+                const configContent = await webcontainerInstance.fs.readFile('vite.config.ts', 'utf8').catch(() => null)
+                    || await webcontainerInstance.fs.readFile('vite.config.js', 'utf8').catch(() => null);
+
+                if (configContent) {
+                    let newConfig = configContent;
+
+                    if (!newConfig.includes('viteSingleFile')) {
+                        newConfig = `import { viteSingleFile } from "vite-plugin-singlefile";\n` +
+                            newConfig.replace('plugins: [', 'plugins: [viteSingleFile(), ');
+                    }
+
+                    // Scrub legacy 'process.env': 'import.meta.env' hack from config
+                    if (newConfig.includes('process.env')) {
+                        newConfig = newConfig.replace(/'process\.env'\s*:\s*'import\.meta\.env'\,?/g, '');
+                    }
+
+                    await webcontainerInstance.fs.writeFile('vite.config.ts', newConfig);
+                }
+
+                // Scrub legacy process.env syntax from old supabase.ts files
+                const supabaseTs = await webcontainerInstance.fs.readFile('src/lib/supabase.ts', 'utf8').catch(() => null);
+                if (supabaseTs && supabaseTs.includes('process.env')) {
+                    const fixedSupabaseTs = supabaseTs.replace(/process\.env\.VITE_SUPABASE_URL/g, 'import.meta.env.VITE_SUPABASE_URL')
+                        .replace(/process\.env\.VITE_SUPABASE_ANON_KEY/g, 'import.meta.env.VITE_SUPABASE_ANON_KEY');
+                    await webcontainerInstance.fs.writeFile('src/lib/supabase.ts', fixedSupabaseTs);
+                }
+
+                // 3. Run build
+                terminal?.writeln('\x1b[34m[Deploy] Creating dist bundle...\x1b[0m');
+                const buildProc = await webcontainerInstance.spawn("npm", ["run", "build"]);
+                buildProc.output.pipeTo(new WritableStream({ write(data) { terminal?.write(data) } }));
+                if (await buildProc.exit !== 0) throw new Error("Build failed");
+
+                // 4. Read dist/index.html
+                const distHtml = await webcontainerInstance.fs.readFile('dist/index.html', 'utf8');
+
+                // 5. Send to deploy API
+                terminal?.writeln('\x1b[34m[Deploy] Uploading to production...\x1b[0m');
+                const res = await fetch(`/api/projects/${projectId}/deploy`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ subdomain, republish, distHtml })
+                });
+
+                if (!res.ok) throw new Error("Upload failed");
+
+                const data = await res.json();
+                terminal?.writeln(`\r\n\x1b[32m[Deploy] Deployed to ${data.deploymentUrl}\x1b[0m`);
+
+                window.dispatchEvent(new CustomEvent('build-deploy-complete', { detail: data }));
+
+            } catch (err: any) {
+                xtermRef.current?.writeln(`\r\n\x1b[31m[Deploy] Error: ${err.message}\x1b[0m`);
+                window.dispatchEvent(new CustomEvent('build-deploy-error', { detail: { message: err.message } }));
+            }
+        };
+
+        window.addEventListener('initiate-build-and-deploy', handleBuildAndDeploy);
+        return () => window.removeEventListener('initiate-build-and-deploy', handleBuildAndDeploy);
+    }, [webcontainerInstance])
+
     // Sync URL from iframe
     useEffect(() => {
         const interval = setInterval(() => {

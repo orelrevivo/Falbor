@@ -115,6 +115,14 @@ function parseAIResponse(content: string) {
     tasks: /<Tasks>([\s\S]*?)<\/Tasks>/gi,
   }
 
+  // Tags that should NEVER bleed into the visible text content
+  const hiddenTagNames = [
+    "InternalFinishCheck", "AIOnly", "Thinking", "Commentary", "UserMessage",
+    "Planning", "Search", "FileChecks", "Files", "Testing", "FileSearch",
+    "ReviewedWork", "FinalReasoning", "FinalResponsive", "MobileReview",
+    "DeepConclusion", "InternalThought", "Tasks",
+  ]
+
   let processedContent = content
     .replace(/<\/InternalFinishCheck>/gi, "")
     .replace(/<InternalFinishCheck>/gi, "")
@@ -307,7 +315,15 @@ function parseAIResponse(content: string) {
 
       parts.push({ type, content: parsedContent })
     } else {
-      parts.push({ type: "text", content: finalText })
+      // Strip any remaining orphaned tag content and trailing garbage before showing as text
+      const safeText = finalText
+        .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck)[^>]*>/gi, "")
+        .replace(/([_\-*=~`#]){3,}\s*$/gm, "")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+      if (safeText) {
+        parts.push({ type: "text", content: safeText })
+      }
     }
   }
 
@@ -1434,72 +1450,44 @@ function AIMessageContent({
       case "internalThought":
         return null
       case "codeBlock": {
-        const isCurrentlyStreaming = isStreaming && parts[parts.length - 1] === content
+        // Show only a file button - clicking opens the code in a modal
+        // Never show raw code inline in the chat message
         return (
-          <div className="mt-4 mb-6 group relative">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 gap-2 bg-[#f8f9fa] border-[#e9ecef] hover:bg-[#e9ecef] text-[#495057] font-medium shadow-sm"
-                  onClick={() => onCodeSelect(content)}
-                >
-                  <FileText className="w-4 h-4" />
-                  <span className="text-xs font-mono">{content.filename}</span>
-                </Button>
-                <div className="flex items-center gap-2">
-                  <AnimatePresence mode="wait">
-                    {content.isOpen ? (
-                      <motion.div
-                        key="writing"
-                        initial={{ opacity: 0, x: -5 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: 5 }}
-                        className="flex items-center gap-2"
-                      >
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                        <TextShimmer className="text-xs text-blue-600 font-medium">Creating file...</TextShimmer>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="completed"
-                        initial={{ opacity: 0, x: -5 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        className="flex items-center gap-2"
-                      >
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                        <span className="text-xs text-green-600 font-medium">Completed</span>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#1E1E21] rounded-lg overflow-hidden border border-[#3A3A3E] shadow-xl">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-[#2A2A2E] border-b border-[#3A3A3E]">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f56]" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#ffbd2e]" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#27c93f]" />
-                </div>
-                <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">{content.language}</span>
-              </div>
-              <SyntaxHighlighter
-                language={content.language}
-                style={oneDark}
-                customStyle={{
-                  margin: 0,
-                  padding: "1.25rem",
-                  fontSize: "13px",
-                  lineHeight: "1.6",
-                  backgroundColor: "transparent",
-                }}
-                wrapLongLines={true}
+          <div className="mt-2 mb-2">
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-2 bg-[#f8f9fa] border-[#e9ecef] hover:bg-[#e9ecef] text-[#495057] font-medium shadow-sm"
+                onClick={() => onCodeSelect(content)}
               >
-                {content.code}
-              </SyntaxHighlighter>
+                <FileText className="w-4 h-4" />
+                <span className="text-xs font-mono">{content.filename}</span>
+              </Button>
+              <AnimatePresence mode="wait">
+                {content.isOpen ? (
+                  <motion.div
+                    key="writing"
+                    initial={{ opacity: 0, x: -5 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 5 }}
+                    className="flex items-center gap-2"
+                  >
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+                    <TextShimmer className="text-xs text-blue-600 font-medium">Writing...</TextShimmer>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="completed"
+                    initial={{ opacity: 0, x: -5 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
+                    <span className="text-xs text-green-600 font-medium">Done</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         )
@@ -1531,9 +1519,19 @@ function AIMessageContent({
           className="w-full"
         >
           {(() => {
-            const nonCollapsible = ["text", "previewButton", "reviewedWork", "finalReasoning", "finalResponsive", "codeBlock"];
+            // Only text and previewButton and codeBlock render directly
+            const nonCollapsible = ["text", "previewButton", "codeBlock"];
 
             if (p.type === "text") {
+              // Strip any raw XML tags that leaked through before displaying
+              const cleanedText = p.content
+                .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck)[^>]*>/gi, "")
+                .replace(/([_\-*=~`#]){3,}\s*$/gm, "")
+                .replace(/\n{3,}/g, "\n\n")
+                .trim()
+
+              if (!cleanedText) return null
+
               return (
                 <div className="prose prose-sm max-w-none text-black/75">
                   {isStreaming && parts.filter((pt) => pt.type === "text").every((pt) => !pt.content) ? (
@@ -1543,7 +1541,7 @@ function AIMessageContent({
                     </div>
                   ) : (
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                      {p.content}
+                      {cleanedText}
                     </ReactMarkdown>
                   )}
                 </div>
@@ -1568,12 +1566,17 @@ function AIMessageContent({
             }
 
             if (nonCollapsible.includes(p.type)) {
+              // Don't render codeBlock buttons while the message is still streaming
+              // to prevent partial/ghost file buttons appearing mid-generation
+              if (p.type === "codeBlock" && isStreaming) return null
               return renderPartContent(p.type, p.content);
             }
 
+            // ALL other tags (thinking, planning, testing, reviewedWork, finalReasoning, etc.) go into collapsibles
             const collapsibleTypes = [
               "thinking", "commentary", "userMessage", "planning", "search",
-              "fileChecks", "importCard", "testing", "fileSearch", "customAction"
+              "fileChecks", "importCard", "testing", "fileSearch", "customAction",
+              "reviewedWork", "finalReasoning", "finalResponsive", "tasks"
             ];
 
             if (!collapsibleTypes.includes(p.type)) return null;

@@ -422,8 +422,10 @@ export async function getProjectAuthConfig(projectRef: string): Promise<any> {
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Failed to fetch Auth config: ${error}`)
+    const errorText = await response.text()
+    const err: any = new Error(`Failed to fetch Auth config: ${errorText}`)
+    err.status = response.status
+    throw err
   }
 
   return response.json()
@@ -449,8 +451,10 @@ export async function updateProjectAuthConfig(projectRef: string, config: any): 
   })
 
   if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Failed to update Auth config: ${error}`)
+    const errorText = await response.text()
+    const err: any = new Error(`Failed to update Auth config: ${errorText}`)
+    err.status = response.status
+    throw err
   }
 
   return response.json()

@@ -40,6 +40,20 @@ export async function GET(
         return NextResponse.json(config)
     } catch (error: any) {
         console.error("[AUTH_CONFIG] Failed to fetch Auth config:", error)
+
+        // Supabase Management API returns 404 with "Project not found" when the
+        // project ref in our DB no longer maps to a live Supabase project.
+        const isNotFound =
+            error.status === 404 ||
+            error.message?.toLowerCase().includes("project not found")
+
+        if (isNotFound) {
+            return NextResponse.json(
+                { error: "Supabase project not found or inaccessible. It may have been deleted or the access token may have changed." },
+                { status: 404 }
+            )
+        }
+
         return NextResponse.json(
             { error: error.message || "Internal server error" },
             { status: 500 }
@@ -76,6 +90,18 @@ export async function PATCH(
         return NextResponse.json(result)
     } catch (error: any) {
         console.error("Failed to update Auth config:", error)
+
+        const isNotFound =
+            error.status === 404 ||
+            error.message?.toLowerCase().includes("project not found")
+
+        if (isNotFound) {
+            return NextResponse.json(
+                { error: "Supabase project not found or inaccessible." },
+                { status: 404 }
+            )
+        }
+
         return NextResponse.json(
             { error: error.message || "Internal server error" },
             { status: 500 }

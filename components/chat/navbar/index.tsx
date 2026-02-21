@@ -148,17 +148,36 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
     setIsPublishing(true)
     try {
       const token = await getToken()
-      const res = await fetch(`/api/projects/${projectId}/deploy`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      })
 
-      if (!res.ok) throw new Error("Deployment failed")
+      const buildPromise = new Promise((resolve, reject) => {
+        const handleComplete = (e: any) => {
+          cleanup();
+          resolve(e.detail);
+        };
+        const handleError = (e: any) => {
+          cleanup();
+          reject(new Error(e.detail?.message || "Build failed"));
+        };
+        const cleanup = () => {
+          window.removeEventListener('build-deploy-complete', handleComplete);
+          window.removeEventListener('build-deploy-error', handleError);
+        };
 
-      const data = await res.json()
+        window.addEventListener('build-deploy-complete', handleComplete);
+        window.addEventListener('build-deploy-error', handleError);
+
+        window.dispatchEvent(new CustomEvent('initiate-build-and-deploy', {
+          detail: { projectId, subdomain: newSubdomain, republish: republishAfterUpdate, token }
+        }));
+      });
+
+      // Timeout in case the WebContainer never responds (e.g. preview tab never opened)
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("Build timed out. Please open the Preview tab and ensure files have finished loading before publishing.")), 120000)
+      );
+
+      const data: any = await Promise.race([buildPromise, timeoutPromise]);
+
       setDeployment({
         deploymentUrl: data.deploymentUrl,
         updatedAt: new Date().toISOString(),

@@ -145,6 +145,28 @@ export async function POST(
         .returning()
     }
 
+    if (body.distHtml) {
+      const [existingDist] = await db
+        .select()
+        .from(files)
+        .where(and(eq(files.projectId, projectId), eq(files.path, "dist/index.html")))
+        .limit(1)
+
+      if (existingDist) {
+        await db
+          .update(files)
+          .set({ content: body.distHtml, updatedAt: new Date() })
+          .where(eq(files.id, existingDist.id))
+      } else {
+        await db.insert(files).values({
+          projectId,
+          path: "dist/index.html",
+          content: body.distHtml,
+          language: "html",
+        })
+      }
+    }
+
     return NextResponse.json({
       deploymentUrl,
       subdomain,
