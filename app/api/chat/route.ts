@@ -244,6 +244,11 @@ async function handleModelRequest(
 
   let systemPrompt = discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext)
 
+  // Append context if it's an iteration
+  if (history.length > 1) {
+    systemPrompt += `\n\n### ITERATION MODE ###\nYou are working on an existing project. DO NOT rewrite all files. Only generate or modify the exact file(s) requested by the user or where the error originated. Maintain the existing design unless explicitly asked to change it. Outputting existing untouched files will cause the user to lose credits and is strictly forbidden.\n### END ITERATION MODE ###`
+  }
+
   // Optimization for Email Template Edits
   if (message.includes("@Email/")) {
     systemPrompt += `\n\n### EMAIL EDIT MODE ###

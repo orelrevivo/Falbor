@@ -18,6 +18,59 @@ const INDEX_CSS_CONTENT = `@tailwind base;
 @tailwind components;
 @tailwind utilities;`
 
+/**
+ * Injects favicon, title, and description meta tags into the HTML <head>.
+ * If the tags already exist, replaces them. Otherwise, appends before </head>.
+ */
+function injectMetaTags(
+  html: string,
+  meta: { favicon?: string | null; siteTitle?: string | null; siteDescription?: string | null }
+): string {
+  let result = html
+
+  // Inject/replace <title>
+  if (meta.siteTitle) {
+    if (result.includes("<title>")) {
+      result = result.replace(/<title>[^<]*<\/title>/, `<title>${meta.siteTitle}</title>`)
+    } else {
+      result = result.replace("</head>", `  <title>${meta.siteTitle}</title>\n</head>`)
+    }
+  }
+
+  // Inject/replace meta description
+  if (meta.siteDescription) {
+    if (result.includes('name="description"')) {
+      result = result.replace(
+        /<meta\s+name="description"\s+content="[^"]*"\s*\/?>/,
+        `<meta name="description" content="${meta.siteDescription}" />`
+      )
+    } else {
+      result = result.replace(
+        "</head>",
+        `  <meta name="description" content="${meta.siteDescription}" />\n</head>`
+      )
+    }
+  }
+
+  // Inject/replace favicon
+  if (meta.favicon) {
+    // Determine type from base64 prefix
+    let type = "image/x-icon"
+    if (meta.favicon.includes("image/png")) type = "image/png"
+    else if (meta.favicon.includes("image/svg")) type = "image/svg+xml"
+
+    const faviconTag = `<link rel="icon" type="${type}" href="${meta.favicon}" />`
+
+    if (result.includes('rel="icon"')) {
+      result = result.replace(/<link\s+rel="icon"[^>]*\/?>/, faviconTag)
+    } else {
+      result = result.replace("</head>", `  ${faviconTag}\n</head>`)
+    }
+  }
+
+  return result
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,7 +82,7 @@ export async function POST(
     }
 
     const { id: projectId } = await params
-    const body = await req.json().catch(() => ({})) // can be empty or { subdomain?: string, republish?: boolean }
+    const body = await req.json().catch(() => ({}))
 
     // Get project
     const [project] = await db
@@ -109,7 +162,6 @@ export async function POST(
       }
     }
 
-    // ✅ FIXED: Correct deployment URL format (matches your requirement)
     const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN || "falbor.xyz"
     const deploymentUrl =
       process.env.NODE_ENV === "development"
@@ -119,8 +171,7 @@ export async function POST(
     let updatedDeployment
 
     if (existing) {
-      // Update existing deployment
-      const updateData: any = {
+      const updateData: Record<string, any> = {
         deploymentUrl,
         subdomain,
         updatedAt: new Date(),
@@ -132,7 +183,6 @@ export async function POST(
           .where(eq(deployments.id, existing.id))
           .returning()
     } else {
-      // Create new deployment
       ;[updatedDeployment] = await db
         .insert(deployments)
         .values({
@@ -145,7 +195,21 @@ export async function POST(
         .returning()
     }
 
+    // Handle distHtml with meta tag injection
     if (body.distHtml) {
+      let finalHtml = body.distHtml
+
+      // Safely get deployment record (updated or existing)
+      const deploymentRecord = updatedDeployment || existing
+
+      if (deploymentRecord) {
+        finalHtml = injectMetaTags(finalHtml, {
+          favicon: deploymentRecord.favicon ?? null,
+          siteTitle: deploymentRecord.siteTitle ?? null,
+          siteDescription: deploymentRecord.siteDescription ?? null,
+        })
+      }
+
       const [existingDist] = await db
         .select()
         .from(files)
@@ -155,13 +219,13 @@ export async function POST(
       if (existingDist) {
         await db
           .update(files)
-          .set({ content: body.distHtml, updatedAt: new Date() })
+          .set({ content: finalHtml, updatedAt: new Date() })
           .where(eq(files.id, existingDist.id))
       } else {
         await db.insert(files).values({
           projectId,
           path: "dist/index.html",
-          content: body.distHtml,
+          content: finalHtml,
           language: "html",
         })
       }
@@ -174,6 +238,11 @@ export async function POST(
     })
   } catch (error) {
     console.error("[DEPLOY POST]", error)
-    return NextResponse.json({ error: "Failed to deploy/update project" }, { status: 500 })
+    // Optional: include more debug info in development (remove in production)
+    const errorMessage =
+      process.env.NODE_ENV === "development"
+        ? (error as Error).message || "Unknown error"
+        : "Failed to deploy/update project"
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }

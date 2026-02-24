@@ -1521,6 +1521,9 @@ function AIMessageContent({
           {(() => {
             // Only text and previewButton and codeBlock render directly
             const nonCollapsible = ["text", "previewButton", "codeBlock"];
+            if (!isStreaming) {
+              nonCollapsible.push("reviewedWork");
+            }
 
             if (p.type === "text") {
               // Strip any raw XML tags that leaked through before displaying
@@ -1576,8 +1579,12 @@ function AIMessageContent({
             const collapsibleTypes = [
               "thinking", "commentary", "userMessage", "planning", "search",
               "fileChecks", "importCard", "testing", "fileSearch", "customAction",
-              "reviewedWork", "finalReasoning", "finalResponsive", "tasks"
+              "finalReasoning", "finalResponsive", "tasks"
             ];
+
+            if (isStreaming) {
+              collapsibleTypes.push("reviewedWork");
+            }
 
             if (!collapsibleTypes.includes(p.type)) return null;
 

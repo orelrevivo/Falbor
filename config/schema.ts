@@ -194,6 +194,27 @@ export const deployments = pgTable("deployments", {
   customDomain: text("custom_domain"),
   isPublic: boolean("is_public").default(true).notNull(),
   showBranding: boolean("show_branding").default(true).notNull(),
+  // NEW: Site meta fields
+  favicon: text("favicon"),
+  siteTitle: text("site_title"),
+  siteDescription: text("site_description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+// NEW: Domain purchase orders
+export const domainOrders = pgTable("domain_orders", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  domain: text("domain").notNull(),
+  price: integer("price").notNull(), // cents
+  currency: text("currency").default("USD").notNull(),
+  status: text("status").default("pending").notNull(), // pending | paid | failed
+  paymentMethod: text("payment_method").default("paypal").notNull(),
+  godaddyOrderId: text("godaddy_order_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
@@ -396,10 +417,6 @@ export const templateLikes = pgTable("template_likes", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
-/**
- * Stores share links for projects with role-based permissions
- * Each link can have a different role assigned (viewer, editor, admin)
- */
 export const projectShares = pgTable("project_shares", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id")
@@ -408,18 +425,14 @@ export const projectShares = pgTable("project_shares", {
   ownerId: text("owner_id").notNull(),
   shareToken: text("share_token").notNull().unique(),
   role: text("role").$type<"viewer" | "editor" | "admin">().default("viewer").notNull(),
-  label: text("label"), // Optional label for the link (e.g., "Design Team", "Developers")
+  label: text("label"),
   isActive: boolean("is_active").default(true).notNull(),
   usageCount: integer("usage_count").default(0).notNull(),
-  maxUses: integer("max_uses"), // Optional limit on how many times the link can be used
+  maxUses: integer("max_uses"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   expiresAt: timestamp("expires_at"),
 })
 
-/**
- * Stores collaborators who have accepted a project invite
- * Includes their role and status
- */
 export const projectCollaborators = pgTable("project_collaborators", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id")
@@ -427,11 +440,11 @@ export const projectCollaborators = pgTable("project_collaborators", {
     .references(() => projects.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull(),
   invitedBy: text("invited_by").notNull(),
-  shareId: uuid("share_id").references(() => projectShares.id, { onDelete: "set null" }), // Link to the share that was used
+  shareId: uuid("share_id").references(() => projectShares.id, { onDelete: "set null" }),
   role: text("role").$type<"viewer" | "editor" | "admin">().default("viewer").notNull(),
   status: text("status").$type<"pending" | "accepted" | "revoked">().default("pending").notNull(),
-  displayName: text("display_name"), // Cached from Clerk for display
-  imageUrl: text("image_url"), // Cached from Clerk for display
+  displayName: text("display_name"),
+  imageUrl: text("image_url"),
   joinedAt: timestamp("joined_at"),
   lastAccessedAt: timestamp("last_accessed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -447,10 +460,6 @@ export const projectLogs = pgTable("project_logs", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
-/**
- * Stores Supabase credentials for each AI-generated project
- * These are auto-provisioned when a project needs database functionality
- */
 export const projectSupabase = pgTable("project_supabase", {
   id: uuid("id").defaultRandom().primaryKey(),
   projectId: uuid("project_id")
@@ -478,10 +487,6 @@ export const projectSupabaseSqlFiles = pgTable("project_supabase_sql_files", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
-/**
- * Stores global Supabase connection for each user (not per project)
- * This allows the database connection to persist across all projects
- */
 export const userSupabaseConnections = pgTable("user_supabase_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull().unique(),
@@ -495,10 +500,6 @@ export const userSupabaseConnections = pgTable("user_supabase_connections", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
 
-/**
- * Stores GitHub OAuth connections for each user
- * This allows users to connect their GitHub account for pushing projects to repos
- */
 export const userGithubConnections = pgTable("user_github_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull().unique(),
@@ -512,8 +513,8 @@ export const userGithubConnections = pgTable("user_github_connections", {
 export const userMcpConnections = pgTable("user_mcp_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull(),
-  type: text("type").notNull(), // 'social-media', 'stripe', 'vercel', etc.
-  name: text("name").notNull(), // 'Twitter', 'Stripe', etc.
+  type: text("type").notNull(),
+  name: text("name").notNull(),
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   apiKey: text("api_key"),
@@ -554,6 +555,8 @@ export type UserCredits = typeof userCredits.$inferSelect
 export type NewUserCredits = typeof userCredits.$inferInsert
 export type Deployment = typeof deployments.$inferSelect
 export type NewDeployment = typeof deployments.$inferInsert
+export type DomainOrder = typeof domainOrders.$inferSelect
+export type NewDomainOrder = typeof domainOrders.$inferInsert
 export type ServerConnection = typeof serverConnections.$inferSelect
 export type NewServerConnection = typeof serverConnections.$inferInsert
 export type UserAutomation = typeof userAutomations.$inferSelect

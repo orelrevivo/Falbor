@@ -10,6 +10,8 @@ import { UserProfileMenu } from "@/components/layout/user-profile-menu"
 import { neon } from "@neondatabase/serverless"
 import { Suspense } from "react"
 import "@/styles/bg.css"
+import Example from "@/components/layout/Example"
+import Example2 from "@/components/layout/Example/Example"
 
 interface ProjectItem {
   id: string
@@ -59,7 +61,7 @@ export default async function HomePage() {
 
   return (
     <div
-      className={`relative min-h-screen flex flex-col overflow-hidden ${isAuthenticated ? "bg-[#FAF9F5]" : "Bg-main"
+      className={`relative min-h-screen flex flex-col overflow-hidden ${isAuthenticated ? "bg-[#FAF9F5]" : "" //Bg-main
         }`}
     >
       <main className="flex flex-1 flex-col items-center px-4 w-full">
@@ -77,19 +79,36 @@ export default async function HomePage() {
                 />
               </Suspense>
             </div>
+
             <div className="absolute top-[-20px] left-2">
               <img src="/logo_light.png" width={140} alt="" />
             </div>
+
             <div className="absolute top-3 right-4 z-50">
               <UserProfileMenu />
             </div>
           </>
         )}
 
+        {/* ================= NOT AUTH ================= */}
         {!isAuthenticated && (
           <div className="w-full flex flex-col">
-            <div className="w-full min-h-screen flex flex-col items-center justify-center">
-              <div className="w-full max-w-4xl px-4 flex flex-col items-center mt-[-200px]">
+            {/* ✅ FIXED BACKGROUND SECTION */}
+            <div className="relative w-full min-h-screen flex flex-col items-center justify-center">
+
+              {/* ✅ centered background image layer */}
+              <div
+                className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                style={{
+                  backgroundImage: "url('/bglight.png')",
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "center",
+                  backgroundSize: "contain", // keeps natural proportions
+                }}
+              />
+
+              {/* ✅ CONTENT ABOVE BG */}
+              <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center mt-[-200px]">
                 <HeroText />
                 <div className="w-full flex justify-center mt-6">
                   <InputArea isAuthenticated={false} />
@@ -100,11 +119,13 @@ export default async function HomePage() {
             <div className="w-full space-y-20 pb-20">
               <HeroSection />
               <FAQ />
+              <Example />
               <CompanyLogos />
             </div>
           </div>
         )}
 
+        {/* ================= AUTH ================= */}
         {isAuthenticated && (
           <div
             className="absolute z-10 backdrop-blur-md border rounded-md shadow-sm p-6 sm:p-8 overflow-auto bg-white"

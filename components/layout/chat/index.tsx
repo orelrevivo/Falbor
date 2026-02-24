@@ -366,7 +366,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
-  const [menuMode, setMenuMode] = useState<"main" | "design" | "database">("main")
+  const [menuMode, setMenuMode] = useState<"main" | "design">("main")
+  const [showDatabaseHover, setShowDatabaseHover] = useState(false)
   const [isFalborDb, setIsFalborDb] = useState(true)
   const [showDesignModal, setShowDesignModal] = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
@@ -1827,183 +1828,186 @@ Please analyze this error and fix it in the code. Make sure to:
             </div>
           ) : (
             <div className="flex items-center">
-              <div className="relative" ref={dropdownRef}>
-                <DropdownMenu
-                  open={showMenu}
-                  onOpenChange={(open) => {
-                    setShowMenu(open)
-                    if (!open) setMenuMode("main")
-                  }}
+              <div className="relative" ref={menuRef}>
+                <Button
+                  type="button"
+                  onClick={() => setShowMenu((prev) => !prev)}
+                  className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md BackgroundStyle text-black ml-1"
+                  title="More options"
+                  disabled={isLoading}
+                  variant="ghost"
+                  size="sm"
                 >
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md BackgroundStyle text-black ml-1"
-                      title="More options"
-                      disabled={isLoading}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <MoreHorizontal className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    side="top"
-                    className="w-56"
+                  <MoreHorizontal className="w-4 h-4" />
+                </Button>
+
+                {showMenu && (
+                  <div
+                    className="absolute z-50 w-56 overflow-visible bg-white shadow-xs border border-[#dbd9d965]
+                    animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2
+                    focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
+                    data-[variant=destructive]:focus:bg-destructive/10
+                    dark:data-[variant=destructive]:focus:bg-destructive/20 
+                    data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive
+                    [&_svg:not([class*='text-'])]:text-muted-foreground 
+                    items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
+                    outline-hidden select-none data-[disabled]:pointer-events-none 
+                    data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
+                    [&_svg:not([class*='size-'])]:size-4"
+                    style={{ bottom: "100%", left: "0", marginBottom: "10px" }}
                   >
                     {menuMode === "main" ? (
                       <>
-                        <DropdownMenuItem
-                          onSelect={() => {
+                        <div
+                          onClick={() => {
                             fileInputRef.current?.click()
                             setShowMenu(false)
                           }}
-                          disabled={isLoading}
-                          className="w-full"
+                          className={cn("flex items-center px-2 py-1.5 text-sm rounded-md", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
                         >
-                          <Link1Icon className="h-4 w-4" />
+                          <Link1Icon className="h-4 w-4 mr-2" />
                           Attach images & files
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setMenuMode("design")} className="w-full">
-                          <Palette className="h-4 w-4" />
+                        </div>
+                        <div onClick={() => setMenuMode("design")} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer w-full">
+                          <Palette className="h-4 w-4 mr-2" />
                           System Design
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
+                        </div>
+                        <div
+                          className="relative flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer w-full"
+                          onMouseEnter={() => setShowDatabaseHover(true)}
+                          onMouseLeave={() => setShowDatabaseHover(false)}
+                          onClick={(e) => {
                             if (projectId && onOpenDatabase) {
                               onOpenDatabase()
-                            } else {
-                              setMenuMode("database")
                             }
                           }}
-                          className="w-full"
                         >
-                          <Database className="h-4 w-4" />
+                          <Database className="h-4 w-4 mr-2" />
                           Database
                           {isFalborDb && <span className="ml-auto text-blue-600 text-[10px] font-bold">Falbor</span>}
                           {credentialsSaved && !isFalborDb && <span className="ml-auto text-green-600 text-[10px] font-bold">Connected</span>}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            handleImprovePrompt()
-                            setShowMenu(false)
+
+                          {showDatabaseHover && (!projectId || !onOpenDatabase) && (
+                            <div
+                              className="absolute z-50 w-56
+                              BackgroundStyleButton
+                              focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
+                              data-[variant=destructive]:focus:bg-destructive/10
+                              dark:data-[variant=destructive]:focus:bg-destructive/20 
+                              data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive
+                              [&_svg:not([class*='text-'])]:text-muted-foreground 
+                              items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
+                              outline-hidden select-none data-[disabled]:pointer-events-none 
+                              data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
+                              [&_svg:not([class*='size-'])]:size-4"
+                              style={{ left: "100%", top: 0, marginLeft: "-7px" }}
+                              onMouseEnter={() => setShowDatabaseHover(true)}
+                              onMouseLeave={() => setShowDatabaseHover(false)}
+                            >
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                                    >
+                                      <img src="/icons/falbor.png" className="w-4 h-4 mr-2" alt="" />
+                                      <span className="flex-1 text-left">Falbor Database</span>
+                                      {isFalborDb && <Check className="h-4 w-4 text-black" />}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Use the Falbor built-in database</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                                    >
+                                      <img src="/icons/supabase.png" className="w-4 h-4 mr-2" alt="" />
+                                      <span className="flex-1 text-left">Connect Supabase</span>
+                                      {!isFalborDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Connect your own Supabase database</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                      onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                                    >
+                                      <img src="/icons/database-off.png" className="w-4 h-4 mr-2" alt="" />
+                                      <span className="flex-1 text-left">Create without DB</span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    <p>Proceed without connecting any database</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            </div>
+                          )}
+                        </div>
+                        <div
+                          onClick={() => {
+                            if (!isImproving && message.trim() && !isLoading) {
+                              handleImprovePrompt()
+                              setShowMenu(false)
+                            }
                           }}
-                          disabled={isImproving || !message.trim() || isLoading}
-                          className="w-full"
+                          className={cn("flex items-center px-2 py-1.5 text-sm rounded-md w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
                         >
                           {!isImproving ? (
-                            <StarsIcon className="h-4 w-4" />
+                            <StarsIcon className="h-4 w-4 mr-2" />
                           ) : (
-                            <Loader className="h-4 w-4 animate-spin" />
+                            <Loader className="h-4 w-4 mr-2 animate-spin" />
                           )}
                           Enhance Prompt
-                        </DropdownMenuItem>
+                        </div>
                       </>
-                    ) : menuMode === "design" ? (
+                    ) : (
                       <>
-                        <DropdownMenuItem onSelect={() => setMenuMode("main")} className="w-full">
+                        <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full">
                           <ArrowLeft className="h-4 w-4 mr-2" />
                           Back
-                        </DropdownMenuItem>
+                        </div>
                         {designSystems.map((system) => (
-                          <DropdownMenuItem
+                          <div
                             key={system.name}
-                            onSelect={() => {
+                            onClick={() => {
                               setSelectedDesign(system.name)
                               setDesignConfig(designPresets[system.name])
                               setShowMenu(false)
                             }}
-                            className="w-full"
+                            className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
                           >
                             <div className={`h-4 w-4 rounded mr-2 ${system.previewColor}`} />
                             {system.name}
-                          </DropdownMenuItem>
+                          </div>
                         ))}
-                        <DropdownMenuItem
-                          onSelect={() => {
+                        <div
+                          onClick={() => {
                             setSelectedDesign("Custom")
                             setShowDesignModal(true)
                             setShowMenu(false)
                           }}
-                          className="w-full"
+                          className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
                         >
-                          <Plus className="h-4 w-4" />
+                          <Plus className="h-4 w-4 mr-2" />
                           New Design System
-                        </DropdownMenuItem>
-                      </>
-                    ) : (
-                      <>
-                        <DropdownMenuItem onSelect={() => setMenuMode("main")} className="w-full">
-                          <ArrowLeft className="h-4 w-4 mr-2" />
-                          Back
-                        </DropdownMenuItem>
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  setIsFalborDb(true)
-                                  setShowMenu(false)
-                                }}
-                                className="w-full"
-                              >
-                                <img src="/icons/falbor.png" className="w-5 h-5" alt="" />
-                                Falbor Database
-                                {isFalborDb && <Check className="ml-auto h-4 w-4" />}
-                              </DropdownMenuItem>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Use the Falbor built-in database</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  setIsFalborDb(false)
-                                  setShowDatabaseModal(true)
-                                  setShowMenu(false)
-                                }}
-                                className="w-full"
-                              >
-                                <img src="/icons/supabase.png" className="w-5 h-5" alt="" />
-                                Connect Supabase
-                                {!isFalborDb && credentialsSaved && <Check className="ml-auto h-4 w-4 text-green-600" />}
-                              </DropdownMenuItem>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Connect your own Supabase database</p>
-                            </TooltipContent>
-                          </Tooltip>
-
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuItem
-                                onSelect={() => {
-                                  setIsFalborDb(false)
-                                  setCredentialsSaved(false)
-                                  setShowMenu(false)
-                                }}
-                                className="w-full"
-                              >
-                                <img src="/icons/database-off.png" className="w-5 h-5" alt="" />
-                                Create without Database
-                              </DropdownMenuItem>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Proceed without connecting any database</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
+                        </div>
                       </>
                     )}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </div>
+                )}
               </div>
               <div className="h-5 w-px bg-gray-300 mx-2" />
-              <div className="flex items-center relative" ref={menuRef}>
+              <div className="flex items-center relative" ref={dropdownRef}>
                 <DropdownMenu open={showModelDropdown} onOpenChange={setShowModelDropdown}>
                   <DropdownMenuTrigger asChild>
                     <Button

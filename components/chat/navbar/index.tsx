@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { useUser, useClerk, useAuth } from "@clerk/nextjs"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import {
   Copy,
   ExternalLink,
@@ -11,6 +11,13 @@ import {
   Globe,
   Pencil,
   List,
+  Image as ImageIcon,
+  Search,
+  Crown,
+  Upload,
+  X,
+  Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -18,18 +25,137 @@ import { Input } from "@/components/ui/input"
 import { formatDistanceToNow } from "date-fns"
 import { ShareDialog } from "@/components/chat/share-dialog"
 import { motion, AnimatePresence } from "framer-motion"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { PayPalButtons, PayPalScriptProvider, usePayPalScriptReducer } from "@paypal/react-paypal-js"
+
+// ─── PayPal Button Wrapper ──────────────────────────────────────────────────────
+
+function PayPalButtonWrapper({
+  domain,
+  price,
+  projectId,
+  onSuccess,
+}: {
+  domain: string
+  price: number
+  projectId: string
+  onSuccess: () => void
+}) {
+  const [{ isPending, isRejected }] = usePayPalScriptReducer()
+
+  if (isRejected) {
+    return (
+      <div className="text-red-600 text-sm py-3 text-center border border-red-200 rounded bg-red-50">
+        Failed to load PayPal. Please refresh the page or try again later.
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {isPending && (
+        <div className="flex items-center justify-center gap-2 py-4 text-gray-600">
+          <Loader2 className="w-5 h-5 animate-spin" />
+          Loading PayPal...
+        </div>
+      )}
+
+      <PayPalButtons
+        style={{ layout: "vertical", color: "gold", shape: "rect", label: "pay", height: 40 }}
+        disabled={price <= 0}
+        createOrder={async () => {
+          try {
+            const token = await getToken() // getToken from useAuth in parent component
+            const res = await fetch(`/api/projects/${projectId}/domain/purchase`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                action: "create-paypal-order",
+                domain,
+                price,
+              }),
+            })
+
+            if (!res.ok) {
+              const err = await res.json()
+              throw new Error(err.error || "Failed to create PayPal order")
+            }
+
+            const data = await res.json()
+            return data.paypalOrderId
+          } catch (err) {
+            console.error("createOrder error:", err)
+            throw err
+          }
+        }}
+        onApprove={async (data) => {
+          try {
+            const token = await getToken()
+            const res = await fetch(`/api/projects/${projectId}/domain/purchase`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                action: "capture-paypal-order",
+                paypalOrderId: data.orderID,
+                domain,
+                price,
+              }),
+            })
+
+            if (!res.ok) {
+              const err = await res.json()
+              throw new Error(err.error || "Payment capture failed")
+            }
+
+            onSuccess()
+          } catch (err) {
+            console.error("Capture error:", err)
+            alert("Payment processing failed. Please contact support.")
+          }
+        }}
+        onError={(err) => {
+          console.error("[PAYPAL ERROR]", err)
+          alert("PayPal encountered an error. Please try again.")
+        }}
+      />
+    </>
+  )
+}
+
+// ─── Types ──────────────────────────────────────────────────────────────────────
 
 interface CreditsData {
   credits: number
   secondsUntilNextRegen: number
   pendingGift?: number
   pendingMonthly?: number
+  subscriptionTier?: string
 }
 
 interface DeploymentData {
   deploymentUrl: string
   updatedAt: string
   subdomain: string
+  customDomain?: string
+}
+
+interface SiteMetaData {
+  favicon: string | null
+  siteTitle: string | null
+  siteDescription: string | null
+}
+
+interface DomainResult {
+  domain: string
+  available: boolean
+  price: number
+  currency: string
 }
 
 interface NavbarProps {
@@ -37,18 +163,87 @@ interface NavbarProps {
   handleDownload: () => void
 }
 
+type OpenDropdown = "profile" | "publish" | "share" | null
+type PublishView =
+  | "main"
+  | "edit-domain"
+  | "site-meta"
+  | "custom-domain"
+  | "domain-search-results"
+  | "domain-checkout"
+
+// ─── Backdrop Component ─────────────────────────────────────────────────────────
+
+function Backdrop({ onClick }: { onClick: () => void }) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-40"
+      style={{ backgroundColor: "rgba(0, 0, 0, 0.15)" }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      onClick={onClick}
+    />
+  )
+}
+
+// ─── Dropdown Panel Component ───────────────────────────────────────────────────
+
+function DropdownPanel({
+  children,
+  className,
+}: {
+  children: React.ReactNode
+  className?: string
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -4, scale: 0.98 }}
+      transition={{ duration: 0.15, ease: "easeOut" }}
+      className={cn(
+        "absolute top-full right-0 mt-[-10px] z-50 bg-white border rounded-lg shadow-xs",
+        className
+      )}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+// ─── View Transition Wrapper ────────────────────────────────────────────────────
+
+function ViewTransition({
+  children,
+  viewKey,
+}: {
+  children: React.ReactNode
+  viewKey: string
+}) {
+  return (
+    <motion.div
+      key={viewKey}
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      transition={{ duration: 0.2 }}
+    >
+      {children}
+    </motion.div>
+  )
+}
+
+// ─── Main Navbar ────────────────────────────────────────────────────────────────
+
 export function Navbar({ projectId, handleDownload }: NavbarProps) {
   const { user, isLoaded } = useUser()
   const clerk = useClerk()
   const { getToken } = useAuth()
 
   // Dropdown state
-  type OpenDropdown = "profile" | "publish" | "share" | null
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null)
-
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const publishDropdownRef = useRef<HTMLDivElement>(null)
-  const shareRef = useRef<HTMLDivElement>(null)
 
   const [creditsData, setCreditsData] = useState<CreditsData | null>(null)
   const [timeLeft, setTimeLeft] = useState(0)
@@ -59,28 +254,38 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
   const [copied, setCopied] = useState(false)
 
   // Publish dialog internal state
-  const [publishView, setPublishView] = useState<"main" | "edit-domain">("main")
+  const [publishView, setPublishView] = useState<PublishView>("main")
   const [newSubdomain, setNewSubdomain] = useState("")
   const [republishAfterUpdate, setRepublishAfterUpdate] = useState(true)
   const [isSavingDomain, setIsSavingDomain] = useState(false)
 
-  // Close dropdowns when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (
-        !dropdownRef.current?.contains(event.target as Node) &&
-        !publishDropdownRef.current?.contains(event.target as Node) &&
-        !shareRef.current?.contains(event.target as Node)
-      ) {
-        setOpenDropdown(null)
-        setPublishView("main") // reset view when closing
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
+  // Site Meta state
+  const [siteMeta, setSiteMeta] = useState<SiteMetaData>({
+    favicon: null,
+    siteTitle: null,
+    siteDescription: null,
+  })
+  const [isSavingMeta, setIsSavingMeta] = useState(false)
+  const [metaLoaded, setMetaLoaded] = useState(false)
+  const faviconInputRef = useRef<HTMLInputElement>(null)
+
+  // Domain search state
+  const [domainQuery, setDomainQuery] = useState("")
+  const [domainResults, setDomainResults] = useState<DomainResult[]>([])
+  const [isSearchingDomains, setIsSearchingDomains] = useState(false)
+  const [selectedDomain, setSelectedDomain] = useState<DomainResult | null>(null)
+  const [isPurchasing, setIsPurchasing] = useState(false)
+  const [purchaseSuccess, setPurchaseSuccess] = useState(false)
+  const [isRefreshingPrice, setIsRefreshingPrice] = useState(false)
+
+  // Close dropdown handler
+  const closeDropdown = useCallback(() => {
+    setOpenDropdown(null)
+    setPublishView("main")
+    setPurchaseSuccess(false)
   }, [])
 
-  // Fetch credits + timer (unchanged)
+  // Fetch credits + timer
   useEffect(() => {
     if (!isLoaded || !user?.id) return
 
@@ -130,6 +335,7 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
               deploymentUrl: data.deployment.deploymentUrl,
               updatedAt: data.deployment.updatedAt,
               subdomain: data.deployment.subdomain,
+              customDomain: data.deployment.customDomain,
             })
             setNewSubdomain(data.deployment.subdomain)
           }
@@ -144,6 +350,38 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
     }
   }, [openDropdown, projectId, getToken])
 
+  // Fetch site meta when entering site-meta view
+  useEffect(() => {
+    const fetchMeta = async () => {
+      try {
+        const token = await getToken()
+        const res = await fetch(`/api/projects/${projectId}/deployment/meta`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (res.ok) {
+          const data = await res.json()
+          if (data.deployment) {
+            setSiteMeta({
+              favicon: data.deployment.favicon || null,
+              siteTitle: data.deployment.siteTitle || null,
+              siteDescription: data.deployment.siteDescription || null,
+            })
+          }
+          setMetaLoaded(true)
+        }
+      } catch (err) {
+        console.error("Failed to fetch site meta:", err)
+        setMetaLoaded(true)
+      }
+    }
+
+    if (publishView === "site-meta" && !metaLoaded) {
+      fetchMeta()
+    }
+  }, [publishView, metaLoaded, projectId, getToken])
+
+  // ─── Handlers ───────────────────────────────────────────────────────────────
+
   const handlePublish = async () => {
     setIsPublishing(true)
     try {
@@ -151,32 +389,41 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
 
       const buildPromise = new Promise((resolve, reject) => {
         const handleComplete = (e: any) => {
-          cleanup();
-          resolve(e.detail);
-        };
+          cleanup()
+          resolve(e.detail)
+        }
         const handleError = (e: any) => {
-          cleanup();
-          reject(new Error(e.detail?.message || "Build failed"));
-        };
+          cleanup()
+          reject(new Error(e.detail?.message || "Build failed"))
+        }
         const cleanup = () => {
-          window.removeEventListener('build-deploy-complete', handleComplete);
-          window.removeEventListener('build-deploy-error', handleError);
-        };
+          window.removeEventListener("build-deploy-complete", handleComplete)
+          window.removeEventListener("build-deploy-error", handleError)
+        }
 
-        window.addEventListener('build-deploy-complete', handleComplete);
-        window.addEventListener('build-deploy-error', handleError);
+        window.addEventListener("build-deploy-complete", handleComplete)
+        window.addEventListener("build-deploy-error", handleError)
 
-        window.dispatchEvent(new CustomEvent('initiate-build-and-deploy', {
-          detail: { projectId, subdomain: newSubdomain, republish: republishAfterUpdate, token }
-        }));
-      });
+        window.dispatchEvent(
+          new CustomEvent("initiate-build-and-deploy", {
+            detail: { projectId, subdomain: newSubdomain, republish: republishAfterUpdate, token },
+          })
+        )
+      })
 
-      // Timeout in case the WebContainer never responds (e.g. preview tab never opened)
       const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Build timed out. Please open the Preview tab and ensure files have finished loading before publishing.")), 120000)
-      );
+        setTimeout(
+          () =>
+            reject(
+              new Error(
+                "Build timed out. Please open the Preview tab and ensure files have finished loading before publishing."
+              )
+            ),
+          120000
+        )
+      )
 
-      const data: any = await Promise.race([buildPromise, timeoutPromise]);
+      const data: any = await Promise.race([buildPromise, timeoutPromise])
 
       setDeployment({
         deploymentUrl: data.deploymentUrl,
@@ -237,6 +484,159 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
     }
   }
 
+  const handleFaviconUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (file.size > 65536) {
+      alert("Favicon must be under 64KB")
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = () => {
+      setSiteMeta((prev) => ({ ...prev, favicon: reader.result as string }))
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleSaveMeta = async () => {
+    setIsSavingMeta(true)
+    try {
+      const token = await getToken()
+      const res = await fetch(`/api/projects/${projectId}/deployment/meta`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          favicon: siteMeta.favicon,
+          siteTitle: siteMeta.siteTitle,
+          siteDescription: siteMeta.siteDescription,
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json()
+        throw new Error(err.error || "Failed to save")
+      }
+
+      setPublishView("main")
+    } catch (err: any) {
+      alert(err.message || "Failed to save site meta")
+    } finally {
+      setIsSavingMeta(false)
+    }
+  }
+
+  const handleDomainSearch = async () => {
+    if (!domainQuery.trim()) return
+
+    setIsSearchingDomains(true)
+    setDomainResults([])
+
+    try {
+      const token = await getToken()
+      const res = await fetch(
+        `/api/domains/search?query=${encodeURIComponent(domainQuery.trim())}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      if (!res.ok) {
+        const err = await res.json()
+        if (res.status === 403) {
+          alert(err.error || "Pro subscription required")
+          return
+        }
+        throw new Error(err.error || "Search failed")
+      }
+
+      const data = await res.json()
+      setDomainResults(data.results || [])
+      setPublishView("domain-search-results")
+    } catch (err: any) {
+      alert(err.message || "Domain search failed")
+    } finally {
+      setIsSearchingDomains(false)
+    }
+  }
+
+  const handleSelectDomain = (domain: DomainResult) => {
+    setSelectedDomain(domain)
+    setPublishView("domain-checkout")
+  }
+
+  const handleRefreshPrice = async () => {
+    if (!selectedDomain) return
+
+    setIsRefreshingPrice(true)
+    try {
+      const token = await getToken()
+      const res = await fetch(
+        `/api/domains/search?query=${encodeURIComponent(selectedDomain.domain)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      )
+
+      if (res.ok) {
+        const data = await res.json()
+        const updatedDomain = data.results?.[0]
+        if (updatedDomain && updatedDomain.price > 0) {
+          setSelectedDomain(updatedDomain)
+        } else {
+          alert("Failed to fetch updated price")
+        }
+      }
+    } catch (err) {
+      console.error("Refresh price failed:", err)
+      alert("Failed to refresh price")
+    } finally {
+      setIsRefreshingPrice(false)
+    }
+  }
+
+  // ─── Publish View Header Title ────────────────────────────────────────────
+
+  const getPublishTitle = () => {
+    switch (publishView) {
+      case "main":
+        return "Publish Your Site"
+      case "edit-domain":
+        return "Edit Domain"
+      case "site-meta":
+        return "Site Settings"
+      case "custom-domain":
+        return "Custom Domain"
+      case "domain-search-results":
+        return "Domain Results"
+      case "domain-checkout":
+        return "Checkout"
+      default:
+        return "Publish"
+    }
+  }
+
+  const getBackView = (): PublishView | null => {
+    switch (publishView) {
+      case "edit-domain":
+      case "site-meta":
+      case "custom-domain":
+        return "main"
+      case "domain-search-results":
+        return "custom-domain"
+      case "domain-checkout":
+        return "domain-search-results"
+      default:
+        return null
+    }
+  }
+
+  // ─── Render ───────────────────────────────────────────────────────────────
+
   return (
     <nav className="z-50 fixed w-full">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
@@ -254,16 +654,14 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
                   "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
                   "text-black hover:text-black/80 BackgroundStyle"
                 )}
-                style={{
-                  border: "1px solid #d6d4ce",
-                }}
+                style={{ border: "1px solid #d6d4ce" }}
                 title="Download project as ZIP"
               >
                 Download
               </button>
 
               {/* Share */}
-              <div className="relative" ref={shareRef}>
+              <div className="relative">
                 <button
                   onClick={() => setOpenDropdown(openDropdown === "share" ? null : "share")}
                   className={cn(
@@ -275,15 +673,24 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
                   Share
                 </button>
 
-                <ShareDialog
-                  projectId={projectId}
-                  isOpen={openDropdown === "share"}
-                  onClose={() => setOpenDropdown(null)}
-                />
+                <AnimatePresence>
+                  {openDropdown === "share" && (
+                    <>
+                      {/* <Backdrop onClick={closeDropdown} /> */}
+                      <DropdownPanel className="w-96">
+                        <ShareDialog
+                          projectId={projectId}
+                          isOpen={true}
+                          onClose={closeDropdown}
+                        />
+                      </DropdownPanel>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Publish Button + Dialog */}
-              <div className="relative" ref={publishDropdownRef}>
+              <div className="relative">
                 <button
                   onClick={() => setOpenDropdown(openDropdown === "publish" ? null : "publish")}
                   className={cn(
@@ -297,229 +704,664 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
                   {isPublishing ? "Publishing..." : "Publish"}
                 </button>
 
-                {openDropdown === "publish" && (
-                  <div className="absolute top-full right-0 mt-[-10px] w-96 bg-white border rounded-lg z-50">
-                    {/* Header - same style as ShareDialog */}
-                    <div className="flex items-center justify-between p-4 border-b">
-                      {publishView !== "main" && (
-                        <button
-                          onClick={() => setPublishView("main")}
-                          className="p-1 BackgroundStyle rounded mr-2"
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-                          </svg>
-                        </button>
-                      )}
-                      <h3 className="font-semibold text-base flex-1">
-                        {publishView === "main" ? "Publish Your Site" : "Edit Domain"}
-                      </h3>
-                    </div>
-
-                    <AnimatePresence mode="wait">
-                      {publishView === "main" && (
-                        <motion.div
-                          key="main"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.2 }}
-                          className="p-4 space-y-4"
-                        >
-                          {deployment?.deploymentUrl ? (
-                            <div className="space-y-4">
-                              <div className="flex items-center justify-between p-1 rounded-sm">
-                                <div className="flex flex-col gap-1 flex-1 min-w-0">
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <Globe className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                                    <p className="text-sm font-medium truncate min-w-0">
-                                      {deployment.deploymentUrl}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-2 mt-1 min-w-0">
-                                    <List className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                                    <p className="text-xs text-gray-500 truncate min-w-0">
-                                      Updated {formatDistanceToNow(new Date(deployment.updatedAt), { addSuffix: true })}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={handleCopyDeploymentUrl}
-                                    className="p-1.5 BackgroundStyle rounded cursor-pointer"
-                                    title="Copy link"
-                                  >
-                                    {copied ? (
-                                      <Check className="w-4 h-4 text-black" />
-                                    ) : (
-                                      <Copy className="w-4 h-4 text-black" />
-                                    )}
-                                  </button>
-                                  <button
-                                    onClick={() => setPublishView("edit-domain")}
-                                    className="p-1.5 BackgroundStyle rounded cursor-pointer"
-                                    title="Edit domain"
-                                  >
-                                    <Pencil className="w-4 h-4 text-black" />
-                                  </button>
-                                  <a
-                                    href={deployment.deploymentUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-1.5 BackgroundStyle rounded cursor-pointer"
-                                    title="Open in new tab"
-                                  >
-                                    <ExternalLink className="w-4 h-4 text-black" />
-                                  </a>
-                                </div>
-                              </div>
-
-                              <Button
-                                onClick={handlePublish}
-                                disabled={isPublishing}
-                                className="w-full"
+                <AnimatePresence>
+                  {openDropdown === "publish" && (
+                    <>
+                      {/* <Backdrop onClick={closeDropdown} /> */}
+                      <DropdownPanel className="w-96">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b">
+                          {getBackView() !== null && (
+                            <button
+                              onClick={() => setPublishView(getBackView()!)}
+                              className="p-1 BackgroundStyle rounded mr-2 cursor-pointer"
+                            >
+                              <svg
+                                width="16"
+                                height="16"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
                               >
-                                {isPublishing ? "Publishing..." : "Update Deployment"}
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="space-y-4">
-                              <div className="p-6 text-center text-sm text-gray-500 border rounded-sm">
-                                Your site is not published yet
-                              </div>
-                              <Button
-                                onClick={handlePublish}
-                                disabled={isPublishing}
-                                className="w-full"
-                              >
-                                {isPublishing ? "Publishing..." : "Publish Now"}
-                              </Button>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                              </svg>
+                            </button>
+                          )}
+                          <h3 className="font-semibold text-base flex-1">{getPublishTitle()}</h3>
+                          <button
+                            onClick={closeDropdown}
+                            className="p-1 hover:bg-gray-100 rounded cursor-pointer"
+                          >
+                            <X className="w-4 h-4 text-gray-500" />
+                          </button>
+                        </div>
+
+                        <AnimatePresence mode="wait">
+                          {/* ─── MAIN VIEW ──────────────────────────────── */}
+                          {publishView === "main" && (
+                            <div className="p-4 space-y-4">
+                              {deployment?.deploymentUrl ? (
+                                <div className="space-y-4">
+                                  <div className="flex items-center justify-between p-1 rounded-sm">
+                                    <div className="flex flex-col gap-1 flex-1 min-w-0">
+                                      <TooltipProvider>
+                                        <Tooltip>
+                                          <TooltipTrigger asChild>
+                                            <a
+                                              href={deployment.deploymentUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="flex items-center gap-2 min-w-0 hover:underline"
+                                            >
+                                              <Globe className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                              <p className="text-sm font-medium truncate min-w-0">
+                                                {deployment.subdomain}.falbor.xyz
+                                              </p>
+                                            </a>
+                                          </TooltipTrigger>
+                                          <TooltipContent>
+                                            Open Falbor subdomain
+                                          </TooltipContent>
+                                        </Tooltip>
+                                      </TooltipProvider>
+                                      {deployment.customDomain && (
+                                        <TooltipProvider>
+                                          <Tooltip>
+                                            <TooltipTrigger asChild>
+                                              <a
+                                                href={`https://${deployment.customDomain}`}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="flex items-center gap-2 min-w-0 hover:underline"
+                                              >
+                                                <Crown className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                                <p className="text-sm text-amber-700 truncate min-w-0">
+                                                  {deployment.customDomain}
+                                                </p>
+                                              </a>
+                                            </TooltipTrigger>
+                                            <TooltipContent>
+                                              Open custom domain
+                                            </TooltipContent>
+                                          </Tooltip>
+                                        </TooltipProvider>
+                                      )}
+                                      <div className="flex items-center gap-2 mt-1 min-w-0">
+                                        <List className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                        <p className="text-xs text-gray-500 truncate min-w-0">
+                                          Updated{" "}
+                                          {formatDistanceToNow(new Date(deployment.updatedAt), {
+                                            addSuffix: true,
+                                          })}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        onClick={handleCopyDeploymentUrl}
+                                        className="p-1.5 BackgroundStyle rounded cursor-pointer"
+                                        title="Copy link"
+                                      >
+                                        {copied ? (
+                                          <Check className="w-4 h-4 text-black" />
+                                        ) : (
+                                          <Copy className="w-4 h-4 text-black" />
+                                        )}
+                                      </button>
+                                      <button
+                                        onClick={() => setPublishView("edit-domain")}
+                                        className="p-1.5 BackgroundStyle rounded cursor-pointer"
+                                        title="Edit domain"
+                                      >
+                                        <Pencil className="w-4 h-4 text-black" />
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          setMetaLoaded(false)
+                                          setPublishView("site-meta")
+                                        }}
+                                        className="p-1.5 BackgroundStyle rounded cursor-pointer"
+                                        title="Site settings (favicon, title)"
+                                      >
+                                        <ImageIcon className="w-4 h-4 text-black" />
+                                      </button>
+                                      <a
+                                        href={deployment.deploymentUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="p-1.5 BackgroundStyle rounded cursor-pointer"
+                                        title="Open in new tab"
+                                      >
+                                        <ExternalLink className="w-4 h-4 text-black" />
+                                      </a>
+                                    </div>
+                                  </div>
+
+                                  {/* Custom Domain button */}
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          onClick={() => creditsData?.subscriptionTier && ["pro", "enterprise"].includes(creditsData.subscriptionTier) ? setPublishView("custom-domain") : null}
+                                          className={cn(
+                                            "w-full flex items-center gap-2 p-2.5 rounded-md border border-dashed border-gray-300 transition-colors text-sm text-gray-600 cursor-pointer",
+                                            creditsData?.subscriptionTier && ["pro", "enterprise"].includes(creditsData.subscriptionTier)
+                                              ? "hover:border-gray-400 hover:bg-gray-50"
+                                              : "opacity-50 cursor-not-allowed"
+                                          )}
+                                          disabled={!creditsData?.subscriptionTier || !["pro", "enterprise"].includes(creditsData.subscriptionTier)}
+                                        >
+                                          <Globe className="w-4 h-4" />
+                                          <span>Custom Domain</span>
+                                          <Crown className="w-3.5 h-3.5 text-amber-500 ml-auto" />
+                                        </button>
+                                      </TooltipTrigger>
+                                      {!creditsData?.subscriptionTier || !["pro", "enterprise"].includes(creditsData.subscriptionTier) && (
+                                        <TooltipContent>
+                                          You must purchase a Pro subscription to use custom domains
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
+
+                                  <Button
+                                    onClick={handlePublish}
+                                    disabled={isPublishing}
+                                    className="w-full"
+                                  >
+                                    {isPublishing ? "Publishing..." : "Update Deployment"}
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="space-y-4">
+                                  <div className="p-6 text-center text-sm text-gray-500 border rounded-sm">
+                                    Your site is not published yet
+                                  </div>
+                                  <Button
+                                    onClick={handlePublish}
+                                    disabled={isPublishing}
+                                    className="w-full"
+                                  >
+                                    {isPublishing ? "Publishing..." : "Publish Now"}
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           )}
-                        </motion.div>
-                      )}
 
-                      {publishView === "edit-domain" && deployment && (
-                        <motion.div
-                          key="edit-domain"
-                          initial={{ opacity: 0, x: 20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ duration: 0.2 }}
-                          className="p-4 space-y-4"
-                        >
-                          <div className="space-y-1">
-                            <p className="text-sm font-medium">Current</p>
-                            <p className="text-sm text-gray-600 break-all">{deployment.deploymentUrl}</p>
-                          </div>
+                          {/* ─── EDIT DOMAIN VIEW ───────────────────────── */}
+                          {publishView === "edit-domain" && deployment && (
+                            <ViewTransition viewKey="edit-domain">
+                              <div className="p-4 space-y-4">
+                                <div className="space-y-1">
+                                  <p className="text-sm font-medium">Current</p>
+                                  <p className="text-sm text-gray-600 break-all">
+                                    {deployment.deploymentUrl}
+                                  </p>
+                                </div>
 
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium">New subdomain</label>
-                            <Input
-                              value={newSubdomain}
-                              onChange={(e) =>
-                                setNewSubdomain(
-                                  e.target.value
-                                    .toLowerCase()
-                                    .replace(/[^a-z0-9-]/g, "")
-                                )
-                              }
-                              placeholder="your-site-name"
-                            />
-                            <p className="text-xs text-gray-500">
-                              Will be available at https://{newSubdomain || "your-site-name"}.falbor.xyz
-                            </p>
-                          </div>
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium">New subdomain</label>
+                                  <Input
+                                    value={newSubdomain}
+                                    onChange={(e) =>
+                                      setNewSubdomain(
+                                        e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "")
+                                      )
+                                    }
+                                    placeholder="your-site-name"
+                                  />
+                                  <p className="text-xs text-gray-500">
+                                    Will be available at https://
+                                    {newSubdomain || "your-site-name"}.falbor.xyz
+                                  </p>
+                                </div>
 
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              id="republish"
-                              checked={republishAfterUpdate}
-                              onChange={(e) => setRepublishAfterUpdate(e.target.checked)}
-                              className="h-4 w-4 rounded border-gray-300"
-                            />
-                            <label htmlFor="republish" className="text-sm text-gray-700">
-                              Republish site after updating
-                            </label>
-                          </div>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    id="republish"
+                                    checked={republishAfterUpdate}
+                                    onChange={(e) => setRepublishAfterUpdate(e.target.checked)}
+                                    className="h-4 w-4 rounded border-gray-300"
+                                  />
+                                  <label htmlFor="republish" className="text-sm text-gray-700">
+                                    Republish site after updating
+                                  </label>
+                                </div>
 
-                          <Button
-                            onClick={handleUpdateDomain}
-                            disabled={isSavingDomain || !newSubdomain.trim() || newSubdomain === deployment.subdomain}
-                            className="w-full"
-                          >
-                            {isSavingDomain ? "Saving..." : "Save & Update"}
-                          </Button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
+                                <Button
+                                  onClick={handleUpdateDomain}
+                                  disabled={
+                                    isSavingDomain ||
+                                    !newSubdomain.trim() ||
+                                    newSubdomain === deployment.subdomain
+                                  }
+                                  className="w-full"
+                                >
+                                  {isSavingDomain ? "Saving..." : "Save & Update"}
+                                </Button>
+                              </div>
+                            </ViewTransition>
+                          )}
+
+                          {/* ─── SITE META VIEW ─────────────────────────── */}
+                          {publishView === "site-meta" && (
+                            <ViewTransition viewKey="site-meta">
+                              <div className="p-4 space-y-4">
+                                {/* Favicon upload */}
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium">Favicon (Tab Icon)</label>
+                                  <div className="flex items-center gap-3">
+                                    {siteMeta.favicon ? (
+                                      <div className="relative w-10 h-10 border rounded flex items-center justify-center bg-gray-50">
+                                        <img
+                                          src={siteMeta.favicon}
+                                          alt="Favicon preview"
+                                          className="w-8 h-8 object-contain"
+                                        />
+                                        <button
+                                          onClick={() =>
+                                            setSiteMeta((p) => ({ ...p, favicon: null }))
+                                          }
+                                          className="absolute -top-1.5 -right-1.5 bg-white border rounded-full p-0.5 cursor-pointer hover:bg-gray-100"
+                                        >
+                                          <X className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="w-10 h-10 border rounded flex items-center justify-center bg-gray-50 border-dashed">
+                                        <ImageIcon className="w-5 h-5 text-gray-400" />
+                                      </div>
+                                    )}
+                                    <button
+                                      onClick={() => faviconInputRef.current?.click()}
+                                      className="flex items-center gap-1.5 text-sm px-3 py-1.5 border rounded hover:bg-gray-50 transition-colors cursor-pointer"
+                                    >
+                                      <Upload className="w-3.5 h-3.5" />
+                                      Upload
+                                    </button>
+                                    <input
+                                      ref={faviconInputRef}
+                                      type="file"
+                                      accept=".ico,.png,.svg,image/x-icon,image/png,image/svg+xml"
+                                      onChange={handleFaviconUpload}
+                                      className="hidden"
+                                    />
+                                  </div>
+                                  <p className="text-xs text-gray-500">
+                                    .ico, .png, or .svg. Max 64KB.
+                                  </p>
+                                </div>
+
+                                {/* Site title */}
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium">Tab Title</label>
+                                  <Input
+                                    value={siteMeta.siteTitle || ""}
+                                    onChange={(e) =>
+                                      setSiteMeta((p) => ({ ...p, siteTitle: e.target.value }))
+                                    }
+                                    placeholder="Falbor App"
+                                    maxLength={100}
+                                  />
+                                  <p className="text-xs text-gray-500">
+                                    Appears in the browser tab. Defaults to "Falbor App" if empty.
+                                  </p>
+                                </div>
+
+                                {/* Description */}
+                                <div className="space-y-2">
+                                  <label className="text-sm font-medium">Description</label>
+                                  <textarea
+                                    value={siteMeta.siteDescription || ""}
+                                    onChange={(e) =>
+                                      setSiteMeta((p) => ({
+                                        ...p,
+                                        siteDescription: e.target.value,
+                                      }))
+                                    }
+                                    placeholder="A brief description of your site..."
+                                    maxLength={500}
+                                    rows={3}
+                                    className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                                  />
+                                  <p className="text-xs text-gray-500">
+                                    SEO meta description. Auto-filled from project settings if
+                                    available.
+                                  </p>
+                                </div>
+
+                                <Button
+                                  onClick={handleSaveMeta}
+                                  disabled={isSavingMeta}
+                                  className="w-full"
+                                >
+                                  {isSavingMeta ? (
+                                    <span className="flex items-center gap-2">
+                                      <Loader2 className="w-4 h-4 animate-spin" />
+                                      Saving...
+                                    </span>
+                                  ) : (
+                                    "Save Settings"
+                                  )}
+                                </Button>
+                              </div>
+                            </ViewTransition>
+                          )}
+
+                          {/* ─── CUSTOM DOMAIN VIEW ─────────────────────── */}
+                          {publishView === "custom-domain" && (
+                            <ViewTransition viewKey="custom-domain">
+                              <div className="p-4 space-y-4">
+                                {creditsData?.subscriptionTier &&
+                                  ["pro", "enterprise"].includes(creditsData.subscriptionTier) ? (
+                                  <>
+                                    <p className="text-sm text-gray-600">
+                                      Search for a domain to connect to your site.
+                                    </p>
+                                    <div className="flex gap-2">
+                                      <Input
+                                        value={domainQuery}
+                                        onChange={(e) => setDomainQuery(e.target.value)}
+                                        placeholder="example.com"
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") handleDomainSearch()
+                                        }}
+                                      />
+                                      <Button
+                                        onClick={handleDomainSearch}
+                                        disabled={isSearchingDomains || !domainQuery.trim()}
+                                        size="sm"
+                                        className="px-3"
+                                      >
+                                        {isSearchingDomains ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          <Search className="w-4 h-4" />
+                                        )}
+                                      </Button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <div className="text-center space-y-3 py-4">
+                                    <Crown className="w-8 h-8 text-amber-500 mx-auto" />
+                                    <p className="text-sm font-medium">Pro Feature</p>
+                                    <p className="text-xs text-gray-500">
+                                      Custom domains are available with a Pro subscription.
+                                    </p>
+                                    <Link href="/pricing">
+                                      <Button size="sm" className="mt-2">
+                                        Upgrade to Pro
+                                      </Button>
+                                    </Link>
+                                  </div>
+                                )}
+                              </div>
+                            </ViewTransition>
+                          )}
+
+                          {/* ─── DOMAIN SEARCH RESULTS VIEW ─────────────── */}
+                          {publishView === "domain-search-results" && (
+                            <ViewTransition viewKey="domain-search-results">
+                              <div className="p-4 space-y-3">
+                                {domainResults.length === 0 ? (
+                                  <p className="text-sm text-gray-500 text-center py-4">
+                                    No domains found. Try a different search.
+                                  </p>
+                                ) : (
+                                  <div className="space-y-2 max-h-72 overflow-y-auto">
+                                    {domainResults.map((d) => (
+                                      <div
+                                        key={d.domain}
+                                        className={cn(
+                                          "flex items-center justify-between p-2.5 rounded-md border text-sm",
+                                          d.available
+                                            ? "border-gray-200 hover:border-gray-300"
+                                            : "border-gray-100 bg-gray-50 opacity-60"
+                                        )}
+                                      >
+                                        <div className="min-w-0 flex-1">
+                                          <p className="font-medium truncate">{d.domain}</p>
+                                          <p className="text-xs text-gray-500">
+                                            {d.available ? (
+                                              d.price > 0 ? (
+                                                `$${d.price.toFixed(2)}/yr`
+                                              ) : (
+                                                "Price on request"
+                                              )
+                                            ) : (
+                                              <span className="text-red-500">Unavailable</span>
+                                            )}
+                                          </p>
+                                        </div>
+                                        {d.available && (
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            onClick={() => handleSelectDomain(d)}
+                                            className="ml-2 cursor-pointer"
+                                          >
+                                            Select
+                                          </Button>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </ViewTransition>
+                          )}
+
+                          {/* ─── DOMAIN CHECKOUT VIEW ───────────────────── */}
+                          {publishView === "domain-checkout" && selectedDomain && (
+                            <ViewTransition viewKey="domain-checkout">
+                              <div className="p-5 space-y-5">
+                                {purchaseSuccess ? (
+                                  <div className="text-center space-y-4 py-6">
+                                    <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                                      <Check className="w-8 h-8 text-green-600" />
+                                    </div>
+                                    <p className="text-lg font-medium">Domain Purchased Successfully!</p>
+                                    <p className="text-sm text-gray-600">
+                                      {selectedDomain.domain} is now connected to your site.
+                                    </p>
+                                    <Button
+                                      size="sm"
+                                      onClick={() => {
+                                        setPurchaseSuccess(false)
+                                        setPublishView("main")
+                                      }}
+                                    >
+                                      Back to Publish
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
+                                      <p className="text-sm font-medium">Order Summary</p>
+                                      <div className="flex justify-between text-sm">
+                                        <span className="text-gray-700">{selectedDomain.domain}</span>
+                                        <span className="font-semibold">
+                                          {selectedDomain.price > 0
+                                            ? `$${selectedDomain.price.toFixed(2)} / year`
+                                            : <span className="text-red-600">Price unavailable</span>}
+                                        </span>
+                                      </div>
+                                      <div className="border-t pt-3 flex justify-between text-base font-bold">
+                                        <span>Total</span>
+                                        <span>
+                                          {selectedDomain.price > 0
+                                            ? `$${selectedDomain.price.toFixed(2)}`
+                                            : <span className="text-red-600">—</span>}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {selectedDomain.price <= 0 && (
+                                      <Button
+                                        variant="outline"
+                                        className="w-full flex items-center justify-center gap-2"
+                                        onClick={handleRefreshPrice}
+                                        disabled={isRefreshingPrice}
+                                      >
+                                        {isRefreshingPrice ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                          <RefreshCw className="w-4 h-4" />
+                                        )}
+                                        Refresh Price
+                                      </Button>
+                                    )}
+
+                                    {/* Official PayPal Buttons */}
+                                    <PayPalScriptProvider
+                                      options={{
+                                        clientId: process.env.NEXT_PUBLIC_PAYPAL_CLIENT_ID || "",
+                                        currency: "USD",
+                                        intent: "capture",
+                                        components: "buttons",
+                                      }}
+                                    >
+                                      <PayPalButtonWrapper
+                                        domain={selectedDomain.domain}
+                                        price={selectedDomain.price}
+                                        projectId={projectId}
+                                        onSuccess={() => {
+                                          setPurchaseSuccess(true)
+                                          setIsPurchasing(false)
+                                          if (deployment) {
+                                            setDeployment({
+                                              ...deployment,
+                                              customDomain: selectedDomain.domain,
+                                            })
+                                          }
+                                        }}
+                                      />
+                                    </PayPalScriptProvider>
+
+                                    {isPurchasing && (
+                                      <div className="flex items-center justify-center gap-2 py-4 text-gray-600">
+                                        <Loader2 className="w-5 h-5 animate-spin" />
+                                        Processing payment & domain registration...
+                                      </div>
+                                    )}
+
+                                    <p className="text-xs text-gray-500 text-center pt-2">
+                                      Secure payment processed by PayPal • Domain registered via GoDaddy
+                                    </p>
+                                  </>
+                                )}
+                              </div>
+                            </ViewTransition>
+                          )}
+                        </AnimatePresence>
+                      </DropdownPanel>
+                    </>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Profile */}
-              <button
-                onClick={() => setOpenDropdown(openDropdown === "profile" ? null : "profile")}
-                className="w-8 h-8 rounded-full overflow-hidden focus:outline-none cursor-pointer"
-              >
-                <img
-                  src={user.imageUrl || "/placeholder.svg"}
-                  alt={user.firstName || "User"}
-                  className="w-full h-full object-cover"
-                />
-              </button>
-
-              {/* Profile Dropdown - unchanged */}
-              {openDropdown === "profile" && (
-                <div
-                  ref={dropdownRef}
-                  className="absolute top-full right-0 mt-[-10px] w-60 BackgroundStyleButton rounded-md z-50 transition-all duration-200"
+              <div className="relative">
+                <button
+                  onClick={() => setOpenDropdown(openDropdown === "profile" ? null : "profile")}
+                  className="w-8 h-8 rounded-full overflow-hidden focus:outline-none cursor-pointer"
                 >
-                  <div className="flex flex-col p-1">
-                    {creditsData && (
-                      <div className="hover:bg-gray-50 rounded-sm p-1 flex items-center gap-3 w-full text-sm px-2 py-1.5 text-black/80">
-                        Next credits in{" "}
-                        <span className="font-mono">
-                          {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, "0")}
-                        </span>
-                      </div>
-                    )}
+                  <img
+                    src={user.imageUrl || "/placeholder.svg"}
+                    alt={user.firstName || "User"}
+                    className="w-full h-full object-cover"
+                  />
+                </button>
 
-                    <Link href="/projects" className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer">
-                      <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
-                        Projects
-                      </button>
-                    </Link>
+                <AnimatePresence>
+                  {openDropdown === "profile" && (
+                    <>
+                      {/* <Backdrop onClick={closeDropdown} /> */}
+                      <DropdownPanel className="w-60">
+                        <div className="flex flex-col p-1">
+                          {creditsData && (
+                            <div className="hover:bg-gray-50 rounded-sm p-1 flex items-center gap-3 w-full text-sm px-2 py-1.5 text-black/80">
+                              Next credits in{" "}
+                              <span className="font-mono">
+                                {Math.floor(timeLeft / 60)}:
+                                {(timeLeft % 60).toString().padStart(2, "0")}
+                              </span>
+                            </div>
+                          )}
 
-                    <Link href="/legal/privacy" className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer">
-                      <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
-                        Privacy Policy
-                      </button>
-                    </Link>
+                          <Link
+                            href="/projects"
+                            className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer"
+                          >
+                            <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
+                              Projects
+                            </button>
+                          </Link>
 
-                    <button
-                      onClick={() => {
-                        clerk.openUserProfile()
-                        setOpenDropdown(null)
-                      }}
-                      className="flex items-center gap-3 w-full text-sm px-2 p-1 py-1.5 hover:bg-gray-50 rounded-sm text-black/80 cursor-pointer"
-                    >
-                      Manage Account
-                    </button>
+                          <Link
+                            href="/pricing"
+                            className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer"
+                          >
+                            <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
+                              Pricing
+                            </button>
+                          </Link>
 
-                    <button
-                      onClick={() => {
-                        clerk.signOut()
-                        setOpenDropdown(null)
-                      }}
-                      className="flex items-center gap-3 w-full text-sm px-2 py-1.5 p-1 text-black/80 hover:bg-gray-50 rounded-sm cursor-pointer"
-                    >
-                      Logout
-                    </button>
-                  </div>
-                </div>
-              )}
+                          <Link
+                            href="/templates"
+                            className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer"
+                          >
+                            <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
+                              Templates
+                            </button>
+                          </Link>
+
+                          <Link
+                            href="/legal/terms"
+                            className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer"
+                          >
+                            <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
+                              Terms of Service
+                            </button>
+                          </Link>
+
+                          <Link
+                            href="/legal/privacy"
+                            className="hover:bg-gray-50 rounded-sm p-1 cursor-pointer"
+                          >
+                            <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 rounded">
+                              Privacy Policy
+                            </button>
+                          </Link>
+
+                          <button
+                            onClick={() => {
+                              clerk.openUserProfile()
+                              setOpenDropdown(null)
+                            }}
+                            className="flex items-center gap-3 w-full text-sm px-2 p-1 py-1.5 hover:bg-gray-50 rounded-sm text-black/80 cursor-pointer"
+                          >
+                            Manage Account
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              clerk.signOut()
+                              setOpenDropdown(null)
+                            }}
+                            className="flex items-center gap-3 w-full text-sm px-2 py-1.5 p-1 text-black/80 hover:bg-gray-50 rounded-sm cursor-pointer"
+                          >
+                            Logout
+                          </button>
+                        </div>
+                      </DropdownPanel>
+                    </>
+                  )}
+                </AnimatePresence>
+              </div>
             </>
           ) : (
             <>

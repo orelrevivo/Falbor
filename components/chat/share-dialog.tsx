@@ -256,7 +256,7 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
     if (!isOpen) return null
 
     return (
-        <div className="absolute top-full right-0 mt-[-10px] w-96 bg-white border rounded-lg z-50">
+        <div className="absolute top-full shadow-xs right-0 mt-[-10px] w-96 bg-white border rounded-lg z-50">
 
             {/* Header – completely unchanged */}
             <div className="flex items-center justify-between p-4 border-b">
