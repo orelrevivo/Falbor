@@ -18,14 +18,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Bad request' }, { status: 400 })
   }
 
-  const creditsMap: Record<string, number> = {
-    standard: 20,
-    pro: 50,
-    elite: 200,
+  const balanceMap: Record<string, number> = {
+    standard: 2000, // $20.00
+    pro: 5000,      // $50.00
+    teams: 10000,   // $100.00
   }
 
-  const creditsPerMonth = creditsMap[tier]
-  if (!creditsPerMonth) {
+  const balancePerMonth = balanceMap[tier]
+  if (!balancePerMonth) {
     return NextResponse.json({ error: 'Invalid tier' }, { status: 400 })
   }
 
@@ -34,13 +34,13 @@ export async function POST(request: NextRequest) {
   if (!record) {
     await db.insert(userCredits).values({
       userId,
-      credits: 0, // Will add below
+      balance: balancePerMonth, // Add initial month's balance
       lastRegenTime: new Date(),
       lastClaimedGiftId: null,
       lastMonthlyClaim: null,
       lastDispense: new Date(),
       subscriptionTier: tier,
-      creditsPerMonth,
+      balancePerMonth,
       paypalSubscriptionId: subscriptionId,
       stripeCustomerId: null,
     })
@@ -50,9 +50,9 @@ export async function POST(request: NextRequest) {
       .set({
         paypalSubscriptionId: subscriptionId,
         subscriptionTier: tier,
-        creditsPerMonth,
+        balancePerMonth,
         lastDispense: new Date(),
-        credits: sql`${userCredits.credits} + ${creditsPerMonth}`,
+        balance: sql`${userCredits.balance} + ${balancePerMonth}`,
       })
       .where(eq(userCredits.userId, userId))
   }

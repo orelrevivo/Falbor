@@ -20,34 +20,96 @@ import {
 } from "@/components/ui/dropdown-menu"
 
 const tiers = [
-  { name: "Standard", price: 10, credits: 20, plan: "Import from github", limits: "Unlimited projects" },
-  { name: "Pro", price: 20, credits: 50, plan: "Import from github", limits: "Unlimited projects" },
-  { name: "Elite", price: 60, credits: 200, plan: "Import from github", limits: "Unlimited projects" },
+  {
+    name: "Free",
+    price: 0,
+    balanceAmount: 500, // $5.00
+    features: [
+      "Public and private projects",
+      "$5.00 balance per month",
+      "Falbor branding on websites",
+      "Website hosting",
+      "Unlimited databases",
+    ],
+  },
+  {
+    name: "Standard",
+    price: 20,
+    balanceAmount: 2000, // $20.00
+    features: [
+      "Public and private projects",
+      "$20.00 balance per month",
+      "No Falbor branding on websites",
+      "Website hosting",
+      "Unlimited databases",
+      "Import from github",
+    ],
+  },
+  {
+    name: "Pro",
+    price: 50,
+    balanceAmount: 5000, // $50.00
+    popular: true,
+    features: [
+      "Public and private projects",
+      "$50.00 balance per month",
+      "No Falbor branding on websites",
+      "Website hosting",
+      "Unused balance roll over",
+      "Custom domain support",
+      "SEO boosting",
+      "Unlimited databases",
+      "Import from github",
+    ],
+    coming: "Advanced features coming soon",
+  },
+  {
+    name: "Teams",
+    price: 100,
+    balanceAmount: 10000, // $100.00
+    features: [
+      "$100.00 balance per month",
+      "Public and private projects",
+      "No Falbor branding on websites",
+      "Website hosting",
+      "Unused balance roll over",
+      "Custom domain support",
+      "SEO boosting",
+      "Unlimited databases",
+      "Import from github",
+    ],
+    coming: "Advanced features coming soon",
+  },
 ]
 
-const CREDIT_RATE = 0.25
+const BALANCE_RATE = 1.0 // $1 per $1 added
 
 function PricingContent() {
-  const [subscriptionTier, setSubscriptionTier] = useState('none')
+  const [subscriptionTier, setSubscriptionTier] = useState("none")
   const [isLoading, setIsLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [selectedCredits, setSelectedCredits] = useState(100)
+  const [selectedAmount, setSelectedAmount] = useState(100)
 
   useEffect(() => {
     async function fetchTier() {
       const res = await fetch("/api/user/credits")
       if (res.ok) {
         const data = await res.json()
-        setSubscriptionTier(data.subscriptionTier.toLowerCase())
+        setSubscriptionTier((data.subscriptionTier || "none").toLowerCase())
       }
       setIsLoading(false)
     }
     fetchTier()
   }, [])
 
-  const onApprove = async (data: any, actions: any, credits: number, tier?: string) => {
+  const onApprove = async (data: any, actions: any, balance: number, tier?: string) => {
     const details = await actions.order.capture()
-    const body: any = { orderId: details.id, credits }
+
+    const body: any = {
+      orderId: details.id,
+      amount: balance, // passed in cents
+    }
+
     if (tier) body.tier = tier.toLowerCase()
 
     const res = await fetch("/api/user/credits", {
@@ -57,110 +119,150 @@ function PricingContent() {
     })
 
     if (res.ok) {
-      alert("Payment successful! Credits added.")
+      alert("Payment successful! Balance added.")
+
       const refreshRes = await fetch("/api/user/credits")
       if (refreshRes.ok) {
         const refreshData = await refreshRes.json()
-        setSubscriptionTier(refreshData.subscriptionTier.toLowerCase())
+        setSubscriptionTier((refreshData.subscriptionTier || "none").toLowerCase())
       }
     } else {
-      alert("Payment succeeded but credit update failed.")
+      alert("Payment succeeded but balance update failed.")
     }
   }
 
-  const price = selectedCredits * CREDIT_RATE
+  const price = selectedAmount * BALANCE_RATE
 
   if (isLoading) return <div>Loading...</div>
 
   return (
-    <div className="bg-white h-screen">
+    <div className="bg-white min-h-screen mt-10">
       <div className="container mx-auto py-10">
-        <h1 className="text-3xl font-bold mb-8 text-center text-black mt-35 ml-2 absolute">
-          <span className="text-[#c15f3c]">Upgrade</span> Plans &amp; Add credits
+
+        {/* Title */}
+        <h1 className="text-3xl font-bold mb-12 text-center text-black">
+          <span className="text-black px-2 rounded-md BackgroundStyleButton">Upgrade</span> Plans &amp; Add Balance
         </h1>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-50">
-          {tiers.map((tier) => {
-            const isCurrentTier = subscriptionTier === tier.name.toLowerCase()
+        {/* CONNECTED PRICING TABLE */}
+        <div className="flex flex-col md:flex-row max-w-7xl mx-auto border border-[#e6e6e6] rounded-md overflow-hidden">
+
+          {tiers.map((tier, index) => {
+            const isCurrentTier =
+              (subscriptionTier === "none" && tier.name === "Free") ||
+              subscriptionTier === tier.name.toLowerCase()
+
             return (
               <div
                 key={tier.name}
-                className="border border-[#e6e6e6] p-6 rounded-lg bg-[#e6e6e63d] text-black"
+                className={`
+                  flex-1 p-6 text-black relative
+                  ${tier.popular ? "bg-white z-10 scale-105 shadow-xl" : "bg-white"}
+                  ${index !== tiers.length - 1 ? "md:border-r border-[#e6e6e6]" : ""}
+                `}
               >
+                {/* Popular badge */}
+                {tier.popular && (
+                  <div className="absolute top-4 right-4 text-sm BackgroundStyleButton text-black px-2 py-1 rounded-md">
+                    Popular
+                  </div>
+                )}
+
                 <h2 className="text-2xl font-semibold mb-2">{tier.name}</h2>
-                <p className="text-xl mb-4">
-                  ${tier.price} <span className="text-sm">/month</span>
+
+                <p className="text-3xl font-bold mb-4">
+                  ${tier.price}
+                  <span className="text-sm font-normal"> /month</span>
                 </p>
-                <ul className="mb-6">
-                  <li>
-                    <span className="mr-[2px] inline-flex"><Verified className="text-white/80" /></span>
-                    <span className="relative bottom-1.5 left-1">{tier.credits} of usage credit per month</span>
-                  </li>
-                  <li>
-                    <span className="mr-[2px] inline-flex"><Verified className="text-white/80" /></span>
-                    <span className="relative bottom-1.5 left-1">{tier.plan}</span>
-                  </li>
-                  <li>
-                    <span className="mr-[2px] inline-flex"><Verified className="text-white/80" /></span>
-                    <span className="relative bottom-1.5 left-1">{tier.limits}</span>
-                  </li>
+
+                {/* Features */}
+                <ul className="mb-6 space-y-2">
+                  {tier.features.map((feature, i) => (
+                    <li key={i} className="flex items-start gap-2">
+                      <Verified className="text-green-500 w-4 h-4 mt-1" />
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                  {tier.coming && (
+                    <li className="flex items-start gap-2 bg-green-100 text-gray-800 px-2 py-1 rounded-sm">
+                      <span>{tier.coming}</span>
+                    </li>
+                  )}
                 </ul>
 
+                {/* Actions */}
                 {isCurrentTier ? (
                   <div className="text-center">
                     <p className="text-lg font-semibold mb-4">You are on this plan</p>
-                    <button
-                      onClick={() => setShowModal(true)}
-                      className="bg-[#e4e4e48c] text-black px-4 py-2 rounded w-full cursor-pointer"
-                    >
-                      Add More Credits
-                    </button>
+
+                    {tier.name !== "Free" && (
+                      <button
+                        onClick={() => setShowModal(true)}
+                        className="BackgroundStyleButton text-black px-3 py-1.5 rounded w-full cursor-pointer"
+                      >
+                        Add More Balance
+                      </button>
+                    )}
                   </div>
                 ) : (
-                  <PayPalButtons
-                    style={{ layout: "vertical" }}
-                    createOrder={(data, actions) => {
-                      return actions.order.create({
-                        intent: "CAPTURE",
-                        purchase_units: [
-                          { amount: { value: tier.price.toString(), currency_code: "USD" } },
-                        ],
-                      })
-                    }}
-                    onApprove={(data, actions) => onApprove(data, actions, tier.credits, tier.name)}
-                  />
+                  tier.name !== "Free" && (
+                    <PayPalButtons
+                      style={{ layout: "vertical" }}
+                      createOrder={(data, actions) => {
+                        return actions.order.create({
+                          intent: "CAPTURE",
+                          purchase_units: [
+                            {
+                              amount: {
+                                value: tier.price.toString(),
+                                currency_code: "USD",
+                              },
+                            },
+                          ],
+                        })
+                      }}
+                      onApprove={(data, actions) =>
+                        onApprove(data, actions, tier.balanceAmount, tier.name)
+                      }
+                    />
+                  )
                 )}
               </div>
             )
           })}
         </div>
 
+        {/* ADD CREDITS MODAL */}
         <Dialog open={showModal} onOpenChange={setShowModal}>
           <DialogContent className="z-[9999] max-w-sm overflow-y-auto bg-[#ffffff] border-0 p-0 sm:max-w-md">
             <DialogHeader className="p-6 pb-6 mb-[-30px]">
-              <DialogTitle className="text-black text-xl">Select Credits to Add</DialogTitle>
+              <DialogTitle className="text-black text-xl">
+                Select Amount to Add
+              </DialogTitle>
             </DialogHeader>
 
             <div className="px-6 pb-6 space-y-4">
-              {/* Dropdown Menu for Credits */}
               <DropdownMenu>
                 <DropdownMenuTrigger className="w-full bg-white border-2 border-[#c15f3c] rounded-md px-3 py-2 text-left flex justify-between items-center">
-                  {selectedCredits} credits - ${price.toFixed(2)}
+                  ${selectedAmount}.00 balance - ${price.toFixed(2)}
                   <ChevronDown className="ml-2" />
                 </DropdownMenuTrigger>
+
                 <DropdownMenuContent
                   className="w-full z-[99999] shadow-lg"
                   side="bottom"
                   align="start"
                 >
-                  {[100, 200, 300, 400, 500, 600, 700, 800, 900, 1000].map((amt) => (
-                    <DropdownMenuItem
-                      key={amt}
-                      onSelect={() => setSelectedCredits(amt)}
-                    >
-                      {amt} credits - ${(amt * CREDIT_RATE).toFixed(2)}
-                    </DropdownMenuItem>
-                  ))}
+                  {[5, 10, 20, 50, 100].map(
+                    (amt) => (
+                      <DropdownMenuItem
+                        key={amt}
+                        onSelect={() => setSelectedAmount(amt)}
+                      >
+                        ${amt}.00 balance - ${(amt * BALANCE_RATE).toFixed(2)}
+                      </DropdownMenuItem>
+                    )
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
 
@@ -169,11 +271,20 @@ function PricingContent() {
                 createOrder={(data, actions) => {
                   return actions.order.create({
                     intent: "CAPTURE",
-                    purchase_units: [{ amount: { value: price.toString(), currency_code: "USD" } }],
+                    purchase_units: [
+                      {
+                        amount: {
+                          value: price.toString(),
+                          currency_code: "USD",
+                        },
+                      },
+                    ],
                   })
                 }}
                 onApprove={(data, actions) =>
-                  onApprove(data, actions, selectedCredits).then(() => setShowModal(false))
+                  onApprove(data, actions, selectedAmount * 100).then(() =>
+                    setShowModal(false)
+                  )
                 }
               />
             </div>
@@ -202,12 +313,14 @@ export default function Pricing() {
   }
 
   return (
-    <PayPalScriptProvider options={{
-      clientId: paypalClientId,
-      currency: "USD",
-      intent: "capture",
-      components: "buttons",
-    }}>
+    <PayPalScriptProvider
+      options={{
+        clientId: paypalClientId,
+        currency: "USD",
+        intent: "capture",
+        components: "buttons",
+      }}
+    >
       <PricingContent />
     </PayPalScriptProvider>
   )

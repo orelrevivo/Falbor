@@ -103,24 +103,7 @@ function ProjectCard({ project, user }: { project: Project; user: User }) {
 
     return (
         <Link href={`/chat/${project.id}`} className="group block">
-            <Card className="overflow-hidden border border-zinc-200 hover:border-black shadow-none bg-white relative">
-                <div className="aspect-[16/9] w-full bg-zinc-100 relative group-hover:scale-105 transition-transform duration-500 overflow-hidden">
-                    {project.preview_url ? (
-                        <img src={project.preview_url} alt={project.title} className="w-full h-full object-cover" />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-zinc-50">
-                            <span className="text-zinc-800">No Preview Available</span>
-                        </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors" />
-
-                    <div className="absolute top-3 left-3">
-                        <Badge variant={project.is_owner ? "default" : "secondary"} className="bg-white/90 backdrop-blur-md text-zinc-900 border-none shadow-sm text-[10px] font-bold uppercase tracking-wider">
-                            {project.is_owner ? "Owner" : "Collaborator"}
-                        </Badge>
-                    </div>
-                </div>
-
+            <Card className="overflow-hidden border-none hover:border-1 shadow-none bg-white relative">
                 <CardContent className="p-5 space-y-4">
                     <div className="flex items-start justify-between gap-2">
                         <div className="space-y-1">
@@ -137,7 +120,7 @@ function ProjectCard({ project, user }: { project: Project; user: User }) {
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-2 border-t border-zinc-100">
+                    <div className="flex items-center justify-between pt-2">
                         <div className="flex items-center gap-2">
                             <Avatar className="h-6 w-6 border border-white">
                                 <AvatarImage src={user.imageUrl} />

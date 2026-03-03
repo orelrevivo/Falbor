@@ -15,7 +15,7 @@ function Footer() {
         </Link>
 
         {/* Divider Image (Centered Between Links) */}
-         <div className="h-5 w-px bg-gray-300 mx-2" />
+        <div className="h-5 w-px bg-gray-300 mx-2" />
 
         {/* Terms Link */}
         <Link
@@ -24,20 +24,20 @@ function Footer() {
         >
           Terms
         </Link>
-        
+
         {/* Divider Image (Centered Between Links) */}
-         <div className="h-5 w-px bg-gray-300 mx-2" />
+        <div className="h-5 w-px bg-gray-300 mx-2" />
 
         {/* Terms Link */}
         <Link
-          href="https://discord.gg/FmPzZQm6"
+          href="https://discord.gg/pDuZRV5hsf"
           className="ml-1 text-[14px] text-black/75 hover:text-black/95 transition-colors inline-flex items-center"
         >
           Discord
         </Link>
-        
+
         {/* Divider Image (Centered Between Links) */}
-         <div className="h-5 w-px bg-gray-300 mx-2" />
+        <div className="h-5 w-px bg-gray-300 mx-2" />
 
         {/* Terms Link */}
         <Link
@@ -46,7 +46,7 @@ function Footer() {
         >
           Reddit
         </Link>
-          {/* <Link href={'https://discord.gg/FmPzZQm6'} className="opacity-30 hover:opacity-25">
+        {/* <Link href={'https://discord.gg/FmPzZQm6'} className="opacity-30 hover:opacity-25">
             <img className="absolute right-15 bottom-2.5" width={24} src="/icons/discord.png" alt="" />
           </Link>
           <Link href={'https://www.reddit.com/r/Falbor/?feed=home'} className="opacity-30 hover:opacity-25">

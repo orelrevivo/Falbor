@@ -23,6 +23,7 @@ export const projects = pgTable("projects", {
     .default(null),
   sandboxId: text("sandbox_id"),
   selectedModel: text("selected_model").default("gemini").notNull(),
+  activeMessageId: uuid("active_message_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   isAutomated: boolean("is_automated").default(false).notNull(),
@@ -99,9 +100,12 @@ export const messages = pgTable("messages", {
   content: text("content").notNull(),
   hasArtifact: boolean("has_artifact").default(false).notNull(),
   thinking: text("thinking"),
+  versionName: text("version_name"),
   searchQueries: jsonb("search_queries").$type<{ query: string; results: string }[] | null>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   isAutomated: boolean("is_automated").default(false).notNull(),
+  tokensUsed: integer("tokens_used"),
+  cost: integer("cost"), // in cents
 })
 
 export const files = pgTable("files", {
@@ -151,13 +155,13 @@ export const giftEvents = pgTable("gift_events", {
 
 export const userCredits = pgTable("user_credits", {
   userId: text("user_id").primaryKey(),
-  credits: integer("credits").notNull().default(10),
+  balance: integer("balance").notNull().default(500), // in cents ($5.00)
   lastRegenTime: timestamp("last_regen_time").defaultNow().notNull(),
   lastClaimedGiftId: uuid("last_claimed_gift_id").references(() => giftEvents.id),
   lastMonthlyClaim: timestamp("last_monthly_claim"),
   lastDispense: timestamp("last_dispense"),
   subscriptionTier: text("subscription_tier").default("none").notNull(),
-  creditsPerMonth: integer("credits_per_month").default(0).notNull(),
+  balancePerMonth: integer("balance_per_month").default(0).notNull(), // in cents
   paypalSubscriptionId: text("paypal_subscription_id"),
   stripeCustomerId: text("stripe_customer_id"),
 })

@@ -54,11 +54,10 @@ export function SettingsSidebar({ activeSection, onSectionChange }: SettingsSide
   const groups = Array.from(new Set(menuItems.map((item) => item.group)))
 
   return (
-    <div className="w-72 border-r border-[#d6d6d6] p-1">
+    <div className="w-56">
       {groups.map((group) => (
-        <div key={group} className="mb-5 last:mb-0">
-          <h3 className="text-sm font-semibold text-black/80 mb-4 mt-2 ml-2">{group}</h3>
-          <div className="space-y-2 mt-[-8px]">
+        <div key={group} className="w-[250px] flex flex-col bg-white">
+          <div className="flex-1 p-3 space-y-1">
             {menuItems
               .filter((item) => item.group === group)
               .map((item) => {
@@ -68,14 +67,16 @@ export function SettingsSidebar({ activeSection, onSectionChange }: SettingsSide
                     key={item.id}
                     onClick={() => onSectionChange(item.id)}
                     className={cn(
-                      "flex w-full items-center gap-1 pl-0 px-2 pr-2 py-2 mb-1 group rounded-sm hover:bg-[#e4e4e4a8] cursor-pointer text-[13px] relative group",
-                      activeSection === item.id ? "bg-[#e4e4e4a8]" : "",
+                      "w-full flex items-center gap-2.5 cursor-pointer h-8 px-3 py-2 rounded-md text-[13px] font-medium text-left",
+                      activeSection === item.id
+                        ? "bg-white text-gray-900 BackgroundStyleButton"
+                        : "text-gray-500 hover:text-gray-900 hover:bg-gray-100/50"
                     )}
                   >
                     <Icon className="w-4 h-4" />
                     {item.label}
                     {item.id === "automations" && (
-                      <Badge className="ml-2 absolute right-1" variant="secondary">
+                      <Badge className="ml-5" variant="secondary">
                         Beta
                       </Badge>
                     )}

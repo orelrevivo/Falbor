@@ -216,3 +216,50 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: "Failed to delete file" }, { status: 500 })
   }
 }
+export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+
+    const { id: projectId } = await params
+    const body = await req.json()
+    const { path, content } = body
+
+    // Only owner or collaborator can update content
+    const [project] = await db
+      .select()
+      .from(projects)
+      .leftJoin(
+        projectCollaborators,
+        and(
+          eq(projectCollaborators.projectId, projects.id),
+          eq(projectCollaborators.userId, userId)
+        )
+      )
+      .where(
+        and(
+          eq(projects.id, projectId),
+          or(
+            eq(projects.userId, userId),
+            eq(projectCollaborators.userId, userId)
+          )
+        )
+      )
+
+    if (!project) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 })
+    }
+
+    await db
+      .update(files)
+      .set({ content, updatedAt: new Date() })
+      .where(and(eq(files.projectId, projectId), eq(files.path, path)))
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error("[v0] Update file content error:", error)
+    return NextResponse.json({ error: "Failed to update file content" }, { status: 500 })
+  }
+}

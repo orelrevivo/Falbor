@@ -70,18 +70,18 @@ function TemplateCard({ template }: { template: TemplateData }) {
       onClick={handleCardClick}
     >
       {/* Image Container */}
-      <div className="relative aspect-video overflow-hidden bg-muted rounded-lg border">
+      <div className="relative aspect-video overflow-hidden bg-muted rounded-lg">
         <img
           src={template.mainImage || "/placeholder.svg"}
           alt={template.title}
-          className="w-full h-full transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-full"
         />
 
         {/* Hover Overlay with Details Button */}
         <div
-          className={`absolute inset-0 bg-black/10 flex items-center justify-center transition-opacity duration-200 ${isHovered ? "opacity-100" : "opacity-0"}`}
+          className={`absolute inset-0 bg-white/70 flex items-center justify-center transition-opacity duration-200 ${isHovered ? "opacity-100" : "opacity-0"}`}
         >
-          <div className="flex items-center gap-2 px-4 py-2 shadow rounded-full bg-white/90 text-foreground font-medium text-sm">
+          <div className="flex items-center gap-2 px-4 py-1 rounded-sm shadow-xs bg-white border text-foreground font-medium text-sm">
             <Eye className="w-4 h-4" />
             Details
           </div>
@@ -91,7 +91,7 @@ function TemplateCard({ template }: { template: TemplateData }) {
       {/* Content */}
       <div className="p-4">
         {/* Title */}
-        <h3 className="font-semibold text-foreground text-lg line-clamp-1 group-hover:text-indigo-600 transition-colors">
+        <h3 className="font-semibold text-foreground text-lg line-clamp-1">
           {template.title}
         </h3>
 

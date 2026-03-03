@@ -132,6 +132,31 @@ export function WebContainerPreview({
     }, [])
 
     useEffect(() => {
+        const handleRunCommand = async (e: any) => {
+            if (!webcontainerInstance || !e.detail?.command) return;
+            const command = e.detail.command;
+
+            const terminal = xtermRef.current;
+            terminal?.writeln(`\r\n\x1b[34m[Terminal] Running: ${command}\x1b[0m`);
+
+            const [cmd, ...args] = command.split(' ');
+            try {
+                const proc = await webcontainerInstance.spawn(cmd, args);
+                proc.output.pipeTo(new WritableStream({
+                    write(data) { terminal?.write(data); }
+                }));
+                await proc.exit;
+                terminal?.writeln(`\r\n\x1b[32m[Terminal] Command finished successfully.\x1b[0m`);
+            } catch (err) {
+                terminal?.writeln(`\r\n\x1b[31m[Terminal] Error: ${err}\x1b[0m`);
+            }
+        };
+
+        window.addEventListener('terminal-run-command', handleRunCommand);
+        return () => window.removeEventListener('terminal-run-command', handleRunCommand);
+    }, [webcontainerInstance]);
+
+    useEffect(() => {
         if (hasBooted.current) return
 
         hasBooted.current = true
@@ -215,8 +240,11 @@ export function WebContainerPreview({
                                     "tailwindcss": "^3.4.13",
                                     "autoprefixer": "^10.4.20",
                                     "postcss": "^8.4.47",
-                                    "lucide-react": "^0.105.0",
+                                    "lucide-react": "^0.453.0",
                                     "react-router-dom": "^6.26.2",
+                                    "framer-motion": "^11.11.11",
+                                    "clsx": "^2.1.1",
+                                    "tailwind-merge": "^2.5.4",
                                     "@supabase/supabase-js": "^2.45.4"
                                 },
                                 scripts: {

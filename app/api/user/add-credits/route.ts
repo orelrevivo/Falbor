@@ -12,9 +12,8 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { amount = 4, reason = "added_api_key" } = body
+    const { amount = 500, reason = "added_api_key" } = body // Default $5.00
 
-    // Get current credits
     let creditRecord = await db
       .select()
       .from(userCredits)
@@ -26,7 +25,7 @@ export async function POST(request: Request) {
         .insert(userCredits)
         .values({
           userId,
-          credits: amount,
+          balance: amount,
         })
         .returning()
         .then((r) => r[0])
@@ -34,16 +33,16 @@ export async function POST(request: Request) {
       await db
         .update(userCredits)
         .set({
-          credits: creditRecord.credits + amount,
+          balance: creditRecord.balance + amount,
         })
         .where(eq(userCredits.userId, userId))
     }
 
-    return new Response(JSON.stringify({ success: true, newCredits: (creditRecord.credits || 0) + amount }), {
+    return new Response(JSON.stringify({ success: true, newBalance: (creditRecord?.balance || 0) + amount }), {
       status: 200,
     })
   } catch (error) {
     console.error("[API/add-credits] Error:", error)
-    return new Response(JSON.stringify({ error: "Failed to add credits" }), { status: 500 })
+    return new Response(JSON.stringify({ error: "Failed to add balance" }), { status: 500 })
   }
 }

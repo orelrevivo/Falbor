@@ -3,12 +3,14 @@
 import Link from "next/link"
 import { useUser, useClerk, useAuth } from "@clerk/nextjs"
 import { useState, useRef, useEffect } from "react"
-import { Download, Share2, Copy, Check, Loader2 } from "lucide-react"
+import { Download, Share2, Copy, Check, Loader2, TerminalIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 interface NavbarProps {
   projectId: string
   handleDownload: () => void
+  isTerminalOpen?: boolean
+  onToggleTerminal?: () => void
 }
 
 interface Collaborator {
@@ -17,7 +19,7 @@ interface Collaborator {
   name: string
 }
 
-export function Navbar({ projectId, handleDownload }: NavbarProps) {
+export function Navbar({ projectId, handleDownload, isTerminalOpen, onToggleTerminal }: NavbarProps) {
   const { user, isLoaded } = useUser()
   const { getToken } = useAuth()
   const clerk = useClerk()
@@ -157,6 +159,19 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
         </Link>
 
         <div className="flex items-center gap-4">
+
+          {/* Terminal */}
+          {onToggleTerminal && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onToggleTerminal}
+              className={`border-white/20 hover:bg-white/10 text-white ${isTerminalOpen ? 'bg-white/20' : ''}`}
+            >
+              <TerminalIcon size={16} className="mr-2" />
+              Terminal
+            </Button>
+          )}
 
           {/* Download */}
           <Button

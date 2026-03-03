@@ -26,7 +26,12 @@ import {
   Zap,
   Circle,
   Database,
+  MoreHorizontal,
+  File,
+  History as HistoryIcon,
+  Terminal as TerminalIcon,
 } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
 import { TextShimmer } from "@/components/ui/text-shimmer"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
@@ -38,21 +43,31 @@ import { SandpackProvider, SandpackPreview } from "@codesandbox/sandpack-react"
 import { useUser } from "@clerk/nextjs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { motion, AnimatePresence } from "framer-motion"
-import { Smartphone } from "lucide-react"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Smartphone, MoreVertical } from "lucide-react"
 
 interface Message {
   id: string
   role: "user" | "assistant"
   content: string
   hasArtifact?: boolean
-  createdAt?: string
+  createdAt?: string | Date
+  versionName?: string | null
+  thinking?: string | null
+  searchQueries?: any[] | null
+  isAutomated?: boolean
   imageData?: Array<{ url: string; mimeType: string }> | null
   uploadedFiles?: Array<{ name: string; content: string; type: string }> | null
+  tokensUsed?: number | null
+  cost?: number | null
 }
 
 interface MessageListProps {
   messages: Message[]
   projectId: string
+  activeMessageId?: string | null
+  onActivateVersion?: (messageId: string) => void
   onArtifactClick?: (artifactId: string) => void
   onCodeExtracted?: (files: Array<{ filename: string; code: string; language: string }>) => void
   onCopy?: (content: string) => void
@@ -130,6 +145,14 @@ function parseAIResponse(content: string) {
     .replace(/<AIOnly>([\s\S]*?)<\/AIOnly>/gi, "")
 
   const matches: Array<{ type: string; start: number; fullMatch: string; content: any }> = []
+  let versionName: string | null = null
+
+  // Extract versionName if present
+  const vnMatch = processedContent.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+  if (vnMatch) {
+    versionName = vnMatch[1].trim()
+    processedContent = processedContent.replace(vnMatch[0], "")
+  }
 
   for (const [type, regex] of Object.entries(tagRegexes)) {
     for (const match of processedContent.matchAll(regex)) {
@@ -327,7 +350,7 @@ function parseAIResponse(content: string) {
     }
   }
 
-  return { parts, codeBlocks, files: [] }
+  return { parts, codeBlocks, files: [], versionName }
 }
 
 function parseUserContent(content: string): { parts: UserPart[]; mainText: string } {
@@ -457,6 +480,8 @@ function parseUserContent(content: string): { parts: UserPart[]; mainText: strin
 export function MessageList({
   messages,
   projectId,
+  activeMessageId,
+  onActivateVersion,
   onArtifactClick,
   onCodeExtracted,
   onCopy,
@@ -573,12 +598,22 @@ export function MessageList({
 
   const handleCodeSelect = useCallback(
     (block: { filename: string; code: string; language: string }) => {
+      // Main button click now strictly opens "Code View" (no diff)
+      setSelectedOldCode(null)
+      setSelectedCode(block)
+    },
+    [],
+  )
+
+  // Forces diff view — new files show same code on both sides
+  const handleViewChanges = useCallback(
+    (block: { filename: string; code: string; language: string }) => {
       const hist = fileHistory[block.filename] || []
       if (hist.length > 1) {
-        const oldCode = hist[hist.length - 2].code
-        setSelectedOldCode(oldCode)
+        setSelectedOldCode(hist[hist.length - 2].code)
       } else {
-        setSelectedOldCode(null)
+        // New file: show same code on both sides so user still sees "diff" view
+        setSelectedOldCode(block.code)
       }
       setSelectedCode(block)
     },
@@ -602,7 +637,7 @@ export function MessageList({
         setThinkingTimer(prev => prev + 1)
       }, 1000)
     } else {
-      setThinkingTimer(0)
+      setThinkingTimer(prev => (prev !== 0 ? 0 : prev))
     }
 
     return () => clearInterval(interval)
@@ -775,7 +810,7 @@ export function MessageList({
                                                   content: `Supabase URL: ${part.content.supabaseUrl}\nAnon Key: ${part.content.anonKey}`,
                                                 })
                                               }
-                                              className="flex items-center gap-2 px-2 py-1 rounded-lg border border-green-200 bg-green-50 hover:bg-green-100 transition-all cursor-pointer text-xs text-green-700"
+                                              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
                                               aria-label="View database connection"
                                             >
                                               <CheckCircle2 className="w-3 h-3" />
@@ -804,7 +839,7 @@ export function MessageList({
                                                   content: part.content.json,
                                                 })
                                               }
-                                              className="flex items-center gap-2 px-2 py-1 rounded-lg border border-purple-200 bg-purple-50 hover:bg-purple-100 transition-all cursor-pointer text-xs text-purple-700"
+                                              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
                                               aria-label={`View design system ${part.content.name}`}
                                             >
                                               <div
@@ -877,12 +912,15 @@ export function MessageList({
               <div className="w-full">
                 <AIMessageContent
                   message={message}
-                  isStreaming={isStreaming}
+                  isStreaming={index === messages.length - 1 && isStreaming}
                   thinkingTimer={thinkingTimer}
                   expandedSections={expandedSections[message.id] || {}}
+                  activeMessageId={activeMessageId}
+                  onActivateVersion={onActivateVersion}
                   onToggleSection={(section) => toggleSection(message.id, section)}
                   onArtifactClick={onArtifactClick}
                   onCodeSelect={handleCodeSelect}
+                  onViewChanges={handleViewChanges}
                   onOpenFullModal={() => openFullMessageModal(message)}
                   onOpenPreview={onOpenPreview}
                 />
@@ -1155,6 +1193,7 @@ export function MessageList({
                 onToggleSection={toggleModalSection}
                 onArtifactClick={onArtifactClick}
                 onCodeSelect={handleCodeSelect}
+                onViewChanges={handleViewChanges}
                 onOpenFullModal={() => { }}
                 onOpenPreview={onOpenPreview}
               />
@@ -1221,9 +1260,12 @@ function AIMessageContent({
   isStreaming,
   thinkingTimer = 0,
   expandedSections,
+  activeMessageId,
+  onActivateVersion,
   onToggleSection,
   onArtifactClick,
   onCodeSelect,
+  onViewChanges,
   onOpenFullModal,
   onOpenPreview,
 }: {
@@ -1231,9 +1273,12 @@ function AIMessageContent({
   isStreaming: boolean
   thinkingTimer?: number
   expandedSections: Record<string, boolean>
+  activeMessageId?: string | null
+  onActivateVersion?: (id: string) => void
   onToggleSection: (section: string) => void
   onArtifactClick?: (artifactId: string) => void
   onCodeSelect: (block: { filename: string; code: string; language: string }) => void
+  onViewChanges?: (block: { filename: string; code: string; language: string }) => void
   onOpenFullModal: () => void
   onOpenPreview?: (
     version: string,
@@ -1241,7 +1286,8 @@ function AIMessageContent({
     codeBlocks: Array<{ filename: string; code: string; language: string }>,
   ) => void
 }) {
-  const { parts, codeBlocks, files } = parseAIResponse(message.content)
+  const { parts, codeBlocks, files, versionName: parsedVersionName } = parseAIResponse(message.content)
+  const versionName = message.versionName || parsedVersionName
 
   const markdownComponents = {
     strong: ({ children }: { children?: React.ReactNode }) => (
@@ -1373,11 +1419,7 @@ function AIMessageContent({
       case "tasks":
         if (!Array.isArray(content)) return null
         return (
-          <div className="space-y-2 p-3 bg-blue-50/30 border border-blue-100 rounded-md mb-4 shadow-sm">
-            <h1 className="font-semibold flex items-center gap-2 text-blue-700 text-sm">
-              <List className="h-4 w-4" />
-              Progress Tasks
-            </h1>
+          <div className="space-y-2 p rounded-md mb-4">
             <div className="space-y-1.5 mt-2">
               {content.map((task: { text: string; status: string }, idx: number) => (
                 <div key={idx} className="flex items-center gap-2 text-sm">
@@ -1424,11 +1466,7 @@ function AIMessageContent({
         )
       case "fileSearch":
         return (
-          <div className="p-3 bg-[#e4e4e433] border rounded-sm space-y-2">
-            <div className="flex items-center gap-2 text-blue-600 font-medium">
-              <Search className="w-4 h-4" />
-              <span>Query: "{content.query}"</span>
-            </div>
+          <div className="px-2 py-1 border rounded-sm space-y-2">
             <div className="text-[13px] text-gray-700 whitespace-pre-wrap">{content.results}</div>
           </div>
         )
@@ -1443,51 +1481,131 @@ function AIMessageContent({
             <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
               {content}
             </div>
+            {/* Historical Version Button - show at end of summary */}
+            {type === "reviewedWork" && message.versionName && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <div
+                  className={cn(
+                    "inline-flex rounded-md transition-all duration-200",
+                    activeMessageId === message.id && "bg-blue-100 p-1"
+                  )}
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onActivateVersion?.(message.id)}
+                    className={cn(
+                      "h-9 px-4 gap-2 dransition-all duration-200 bg-white border hover:bg-white text-gray-900",
+                      activeMessageId === message.id
+                        ? "border-blue-500 shadow-sm"
+                        : ""
+                    )}
+                  >
+                    <HistoryIcon className="w-4 h-4" />
+                    <span>{message.versionName}</span>
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         )
       case "mobileReview":
       case "deepConclusion":
       case "internalThought":
         return null
-      case "codeBlock": {
-        // Show only a file button - clicking opens the code in a modal
-        // Never show raw code inline in the chat message
+      case "customAction":
         return (
-          <div className="mt-2 mb-2">
-            <div className="flex items-center gap-3">
+          <div className="mt-2 mb-4">
+            <Button
+              size="sm"
+              className="bg-black hover:bg-black/90 text-white rounded-lg flex items-center gap-2 px-4 shadow-md transition-all hover:scale-[1.02]"
+              onClick={() => {
+                const cmd = typeof content === 'object' ? content.content : content;
+                window.dispatchEvent(new CustomEvent('terminal-run-command', { detail: { command: cmd } }));
+              }}
+            >
+              <TerminalIcon className="w-4 h-4 text-blue-400" />
+              <span className="font-semibold text-xs tracking-wide uppercase">Run in Terminal</span>
+              <div className="h-3 w-[1px] bg-white/20 mx-1" />
+              <code className="text-[10px] text-gray-400 font-mono">
+                {typeof content === 'object' ? content.content : content}
+              </code>
+            </Button>
+          </div>
+        )
+      case "codeBlock": {
+        // Show a file pill button — clicking opens code view.
+        // A ⋯ menu appears on hover, which opens a ui square (dropdown) with "View Changes".
+        // isOpen=true means Generating filename, isOpen=false means Wrote.
+        return (
+          <div className="mt-2 mb-2 group/file">
+            <div className="flex items-center gap-2">
+              {/* File icon + filename button */}
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 gap-2 bg-[#f8f9fa] border-[#e9ecef] hover:bg-[#e9ecef] text-[#495057] font-medium shadow-sm"
+                className="h-7 gap-2 bg-white border BackgroundStyle hover:border-[#e7e5df] text-gray-700 font-medium"
                 onClick={() => onCodeSelect(content)}
               >
-                <FileText className="w-4 h-4" />
+                <File className="w-3.5 h-3.5 text-gray-700" />
                 <span className="text-xs font-mono">{content.filename}</span>
               </Button>
               <AnimatePresence mode="wait">
                 {content.isOpen ? (
                   <motion.div
-                    key="writing"
+                    key="creating"
                     initial={{ opacity: 0, x: -5 }}
                     animate={{ opacity: 1, x: 0 }}
                     exit={{ opacity: 0, x: 5 }}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-1.5"
                   >
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
-                    <TextShimmer className="text-xs text-blue-600 font-medium">Writing...</TextShimmer>
+                    <TextShimmer className="text-xs text-gray-700 font-medium bg-[#e7e5df]">Generating {content.filename}</TextShimmer>
                   </motion.div>
                 ) : (
                   <motion.div
-                    key="completed"
+                    key="wrote"
                     initial={{ opacity: 0, x: -5 }}
                     animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-1.5"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-                    <span className="text-xs text-green-600 font-medium">Done</span>
+                    <span className="text-xs text-gray-700 font-medium ">Wrote</span>
                   </motion.div>
                 )}
               </AnimatePresence>
+              {/* Three-dot View Changes button — revealed on hover when file is done */}
+              {!content.isOpen && onViewChanges && (
+                <DropdownMenu>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <DropdownMenuTrigger asChild>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 p-0 opacity-0 cursor-pointer group-hover/file:opacity-100 hover:bg-[#e9ecef] text-[#6c757d] hover:text-[#333] transition-opacity duration-200"
+                            aria-label="File options"
+                          >
+                            <MoreHorizontal className="w-4 h-4" />
+                          </Button>
+                        </TooltipTrigger>
+                      </DropdownMenuTrigger>
+                      <TooltipContent side="top" className="text-xs">
+                        View More
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  <DropdownMenuContent align="end" className="w-[140px] p-1 bg-white border border-[#e9ecef] shadow-lg rounded-md">
+                    <DropdownMenuItem
+                      className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-100 p-2 rounded-sm transition-colors font-medium text-gray-700"
+                      onClick={() => onViewChanges(content)}
+                    >
+                      <FileText className="w-3.5 h-3.5" />
+                      View Changes
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </div>
         )
@@ -1507,7 +1625,7 @@ function AIMessageContent({
             className="flex items-center gap-2 text-sm font-medium text-black/75 bg-transparent border-none p-0 h-auto cursor-default"
             disabled
           >
-            <Brain className="w-4 h-4" />
+            <TerminalIcon className="w-4 h-4" />
             <TextShimmer duration={1.5}>Thinking...</TextShimmer>
           </Button>
         </div>
@@ -1569,9 +1687,6 @@ function AIMessageContent({
             }
 
             if (nonCollapsible.includes(p.type)) {
-              // Don't render codeBlock buttons while the message is still streaming
-              // to prevent partial/ghost file buttons appearing mid-generation
-              if (p.type === "codeBlock" && isStreaming) return null
               return renderPartContent(p.type, p.content);
             }
 
@@ -1625,6 +1740,25 @@ function AIMessageContent({
       ))}
       {isStreaming && parts.some((p) => p.type === "text" && p.content) && (
         <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 align-middle" />
+      )}
+
+      {/* Token and Cost Info */}
+      {(message.tokensUsed || message.cost) && !isStreaming && (
+        <div className="flex items-center gap-2 mt-4 pt-2 border-t border-black/5 text-[10px] text-black/30 font-mono select-none">
+          {message.tokensUsed && (
+            <div className="flex items-center gap-1">
+              <Zap className="w-3 h-3" />
+              <span>{message.tokensUsed.toLocaleString()} tokens</span>
+            </div>
+          )}
+          {message.tokensUsed && message.cost && <span className="opacity-50">•</span>}
+          {message.cost && (
+            <div className="flex items-center gap-1">
+              <Database className="w-3 h-3" />
+              <span>${(message.cost / 100).toFixed(2)}</span>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

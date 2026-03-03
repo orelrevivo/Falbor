@@ -1,16 +1,15 @@
 "use client"
 
-import { Globe, Code2, Download, Settings, Database, TerminalIcon } from "lucide-react"
+import { Globe, Code2, Settings, Database, AppWindow } from "lucide-react"
 import { TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { SignedIn } from "@clerk/nextjs"
 
 interface MainHeaderProps {
   handleDownload: () => void
   projectId: string
-  onToggleTerminal?: () => void
-  isTerminalOpen?: boolean
+  isSplitScreen?: boolean
+  onEnterSplit?: () => void
 }
 
 // Toggle this when the database section is ready
@@ -19,24 +18,39 @@ const DATABASE_ENABLED = true
 export function MainHeader({
   handleDownload,
   projectId,
-  onToggleTerminal,
-  isTerminalOpen,
+  isSplitScreen,
+  onEnterSplit,
 }: MainHeaderProps) {
   return (
-    <div className="px-2 mt-2 flex items-center justify-between border-gray-200">
+    <div className="flex items-center justify-between pointer-events-none z-50">
       {/* Left side - Tab Navigation */}
-      <div className="flex items-center gap-2">
-        <TabsList className="w-full justify-start bg-transparent">
-          <TabsTrigger value="preview" className="gap-2">
+      <div className="flex items-center gap-2 pointer-events-auto">
+        <TabsList className="w-full justify-start bg-transparent p-0 m-0 h-auto">
+          <TabsTrigger
+            value="preview"
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]"
+            style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
+          >
             <Globe className="w-4 h-4 text-black" />
+            Preview
           </TabsTrigger>
 
-          <TabsTrigger value="code" className="gap-2">
+          <TabsTrigger
+            value="code"
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]"
+            style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
+          >
             <Code2 className="w-4 h-4 text-black" />
+            Code
           </TabsTrigger>
 
-          <TabsTrigger value="settings" className="gap-2">
+          <TabsTrigger
+            value="settings"
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]"
+            style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
+          >
             <Settings className="w-4 h-4 text-black" />
+            Settings
           </TabsTrigger>
 
           <TooltipProvider>
@@ -46,11 +60,13 @@ export function MainHeader({
                   value="database"
                   disabled={!DATABASE_ENABLED}
                   className={cn(
-                    "gap-2",
+                    "flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]",
                     !DATABASE_ENABLED && "pointer-events-none opacity-50"
                   )}
+                  style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
                 >
                   <Database className="w-4 h-4 text-black" />
+                  Database
                 </TabsTrigger>
               </TooltipTrigger>
 
@@ -65,20 +81,8 @@ export function MainHeader({
       </div>
 
       {/* Right side - Actions */}
-      <div className="flex items-center gap-3">
-        {onToggleTerminal && (
-          <button
-            onClick={onToggleTerminal}
-            className={cn(
-              "flex items-center gap-1 text-xs px-3 py-1.5 rounded transition-colors border",
-              isTerminalOpen ? "bg-black text-white" : "bg-white text-black hover:bg-gray-100"
-            )}
-            title={isTerminalOpen ? "Close Terminal" : "Open Terminal"}
-          >
-            <TerminalIcon className="w-4 h-4" />
-            Terminal
-          </button>
-        )}
+      <div className="flex items-center gap-3 pointer-events-auto">
+        {/* Render split screen logic here later if needed, but the user requested it in the Navbar! So I'll hide it since it's already in the navbar now. */}
       </div>
     </div>
   )

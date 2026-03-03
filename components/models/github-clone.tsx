@@ -101,14 +101,14 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
       <DialogContent className="sm:max-w-md bg-[#ffffff] border border-[#ececec50] p-1">
         <DialogTitle className="sr-only">Clone GitHub Repository</DialogTitle>
 
-        <DialogClose className="absolute top-4 right-4 text-black/70 hover:text-black z-10">
-          <X className="w-5 h-5" />
-        </DialogClose>
+        {/* <DialogClose className="absolute top-4 right-4 text-black/70 hover:text-black z-10">
+          <X className="w-5 h-5 text-[#0099ff]" />
+        </DialogClose> */}
 
         {/* HEADER — ONLY FOR SUBSCRIBED USERS */}
         {hasSubscription && (
-          <div className="bg-gradient-to-r rounded-md from-[#c15f3c] via-[#b69d95] to-[#c15f3c] h-32 flex items-center justify-center">
-            <Github className="w-16 h-16 text-white" />
+          <div className="bg-[#0099ff]/20 rounded-md h-32 flex items-center justify-center">
+            <Github className="w-16 h-16 text-[#0099ff]" />
           </div>
         )}
 
@@ -119,7 +119,7 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
               <p className="text-black">
                 Clone a GitHub repository using just a URL
               </p>
-              <p className="text-black/70 text-sm mt-[-10px]">
+              <p className="text-black/70 text-sm mt-[-5px]">
                 Turn your repo into a live web app instantly
               </p>
             </div>
@@ -162,7 +162,7 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
               <button
                 type="submit"
                 disabled={isLoading || !url.trim()}
-                className="w-full bg-[#c15f3c] hover:bg-[#c1603cdc] text-white py-2 rounded-md"
+                className="w-full bg-[#0099ff]/20 text-[#0099ff] py-2 rounded-md"
               >
                 {isLoading ? "Cloning..." : "Clone Repository into Falbor"}
               </button>

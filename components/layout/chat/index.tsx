@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon } from "lucide-react"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket } from "lucide-react"
 import {
   Loader,
   X,
@@ -25,7 +25,10 @@ import {
   Square,
   CheckCircle2,
   StopCircle,
-  Mail
+  Mail,
+  Bug,
+  Scan,
+  Terminal
 } from "lucide-react"
 import { Link1Icon } from "@radix-ui/react-icons"
 import type { Message } from "@/config/schema"
@@ -61,9 +64,9 @@ interface ChatInputProps {
   onStop?: () => void
   messages?: Message[]
 }
-interface CreditsData {
+interface BalanceData {
   subscriptionTier: string
-  credits?: number
+  balance?: number
   secondsUntilNextRegen?: number
 }
 export interface ChatInputRef {
@@ -170,22 +173,19 @@ const EMAIL_TEMPLATES = [
 ]
 
 const MODEL_OPTIONS: ModelOption[] = [
-  { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
+  { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: false, iconUrl: "/icons/claude.png" },
-  { id: "claude-opus-4", label: "Claude Opus 4", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-3.5-haiku", label: "Claude 3.5 Haiku", isPremium: false, iconUrl: "/icons/claude.png" },
-  // { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", isPremium: false, iconUrl: "/icons/claude.png" },
-  { id: "gemini", label: "Gemini 3 Flash", isPremium: false, iconUrl: "/icons/gemini.png" },
-  { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
-  { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: true, iconUrl: "/icons/openai.png" },
+  // { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
+  // { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
+  // { id: "claude-opus-4", label: "Claude Opus 4", isPremium: false, iconUrl: "/icons/claude.png" },
+  // { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
+  // { id: "llama3:8b", label: "Llama 3 8B (Ollama)", isPremium: true, iconUrl: "/icons/ollama.png" },
   // { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
-  // { id: "grok-4.1", label: "Grok 4.1 Fast", isPremium: true, iconUrl: "https://x.ai/favicon.ico" },
-  // { id: "grok-3-mini", label: "Grok 3 Mini", isPremium: false, iconUrl: "https://x.ai/favicon.ico" },
-  { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: true, iconUrl: "/icons/zAI.png" },
-  { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: true, iconUrl: "/icons/zAI.png" },
+
+  // { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
+  // { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -217,7 +217,7 @@ interface FilePreviewButtonProps {
 const FilePreviewButton: React.FC<FilePreviewButtonProps> = ({ file, onClick, onRemove }) => {
   const isImage = file.type.startsWith("image/") && file.preview
   return (
-    <div className="relative group flex items-center justify-between w-[150px] px-2 rounded-lg border border-[#e4e4e4a8] bg-[#e4e4e457] hover:bg-[#e4e4e4c4] transition-all cursor-pointer">
+    <div className="relative group flex items-center justify-between w-[150px] px-2 rounded-sm border border-[#e4e4e4a8] bg-white hover:bg-white transition-all cursor-pointer">
       <div className="flex items-center gap-3 flex-1" onClick={onClick}>
         {isImage ? (
           <img src={file.preview! || "/placeholder.svg"} alt={file.name} className="w-5 h-5 object-cover rounded" />
@@ -245,7 +245,7 @@ const FilePreviewButton: React.FC<FilePreviewButtonProps> = ({ file, onClick, on
           cursor-pointer
           transition-all
           opacity-0
-          group-hover:opacity-100
+          group-hover:opacity-50
         "
       >
         <X className="w-4 h-4" />
@@ -265,7 +265,7 @@ interface PastedContentButtonProps {
 }
 const PastedContentButton: React.FC<PastedContentButtonProps> = ({ content, onClick, onRemove }) => {
   return (
-    <div className="relative group flex items-center justify-between w-[132px] px-2 rounded-lg border border-[#e4e4e4a8] bg-[#e4e4e457] hover:bg-[#e4e4e4c4] transition-all cursor-pointer">
+    <div className="relative group flex items-center justify-between w-[132px] px-2 rounded-sm border border-[#e4e4e4a8] bg-white hover:bg-white transition-all cursor-pointer">
       <div className="flex items-center gap-3 flex-1" onClick={onClick}>
         <div className="">
           <FileText className="w-3 h-3 text-gray-600" />
@@ -287,7 +287,7 @@ const PastedContentButton: React.FC<PastedContentButtonProps> = ({ content, onCl
           cursor-pointer
           transition-all
           opacity-0
-          group-hover:opacity-100
+          group-hover:opacity-50
         "
       >
         <X className="w-4 h-4" />
@@ -350,7 +350,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [imageSize, setImageSize] = useState<number>(0)
   const [uploadedFiles, setUploadedFiles] = useState<AttachedFile[]>([])
   const [pastedContents, setPastedContents] = useState<PastedContent[]>([])
-  const [creditsData, setCreditsData] = useState<CreditsData | null>(null)
+  const [balanceData, setBalanceData] = useState<BalanceData | null>(null)
   const [timeLeft, setTimeLeft] = useState(0)
   const [isDiscussMode, setIsDiscussMode] = useState(false)
   const [selectedFile, setSelectedFile] = useState<{
@@ -364,10 +364,13 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isEditing, setIsEditing] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
+  const [selectedFramework, setSelectedFramework] = useState<string>("vite")
+  const [showFrameworkHover, setShowFrameworkHover] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [menuMode, setMenuMode] = useState<"main" | "design">("main")
   const [showDatabaseHover, setShowDatabaseHover] = useState(false)
+  const [showModelHover, setShowModelHover] = useState(false)
   const [isFalborDb, setIsFalborDb] = useState(true)
   const [showDesignModal, setShowDesignModal] = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
@@ -388,6 +391,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     selectedModel: string
     isAutomated: boolean
     isFalborDb: boolean
+    selectedFramework?: string
   } | null>(null)
   const [isActive, setIsActive] = useState(false)
   const [accessToken, setAccessToken] = useState<string>("")
@@ -410,9 +414,14 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [selectedMcpIds, setSelectedMcpIds] = useState<string[]>([])
   const [mentionTab, setMentionTab] = useState<"mcps" | "emails">("mcps")
   const [isLoadingConnection, setIsLoadingConnection] = useState(true)
-  const [showTaskPanel, setShowTaskPanel] = useState(false)
+  const [showTaskPanel, setShowTaskPanel] = useState(true)
   const [tasks, setTasks] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
   const tasksKey = projectId ? `chat-tasks-${projectId}` : "chat-tasks-global"
+  const [showUrlHover, setShowUrlHover] = useState(false)
+  const [captureUrlInput, setCaptureUrlInput] = useState("")
+  const [showErrorPanel, setShowErrorPanel] = useState(true)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scannerLogs, setScannerLogs] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
 
   const handleStop = () => {
     if (abortControllerRef.current) {
@@ -425,20 +434,106 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     }
   }
 
+  // Auto-open and auto-close logic for Tasks panel
+  useEffect(() => {
+    // If we're loading and tasks have appeared, ensure panel is open
+    if (effectiveIsLoading && tasks.length > 0) {
+      setShowTaskPanel(true)
+    }
+
+    // Auto-close when everything is done
+    if (!effectiveIsLoading && tasks.length > 0 && tasks.every((t) => t.status === "success")) {
+      const timer = setTimeout(() => {
+        setShowTaskPanel(false)
+      }, 2500) // 2.5s delay after completion
+      return () => clearTimeout(timer)
+    }
+  }, [effectiveIsLoading, tasks])
+
+  const parseScannerLogsFromContent = (content: string) => {
+    const logs: { text: string; status: "success" | "loading" | "pending" }[] = []
+
+    const scanMatch = content.match(/<Scan>([\s\S]*?)<\/Scan>/i)
+    if (scanMatch) {
+      logs.push({ text: `Scan analysis complete: ${scanMatch[1].trim().slice(0, 80)}${scanMatch[1].length > 80 ? "..." : ""}`, status: "success" })
+    } else if (content.toLowerCase().includes("<scan>")) {
+      logs.push({ text: "Scanning files for issues...", status: "loading" })
+    }
+
+    const searchMatch = content.match(/<InternetSearch>([\s\S]*?)<\/InternetSearch>/i)
+    if (searchMatch) {
+      logs.push({ text: `Search match found: ${searchMatch[1].trim().slice(0, 80)}`, status: "success" })
+    } else if (content.toLowerCase().includes("<internetsearch>")) {
+      logs.push({ text: "Searching internet for solutions...", status: "loading" })
+    }
+
+    const verifyMatch = content.match(/<VerifyingSolution>([\s\S]*?)<\/VerifyingSolution>/i)
+    if (verifyMatch) {
+      logs.push({ text: `Solution verified: ${verifyMatch[1].trim().slice(0, 80)}`, status: "success" })
+    } else if (content.toLowerCase().includes("<verifyingsolution>")) {
+      logs.push({ text: "Verifying fix accuracy...", status: "loading" })
+    }
+
+    const termMatch = content.match(/<Terminal>([\s\S]*?)<\/Terminal>/i)
+    if (termMatch) {
+      logs.push({ text: `Executing command: ${termMatch[1].trim()}`, status: "success" })
+    } else if (content.toLowerCase().includes("<terminal>")) {
+      logs.push({ text: "Preparing terminal command...", status: "loading" })
+    }
+
+    if (logs.length > 0) {
+      setScannerLogs(logs)
+    }
+  }
+
+  const handleFixError = async (online = false) => {
+    if (!previewError) return
+    const errorMsg = previewError.message
+    const errorFile = previewError.file || "unknown"
+
+    if (online) {
+      setScannerLogs([{ text: "Initializing online deep scan...", status: "loading" }])
+      setIsScanning(true)
+      const scanPrompt = `[CRITICAL_ERROR_FIX]
+ERROR: "${errorMsg}"
+FILE: ${errorFile}
+
+Please perform a deep ONLINE SCAN to resolve this issue:
+1. <Scan> pinpoint the error source.
+2. <InternetSearch> find the most relevant, modern fix online.
+3. <VerifyingSolution> verify the fix matches our React/Vite stack.
+4. <Terminal> install any missing libraries if needed.
+5. Apply the fix to ONLY the affected file.
+6. Verify the result.`
+      handleSubmit(undefined, scanPrompt)
+    } else {
+      const fixPrompt = `I'm getting this error in ${errorFile}: "${errorMsg}". Please fix it by updating ONLY the relevant file.`
+      handleSubmit(undefined, fixPrompt)
+    }
+    setShowErrorPanel(false)
+  }
+
   const parseTasksFromContent = (content: string) => {
-    const tasksRegex = /<Tasks>([\s\S]*?)<\/Tasks>/i
-    const match = content.match(tasksRegex)
-    if (match) {
-      const lines = match[1].trim().split("\n")
+    const tasksRegex = /<Tasks>([\s\S]*?)(?:<\/Tasks>|$)/gi
+    let match
+    let lastMatch = null
+    while ((match = tasksRegex.exec(content)) !== null) {
+      lastMatch = match
+    }
+    if (lastMatch && lastMatch[1]) {
+      const lines = lastMatch[1].trim().split("\n")
       const tasksList = lines.map(line => {
         if (!line.trim()) return null
-        const successMatch = line.match(/(.+?)\s*[✓✔]/i)
-        const loadingMatch = line.match(/(.+?)\s*[⏳⌛…]/i)
+        const successMatch = line.match(/^(.+?)\s*[✓✔]\s*$/)
+        const loadingMatch = line.match(/^(.+?)\s*[⏳⌛]\s*$/)
         if (successMatch) return { text: successMatch[1].trim(), status: "success" as const }
         if (loadingMatch) return { text: loadingMatch[1].trim(), status: "loading" as const }
         return { text: line.trim(), status: "pending" as const }
       }).filter(Boolean) as { text: string; status: "success" | "loading" | "pending" }[]
-      setTasks(tasksList)
+
+      if (tasksList.length > 0) {
+        setTasks(tasksList)
+      }
     }
   }
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -461,6 +556,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const pastedKey = projectId ? `chat-pasted-${projectId}` : "chat-pasted-global"
   const designKey = "chat-design-config"
   const modelKey = projectId ? `chat-selected-model-${projectId}` : "chat-selected-model-global"
+  const frameworkKey = "chat-selected-framework-global"
   // Load saved connection from server on mount
   useEffect(() => {
     const loadUserConnection = async () => {
@@ -539,6 +635,15 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     localStorage.setItem(modelKey, selectedModel)
   }, [selectedModel])
   useEffect(() => {
+    const savedFramework = localStorage.getItem(frameworkKey)
+    if (savedFramework && ["vite", "nextjs", "vue"].includes(savedFramework)) {
+      setSelectedFramework(savedFramework)
+    }
+  }, [])
+  useEffect(() => {
+    localStorage.setItem(frameworkKey, selectedFramework)
+  }, [selectedFramework])
+  useEffect(() => {
     localStorage.setItem(filesKey, JSON.stringify(uploadedFiles))
   }, [uploadedFiles, filesKey])
   useEffect(() => {
@@ -601,13 +706,13 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
             return
           }
           if (deductRes.status === 402) {
-            alert("Insufficient credits. Please wait for regeneration or upgrade.")
+            alert("Insufficient balance. Please wait for monthly refill or upgrade.")
             return
           }
           alert(errData.error || "Failed to process your request. Please try again.")
           return
         }
-        await refetchCredits()
+        await fetchBalance()
       }
       localStorage.removeItem(draftKey)
       localStorage.removeItem(filesKey)
@@ -628,6 +733,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
         isAutomated: pendingSubmitData.isAutomated,
         selectedModel: pendingSubmitData.selectedModel,
         isFalborDb: pendingSubmitData.isFalborDb,
+        selectedFramework: pendingSubmitData.selectedFramework,
       }
 
       // Inject credentials directly into the project creation (so they are saved immediately)
@@ -764,30 +870,30 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
-  const fetchCredits = async () => {
+  const fetchBalance = async () => {
     if (!user?.id || !isLoaded) return
     try {
       const res = await fetch("/api/user/credits")
       if (res.ok) {
-        const data: CreditsData = await res.json()
-        setCreditsData(data)
+        const data: BalanceData = await res.json()
+        setBalanceData(data)
         if (data.secondsUntilNextRegen) {
           setTimeLeft(data.secondsUntilNextRegen)
         }
       } else {
-        console.error(`Failed to fetch credits: ${res.status} ${res.statusText}`)
+        console.error(`Failed to fetch balance: ${res.status} ${res.statusText}`)
       }
     } catch (err) {
-      console.error("Failed to fetch credits:", err)
+      console.error("Failed to fetch balance:", err)
     }
   }
   useEffect(() => {
-    fetchCredits()
+    fetchBalance()
     if (timerRef.current) clearInterval(timerRef.current)
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          fetchCredits()
+          fetchBalance()
           return 60
         }
         return prev - 1
@@ -797,9 +903,9 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [user?.id, isLoaded])
-  const refetchCredits = async () => {
+  const refetchBalance = async () => {
     if (!user?.id) return
-    await fetchCredits()
+    await fetchBalance()
   }
   const handleAttachedFiles = (files: File[], isPasted = false) => {
     const totalAttachments = uploadedFiles.length + pastedContents.length + files.length
@@ -1005,7 +1111,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const handleModelSelect = async (modelId: string) => {
     const model = MODEL_OPTIONS.find((m) => m.id === modelId)
     if (!model) return
-    const hasSubscription = creditsData?.subscriptionTier !== "none"
+    const hasSubscription = balanceData?.subscriptionTier !== "none"
     if (model.isPremium && !hasSubscription) {
       setShowPremiumAlert(true)
       return
@@ -1064,8 +1170,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       setIsSavingCredentials(false)
     }
   }
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSubmit = async (e?: React.FormEvent, textOverride?: string) => {
+    e?.preventDefault()
     if (isLoading) {
       abortControllerRef.current?.abort()
       abortControllerRef.current = null
@@ -1076,19 +1182,20 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       stopVoiceInput()
       return
     }
-    if (!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !designConfig && !selectedImage)
+    const submitText = textOverride || message
+    if (!submitText.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !designConfig && !selectedImage)
       return
     if (!isAuthenticated) {
       setShowLoginDialog(true)
       return
     }
     const selectedModelOption = MODEL_OPTIONS.find((m) => m.id === selectedModel)
-    const hasSubscription = creditsData?.subscriptionTier !== "none"
+    const hasSubscription = balanceData?.subscriptionTier !== "none"
     if (selectedModelOption?.isPremium && !hasSubscription) {
       setShowPremiumAlert(true)
       return
     }
-    let userMessage = message.trim()
+    let userMessage = submitText.trim()
     if (uploadedFiles.length > 0) {
       const fileSections = uploadedFiles
         .map(
@@ -1106,18 +1213,20 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     if (credentialsSaved && databaseCredentials.supabaseUrl && databaseCredentials.anonKey) {
       userMessage += `\n\n## Database Connection\nVITE_SUPABASE_URL=${databaseCredentials.supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${databaseCredentials.anonKey}`
     }
-    if (designConfig) {
+    if (designConfig && !message.includes("Capture from URL:")) {
       userMessage += `\n\n## Design System: ${selectedDesign || "Custom"}\n${JSON.stringify(designConfig, null, 2)}`
     }
     if (!projectId) {
       setPendingSubmitData({
         userMessage,
-        selectedImage,
+        selectedImage: selectedImage ? { ...selectedImage } : null,
         isDiscussMode,
         selectedModel,
         isAutomated,
         isFalborDb,
+        selectedFramework,
       })
+
       // Skip confirmation if database is already connected or using Falbor DB
       if (credentialsSaved || isFalborDb) {
         await createProject(isFalborDb)
@@ -1139,13 +1248,13 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
             return
           }
           if (deductRes.status === 402) {
-            alert("Insufficient credits. Please wait for regeneration or upgrade.")
+            alert("Insufficient balance. Please wait for regeneration or upgrade.")
             return
           }
           alert(errData.error || "Failed to process your request. Please try again.")
           return
         }
-        await refetchCredits()
+        await refetchBalance()
       }
       localStorage.removeItem(draftKey)
       localStorage.removeItem(filesKey)
@@ -1157,6 +1266,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       setImageSize(0)
       setUploadedFiles([])
       setPastedContents([])
+      setTasks([])
+      setShowTaskPanel(true)
       if (projectId && onNewMessage) {
         const tempUser: Message = {
           id: `temp-${Date.now()}`,
@@ -1166,8 +1277,11 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
           hasArtifact: false,
           createdAt: new Date(),
           thinking: null,
+          versionName: null,
           searchQueries: null,
           isAutomated: false,
+          tokensUsed: null,
+          cost: null,
         }
         onNewMessage(tempUser)
         const tempAssistantId = `temp-assistant-${Date.now()}`
@@ -1179,8 +1293,11 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
           hasArtifact: false,
           createdAt: new Date(),
           thinking: null,
+          versionName: null,
           searchQueries: null,
           isAutomated: false,
+          tokensUsed: null,
+          cost: null,
         }
         onNewMessage(tempAssistant)
         console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
@@ -1237,6 +1354,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
                     if (data.text) {
                       accumulated += data.text
                       parseTasksFromContent(accumulated)
+                      parseScannerLogsFromContent(accumulated)
                       onNewMessage({
                         ...tempAssistant,
                         content: accumulated,
@@ -1246,16 +1364,21 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
                     }
                     if (data.done) {
                       console.log("[ChatInput] Received done signal, message ID:", data.messageId)
+                      // Use server content as fallback if streaming didn't capture anything
+                      const finalContent = accumulated.trim() ? accumulated : (data.content || accumulated)
                       onNewMessage({
                         id: data.messageId || `final-${Date.now()}`,
                         projectId,
                         role: "assistant",
-                        content: accumulated,
+                        content: finalContent,
                         hasArtifact: data.hasArtifact ?? false,
                         createdAt: new Date(),
                         thinking: null,
+                        versionName: data.versionName || null,
                         searchQueries: null,
                         isAutomated: false,
+                        tokensUsed: data.tokensUsed || null,
+                        cost: data.cost || null,
                       })
                       router.refresh()
                     }
@@ -1314,27 +1437,6 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
       e.preventDefault()
       handleSubmit(e)
     }
-  }
-  const handleFixError = () => {
-    if (!previewError || !projectId) return
-    const fixPrompt = `There's an error in the preview that needs to be fixed:
-Error: ${previewError.message}
-${previewError.file ? `File: ${previewError.file}` : ""}
-${previewError.line ? `Line ${previewError.line}` : ""}
-Please analyze this error and fix it in the code. Make sure to:
-1. Identify the root cause of the error
-2. Fix the issue without breaking existing functionality
-3. Ensure proper error handling is in place`
-    setMessage(fixPrompt)
-    localStorage.setItem(draftKey, fixPrompt)
-    onDismissError?.()
-    setTimeout(() => {
-      textareaRef.current?.focus()
-      if (textareaRef.current) {
-        textareaRef.current.selectionStart = textareaRef.current.value.length
-        textareaRef.current.selectionEnd = textareaRef.current.value.length
-      }
-    }, 0)
   }
   const handleDismissError = () => {
     onDismissError?.()
@@ -1423,44 +1525,9 @@ Please analyze this error and fix it in the code. Make sure to:
   const formRoundedClass = connected ? "rounded-t-[11px]" : "rounded-sm"
   const formBorderClass = connected ? "border-b-0" : "border-3"
   const currentModel = MODEL_OPTIONS.find((m) => m.id === selectedModel) || MODEL_OPTIONS[0]
-  const hasSubscription = creditsData?.subscriptionTier !== "none"
+  const hasSubscription = balanceData?.subscriptionTier !== "none"
   return (
     <div className="">
-      {previewError && (
-        <div className="w-full bg-red-50 border border-red-200 rounded-lg p-3 flex items-start justify-between mb-3 shadow-sm">
-          <div className="flex items-start gap-3 flex-1 min-w-0">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-red-900 mb-1">Preview Error</p>
-              <p className="text-sm text-red-700 break-words">{previewError.message}</p>
-              {previewError.file && (
-                <p className="text-xs text-red-600 mt-1">
-                  {previewError.file}
-                  {previewError.line && ` (Line ${previewError.line})`}
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="flex gap-2 flex-shrink-0 ml-3">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleFixError}
-              className="h-8 px-3 text-xs bg-white hover:bg-red-50 text-red-700 border-red-300"
-            >
-              Fix Problem
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleDismissError}
-              className="h-8 w-8 p-0 text-red-600 hover:bg-red-100"
-            >
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-      )}
       {pendingMigrations.length > 0 && credentialsSaved && projectId && (
         <div className="w-full bg-blue-50 rounded-lg p-3 flex items-center justify-between mb-3">
           <p className="text-sm text-blue-900">
@@ -1476,20 +1543,20 @@ Please analyze this error and fix it in the code. Make sure to:
           </Button>
         </div>
       )}
-      <form
-        onSubmit={handleSubmit}
-        className={`relative p-1 shadow-sm ${formRoundedClass}`}
-        style={{
-          backgroundColor: "#ffffff",
-          borderRadius: "6px",
-          border: "1px solid #dbd9d9b2",
-          transition: "background-image 200ms ease",
-          backgroundImage: `
+      <div className={`bg-[#dbd9d9b2] p-[5px] rounded-[12px]`}>
+        <form
+          onSubmit={handleSubmit}
+          className={`relative p-1 shadow-sm rounded-lg`}
+          style={{
+            backgroundColor: "#ffffff",
+            border: "1px solid #8373732c",
+            transition: "background-image 200ms ease",
+            backgroundImage: `
       linear-gradient(#ffffff, #ffffff),
       /* TOP border (colored section only) */
       linear-gradient(
         to right,
-        ${isActive ? "#0099ff" : "rgba(0, 153, 255, 1)"} 0%,
+        ${isActive ? "#888888ff" : "rgba(158, 158, 158, 1)"} 0%,
         rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 18%,
         rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 35%,
         rgba(219, 219, 217, 0.7) 50%,
@@ -1498,352 +1565,459 @@ Please analyze this error and fix it in the code. Make sure to:
       /* LEFT border (colored section only) */
       linear-gradient(
         to bottom,
-        ${isActive ? "#0099ff" : "rgba(0, 153, 255, 1)"} 0%,
-        rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 22%,
-        rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 40%,
+        ${isActive ? "#888888ff" : "rgba(158, 158, 158, 1)"} 0%,
+        rgba(158, 158, 158, ${isActive ? "1" : "0.45"}) 22%,
+        rgba(158, 158, 158, ${isActive ? "0.85" : "0.25"}) 40%,
         rgba(219, 219, 217, 0.7) 55%,
         #dbd9d9b2 65%
       )
     `,
-          backgroundOrigin: "padding-box, border-box, border-box",
-          backgroundClip: "padding-box, border-box, border-box",
-        }}
-      >
-        {mentionMenu.isOpen && (
-          <div
-            className="absolute z-50 bg-white border rounded-lg shadow-xl w-64 overflow-hidden"
-            style={{
-              bottom: "100%",
-              left: mentionMenu.position.left,
-              marginBottom: "10px"
-            }}
-          >
-            <Command className="border-none">
-              <div className="flex bg-gray-50 border-b p-1 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setMentionTab("mcps")}
-                  className={cn(
-                    "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
-                    mentionTab === "mcps" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
-                  )}
-                >
-                  <Database className="w-3 h-3" />
-                  MCPs
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMentionTab("emails")}
-                  className={cn(
-                    "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
-                    mentionTab === "emails" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
-                  )}
-                >
-                  <Mail className="w-3 h-3" />
-                  Emails
-                </button>
-              </div>
+            backgroundOrigin: "padding-box, border-box, border-box",
+            backgroundClip: "padding-box, border-box, border-box",
+          }}
+        >
+          {mentionMenu.isOpen && (
+            <div
+              className="absolute z-50 bg-white border rounded-lg shadow-xl w-64 overflow-hidden"
+              style={{
+                bottom: "100%",
+                left: mentionMenu.position.left,
+                marginBottom: "10px"
+              }}
+            >
+              <Command className="border-none">
+                <div className="flex bg-gray-50 border-b p-1 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setMentionTab("mcps")}
+                    className={cn(
+                      "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
+                      mentionTab === "mcps" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
+                    )}
+                  >
+                    <Database className="w-3 h-3" />
+                    MCPs
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMentionTab("emails")}
+                    className={cn(
+                      "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
+                      mentionTab === "emails" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
+                    )}
+                  >
+                    <Mail className="w-3 h-3" />
+                    Emails
+                  </button>
+                </div>
 
-              {mentionTab === "mcps" ? (
-                <>
-                  <CommandInput placeholder="Search MCPs..." className="h-9" autoFocus />
-                  <CommandList className="max-h-48">
-                    <CommandEmpty>No MCPs found.</CommandEmpty>
-                    <CommandGroup heading="Connected MCPs">
-                      {mcpConnections.length === 0 ? (
-                        <div className="p-2 text-xs text-muted-foreground text-center">
-                          No connected MCPs. <Link href="/settings/mcp" className="text-indigo-600 underline">Connect one now.</Link>
-                        </div>
-                      ) : (
-                        mcpConnections
-                          .filter(c => c.name.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
-                          .map((mcp) => (
+                {mentionTab === "mcps" ? (
+                  <>
+                    <CommandInput placeholder="Search MCPs..." className="h-9" autoFocus />
+                    <CommandList className="max-h-48">
+                      <CommandEmpty>No MCPs found.</CommandEmpty>
+                      <CommandGroup heading="Connected MCPs">
+                        {mcpConnections.length === 0 ? (
+                          <div className="p-2 text-xs text-muted-foreground text-center">
+                            No connected MCPs. <Link href="/settings/mcp" className="text-indigo-600 underline">Connect one now.</Link>
+                          </div>
+                        ) : (
+                          mcpConnections
+                            .filter(c => c.name.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
+                            .map((mcp) => (
+                              <CommandItem
+                                key={mcp.id}
+                                onSelect={() => {
+                                  const before = message.slice(0, mentionMenu.startIndex)
+                                  const after = message.slice(textareaRef.current?.selectionStart || 0)
+                                  const newMessage = `${before}@${mcp.name}${after}`
+                                  setMessage(newMessage)
+                                  setSelectedMcpIds(prev => [...new Set([...prev, mcp.id])])
+                                  setMentionMenu(prev => ({ ...prev, isOpen: false }))
+                                  textareaRef.current?.focus()
+                                }}
+                                className="flex items-center gap-2 cursor-pointer"
+                              >
+                                <Database className="w-4 h-4 text-indigo-500" />
+                                <span>{mcp.name}</span>
+                                <span className="text-[10px] text-muted-foreground ml-auto">{mcp.type}</span>
+                              </CommandItem>
+                            ))
+                        )}
+                      </CommandGroup>
+                    </CommandList>
+                  </>
+                ) : (
+                  <>
+                    <CommandInput placeholder="Search Email Templates..." className="h-9" autoFocus />
+                    <CommandList className="max-h-48">
+                      <CommandEmpty>No templates found.</CommandEmpty>
+                      <CommandGroup heading="Email Templates">
+                        {EMAIL_TEMPLATES
+                          .filter(t => t.label.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
+                          .map((t) => (
                             <CommandItem
-                              key={mcp.id}
+                              key={t.id}
                               onSelect={() => {
                                 const before = message.slice(0, mentionMenu.startIndex)
                                 const after = message.slice(textareaRef.current?.selectionStart || 0)
-                                const newMessage = `${before}@${mcp.name}${after}`
+                                // Descriptive tag for the AI to pick up
+                                const newMessage = `${before}@Email/${t.id}${after}`
                                 setMessage(newMessage)
-                                setSelectedMcpIds(prev => [...new Set([...prev, mcp.id])])
                                 setMentionMenu(prev => ({ ...prev, isOpen: false }))
                                 textareaRef.current?.focus()
                               }}
                               className="flex items-center gap-2 cursor-pointer"
                             >
-                              <Database className="w-4 h-4 text-indigo-500" />
-                              <span>{mcp.name}</span>
-                              <span className="text-[10px] text-muted-foreground ml-auto">{mcp.type}</span>
+                              <Mail className="w-4 h-4 text-blue-500" />
+                              <span>{t.label}</span>
                             </CommandItem>
-                          ))
+                          ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </>
+                )}
+              </Command>
+            </div>
+          )}
+          {/* SCANNER PROGRESS PANEL */}
+          {isScanning && scannerLogs.length > 0 && (
+            <div className="w-full mb-3 px-1">
+              <div className="rounded-lg border border-blue-100 bg-blue-50/40 overflow-hidden shadow-sm">
+                <div className="px-3 py-2 flex items-center justify-between border-b border-blue-100 bg-blue-50/80">
+                  <div className="flex items-center gap-2">
+                    <Scan className="w-4 h-4 text-blue-600 animate-pulse" />
+                    <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Deep Analytics Mode</span>
+                  </div>
+                  {scannerLogs.every(l => l.status === 'success') && !effectiveIsLoading ? (
+                    <Badge className="bg-green-100 text-green-700 border-green-200 text-[9px] h-4">Complete</Badge>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-blue-500 animate-pulse font-medium">Scanning...</span>
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                    </div>
+                  )}
+                </div>
+                <div className="p-2 space-y-1.5 max-h-40 overflow-y-auto chat-messages-scroll">
+                  {scannerLogs.map((log, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px] animate-in fade-in slide-in-from-left-1 duration-300">
+                      {log.status === 'loading' ? (
+                        <div className="mt-0.5"><Loader2 className="w-3 h-3 animate-spin text-blue-500" /></div>
+                      ) : log.status === 'success' ? (
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 text-green-500" />
+                      ) : (
+                        <Circle className="w-3 h-3 mt-0.5 text-blue-200" />
                       )}
-                    </CommandGroup>
-                  </CommandList>
-                </>
-              ) : (
-                <>
-                  <CommandInput placeholder="Search Email Templates..." className="h-9" autoFocus />
-                  <CommandList className="max-h-48">
-                    <CommandEmpty>No templates found.</CommandEmpty>
-                    <CommandGroup heading="Email Templates">
-                      {EMAIL_TEMPLATES
-                        .filter(t => t.label.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
-                        .map((t) => (
-                          <CommandItem
-                            key={t.id}
-                            onSelect={() => {
-                              const before = message.slice(0, mentionMenu.startIndex)
-                              const after = message.slice(textareaRef.current?.selectionStart || 0)
-                              // Descriptive tag for the AI to pick up
-                              const newMessage = `${before}@Email/${t.id}${after}`
-                              setMessage(newMessage)
-                              setMentionMenu(prev => ({ ...prev, isOpen: false }))
-                              textareaRef.current?.focus()
-                            }}
-                            className="flex items-center gap-2 cursor-pointer"
-                          >
-                            <Mail className="w-4 h-4 text-blue-500" />
-                            <span>{t.label}</span>
-                          </CommandItem>
-                        ))}
-                    </CommandGroup>
-                  </CommandList>
-                </>
+                      <span className={cn(
+                        "flex-1 leading-relaxed",
+                        log.status === 'loading' ? "text-blue-700 font-semibold" : "text-gray-600"
+                      )}>{log.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ERROR BUTTON & PANEL */}
+          {previewError && (
+            <div className="w-full mb-3 px-1">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowErrorPanel(!showErrorPanel)}
+                className={cn(
+                  "w-full flex items-center justify-between h-10 bg-white hover:bg-white hover:text-red-700 text-red-600 border-red-100 transition-all duration-300 shadow-sm",
+                  showErrorPanel ? "rounded-t-xl rounded-b-none border-b-0" : "rounded-xl"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bgColor-red-50 rounded-lg">
+                    <Bug size={18} className="text-red-500" />
+                  </div>
+                  <span className="text-xs font-bold tracking-tight">Runtime Error Identified</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-[10px] font-mono border-red-100 text-red-400 px-1.5 py-0 h-4 uppercase">Fix Available</Badge>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform duration-500", showErrorPanel && "rotate-180")} />
+                </div>
+              </Button>
+
+              <div className={cn(
+                "grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                showErrorPanel ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+              )}>
+                <div className="overflow-hidden border border-red-100 border-t-0 rounded-b-xl bg-white shadow-inner">
+                  <div className="p-4 space-y-4">
+                    <div className="bg-red-50/50 p-3 rounded-lg border border-red-100/50 text-[11px] font-mono text-red-700 leading-relaxed shadow-sm">
+                      {previewError.file && (
+                        <div className="flex items-center gap-1.5 font-bold underline mb-1.5 text-red-800">
+                          <FileText size={12} />
+                          {previewError.file}{previewError.line ? `:${previewError.line}` : ''}
+                        </div>
+                      )}
+                      {previewError.message}
+                    </div>
+                    <div className="flex gap-3">
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs h-9 gap-2 shadow-[0_2px_10px_-3px_rgba(220,38,38,0.5)] transition-all hover:-translate-y-0.5"
+                        onClick={() => handleFixError(false)}
+                      >
+                        <StarsIcon className="w-4 h-4" />
+                        Quick Fix with AI
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-blue-200 text-blue-600 hover:bg-blue-50 text-xs h-9 gap-2 shadow-sm transition-all hover:-translate-y-0.5"
+                        onClick={() => handleFixError(true)}
+                      >
+                        <Globe className="w-4 h-4 text-blue-500" />
+                        Deep Online Scan
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Separator line between Error and Task buttons if both are visible */}
+              {(effectiveIsLoading || tasks.length > 0) && (
+                <div className="flex items-center justify-center my-4 px-8">
+                  <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-200/60 to-transparent w-full" />
+                </div>
               )}
-            </Command>
-          </div>
-        )}
-        <AnimatePresence>
-          {tasks.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 10 }}
-              className="px-2 pb-2"
-            >
+            </div>
+          )}
+
+          {(effectiveIsLoading || tasks.length > 0) && (
+            <div className="w-full">
+
+              {/* TOGGLE BUTTON */}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setShowTaskPanel(!showTaskPanel)}
-                className="w-full flex items-center justify-between h-9 bg-blue-50/50 border-blue-100 hover:bg-blue-100/50 text-blue-700 rounded-lg group"
+                className={cn(
+                  "w-full flex items-center justify-between h-9 bg-white hover:bg-white hover:text-black text-black transition-all duration-300",
+                  showTaskPanel
+                    ? "rounded-t-md rounded-b-none border-b-0"
+                    : "rounded-md"
+                )}
               >
                 <div className="flex items-center gap-2">
-                  <List className="w-4 h-4" />
-                  <span className="text-sm font-medium">View AI Tasks Breakdown</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] py-0.5 px-2 bg-blue-100 rounded-full font-bold">
-                    {tasks.filter(t => t.status === "success").length}/{tasks.length} Complete
+                  <List size={20} />
+                  <span className="text-xs font-medium">
+                    Task {tasks.filter(t => t.status === "success").length} of {tasks.length} complete
                   </span>
-                  <ChevronDown className={cn("w-4 h-4 transition-transform", showTaskPanel && "rotate-180")} />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {tasks.length > 0 && (
+                    <Badge>
+                      {tasks.filter(t => t.status === "success").length}/{tasks.length}
+                      {tasks.every(t => t.status === "success")
+                        ? " Complete"
+                        : " In Progress"}
+                      <ChevronDown
+                        className={cn(
+                          "w-4 h-4 transition-transform duration-300",
+                          showTaskPanel && "rotate-180"
+                        )}
+                      />
+                    </Badge>
+                  )}
+
+                  {effectiveIsLoading && tasks.length === 0 && (
+                    <Badge>
+                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      Generating...
+                    </Badge>
+                  )}
+
                 </div>
               </Button>
-            </motion.div>
-          )}
 
-          {showTaskPanel && tasks.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              className="px-2 pb-4 overflow-hidden"
-            >
-              <div className="bg-white border rounded-xl p-4 shadow-sm space-y-3">
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-sm font-bold flex items-center gap-2 text-black/70">
-                    <Square className="w-4 h-4 fill-blue-500 text-blue-500" />
-                    Task Execution Plan
-                  </h3>
-                  {effectiveIsLoading && (
-                    <div className="flex items-center gap-2 text-xs text-blue-600 font-medium">
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                      AI Generating...
-                    </div>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  {tasks.map((task, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: idx * 0.05 }}
-                      className={cn(
-                        "flex items-center gap-3 p-2.5 rounded-lg border transition-all",
-                        task.status === "loading" ? "bg-blue-50 border-blue-200" :
-                          task.status === "success" ? "bg-green-50/50 border-green-100" : "bg-gray-50/30 border-gray-100"
-                      )}
-                    >
-                      {task.status === "loading" ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-                      ) : task.status === "success" ? (
-                        <CheckCircle2 className="w-4 h-4 text-green-500" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-gray-300" />
-                      )}
-                      <span className={cn(
-                        "text-sm",
-                        task.status === "success" ? "text-gray-500 line-through" : "text-gray-700 font-medium"
-                      )}>
-                        {task.text}
-                      </span>
-                    </motion.div>
-                  ))}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-        <AnimatePresence initial={false}>
-          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0) && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: "auto", opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
-                {selectedMcpIds.map(id => {
-                  const mcp = mcpConnections.find(c => c.id === id)
-                  if (!mcp) return null
-                  return (
-                    <motion.div
-                      key={id}
-                      initial={{ scale: 0.8, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      exit={{ scale: 0.8, opacity: 0 }}
-                    >
-                      <Badge
-                        variant="secondary"
-                        className="gap-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 py-1"
+              {/* TASK PANEL (SMOOTH GRID ANIMATION) */}
+              <div
+                className={cn(
+                  "grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                  showTaskPanel
+                    ? "grid-rows-[1fr] opacity-100 translate-y-0"
+                    : "grid-rows-[0fr] opacity-0 -translate-y-1"
+                )}
+              >
+                <div className="overflow-hidden">
+                  <div className="rounded-b-md bg-white p-2 space-y-1 max-h-32 overflow-y-auto">
+
+                    {/* Loading state */}
+                    {tasks.length === 0 && effectiveIsLoading && (
+                      <div className="flex items-center gap-3 p-2 rounded-md border bg-gray-50 border-gray-100">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">
+                          Analyzing your request and planning tasks...
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Tasks */}
+                    {tasks.map((task, idx) => (
+                      <div
+                        key={`task-${idx}-${task.text}`}
+                        className="flex items-center gap-3 px-2 py-2 rounded-md border transition-all duration-300"
                       >
-                        <Database className="w-3 h-3" />
-                        @{mcp.name}
-                        <button
-                          onClick={() => setSelectedMcpIds(prev => prev.filter(i => i !== id))}
-                          className="ml-1 hover:text-indigo-900"
+                        <div className="flex-shrink-0 self-center">
+                          {task.status === "loading" ? (
+                            <Loader className="w-4 h-4 animate-spin text-gray-900" />
+                          ) : task.status === "success" ? (
+                            <CheckCircle2 className="w-4 h-4 text-gray-900" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-gray-900" />
+                          )}
+                        </div>
+
+                        <span
+                          className={cn(
+                            "text-[11px] leading-relaxed",
+                            task.status === "success"
+                              ? "text-gray-900"
+                              : task.status === "loading"
+                                ? "text-blue-700 font-medium"
+                                : "text-gray-700 font-medium"
+                          )}
                         >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </Badge>
-                    </motion.div>
-                  )
-                })}
-                {pastedContents.map((content) => (
-                  <motion.div
-                    key={content.id}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                  >
-                    <PastedContentButton
-                      content={content}
-                      onClick={() => openFileModal(content, true)}
-                      onRemove={() => setPastedContents((prev) => prev.filter((c) => c.id !== content.id))}
-                    />
-                  </motion.div>
-                ))}
-                {uploadedFiles.map((file) => (
-                  <motion.div
-                    key={file.id}
-                    initial={{ scale: 0.8, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.8, opacity: 0 }}
-                  >
-                    <FilePreviewButton
-                      file={file}
-                      onClick={() => openFileModal(file, false)}
-                      onRemove={() => setUploadedFiles((prev) => prev.filter((f) => f.id !== file.id))}
-                    />
-                  </motion.div>
-                ))}
+                          {task.text}
+                        </span>
+                      </div>
+                    ))}
+
+                  </div>
+                </div>
               </div>
-            </motion.div>
+
+            </div>
           )}
-        </AnimatePresence>
-        <textarea
-          ref={textareaRef}
-          value={message}
-          onChange={(e) => {
-            const newMessage = e.target.value
-            const cursorPosition = e.target.selectionStart
-            setMessage(newMessage)
-            localStorage.setItem(draftKey, newMessage)
+          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0) && (
+            <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
+              {selectedMcpIds.map(id => {
+                const mcp = mcpConnections.find(c => c.id === id)
+                if (!mcp) return null
+                return (
+                  <Badge
+                    variant="secondary"
+                    className="gap-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 py-1"
+                  >
+                    <Database className="w-3 h-3" />
+                    @{mcp.name}
+                    <button
+                      onClick={() => setSelectedMcpIds(prev => prev.filter(i => i !== id))}
+                      className="ml-1 hover:text-indigo-900"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                )
+              })}
+              {pastedContents.map((content) => (
+                <PastedContentButton
+                  key={content.id}
+                  content={content}
+                  onClick={() => openFileModal(content, true)}
+                  onRemove={() => setPastedContents((prev) => prev.filter((c) => c.id !== content.id))}
+                />
+              ))}
+              {uploadedFiles.map((file) => (
+                <FilePreviewButton
+                  key={file.id}
+                  file={file}
+                  onClick={() => openFileModal(file, false)}
+                  onRemove={() => setUploadedFiles((prev) => prev.filter((f) => f.id !== file.id))}
+                />
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => {
+              const newMessage = e.target.value
+              const cursorPosition = e.target.selectionStart
+              setMessage(newMessage)
+              localStorage.setItem(draftKey, newMessage)
 
-            // @ Mention Logic
-            const lastChar = newMessage[cursorPosition - 1]
-            const textBeforeCursor = newMessage.slice(0, cursorPosition)
-            const atIndex = textBeforeCursor.lastIndexOf("@")
+              // @ Mention Logic
+              const lastChar = newMessage[cursorPosition - 1]
+              const textBeforeCursor = newMessage.slice(0, cursorPosition)
+              const atIndex = textBeforeCursor.lastIndexOf("@")
 
-            if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
-              const filter = textBeforeCursor.slice(atIndex + 1)
-              if (!filter.includes(" ")) {
-                // Calculate position for menu (simplified - usually needs a hidden div measurement)
-                const rect = textareaRef.current?.getBoundingClientRect()
-                if (rect) {
-                  setMentionMenu({
-                    isOpen: true,
-                    filter,
-                    position: { top: -160, left: 10 }, // Relative to absolute container
-                    startIndex: atIndex
-                  })
+              if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
+                const filter = textBeforeCursor.slice(atIndex + 1)
+                if (!filter.includes(" ")) {
+                  // Calculate position for menu (simplified - usually needs a hidden div measurement)
+                  const rect = textareaRef.current?.getBoundingClientRect()
+                  if (rect) {
+                    setMentionMenu({
+                      isOpen: true,
+                      filter,
+                      position: { top: -160, left: 10 }, // Relative to absolute container
+                      startIndex: atIndex
+                    })
+                  }
+                } else {
+                  setMentionMenu(prev => ({ ...prev, isOpen: false }))
                 }
               } else {
                 setMentionMenu(prev => ({ ...prev, isOpen: false }))
               }
-            } else {
-              setMentionMenu(prev => ({ ...prev, isOpen: false }))
-            }
 
-            if (newMessage.trim().length > 0) {
-              setIsActive(true)
-            }
-          }}
-          onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
-          onFocus={() => {
-            setIsFocused(true)
-            if (message.trim().length > 0) {
-              setIsActive(true)
-            }
-          }}
-          onBlur={() => {
-            setIsFocused(false)
-            if (message.trim().length === 0) {
-              setIsActive(false)
-            }
-          }}
-          placeholder={isDiscussMode ? "Discuss anything..." : placeholder}
-          className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground
+              if (newMessage.trim().length > 0) {
+                setIsActive(true)
+              }
+            }}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onFocus={() => {
+              setIsFocused(true)
+              if (message.trim().length > 0) {
+                setIsActive(true)
+              }
+            }}
+            onBlur={() => {
+              setIsFocused(false)
+              if (message.trim().length === 0) {
+                setIsActive(false)
+              }
+            }}
+            placeholder={isDiscussMode ? "Discuss anything..." : placeholder}
+            className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground
              px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light
              disabled:cursor-not-allowed disabled:opacity-50"
-          style={{ scrollbarWidth: "thin" }}
-          disabled={isLoading}
-        />
-        <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
-          {isListening ? (
-            <div className="flex-1 relative h-10 mr-2 p-[-14px]">
-              <canvas ref={canvasRef} className="absolute inset-0 w-full h-full bg-gray-100 rounded" />
-            </div>
-          ) : (
-            <div className="flex items-center">
-              <div className="relative" ref={menuRef}>
-                <Button
-                  type="button"
-                  onClick={() => setShowMenu((prev) => !prev)}
-                  className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md BackgroundStyle text-black ml-1"
-                  title="More options"
-                  disabled={isLoading}
-                  variant="ghost"
-                  size="sm"
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
+            style={{ scrollbarWidth: "thin" }}
+            disabled={isLoading}
+          />
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
+            {isListening ? (
+              <div className="flex-1 relative h-10 mr-2 p-[-14px]">
+                <canvas ref={canvasRef} className="absolute inset-0 w-full h-full bg-gray-100 rounded" />
+              </div>
+            ) : (
+              <div className="flex items-center">
+                <div className="relative flex items-center" ref={menuRef}>
+                  <Button
+                    type="button"
+                    onClick={() => setShowMenu((prev) => !prev)}
+                    className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md BackgroundStyle text-black ml-1"
+                    title="More options"
+                    disabled={isLoading}
+                    variant="ghost"
+                    size="sm"
+                  >
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
 
-                {showMenu && (
-                  <div
-                    className="absolute z-50 w-56 overflow-visible bg-white shadow-xs border border-[#dbd9d965]
+                  {showMenu && (
+                    <div
+                      className="absolute z-50 w-56 overflow-visible bg-white shadow-xs border border-[#dbd9d965]
                     animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2
                     focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
                     data-[variant=destructive]:focus:bg-destructive/10
@@ -1854,42 +2028,49 @@ Please analyze this error and fix it in the code. Make sure to:
                     outline-hidden select-none data-[disabled]:pointer-events-none 
                     data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
                     [&_svg:not([class*='size-'])]:size-4"
-                    style={{ bottom: "100%", left: "0", marginBottom: "10px" }}
-                  >
-                    {menuMode === "main" ? (
-                      <>
-                        <div
-                          onClick={() => {
-                            fileInputRef.current?.click()
-                            setShowMenu(false)
-                          }}
-                          className={cn("flex items-center px-2 py-1.5 text-sm rounded-md", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
-                        >
-                          <Link1Icon className="h-4 w-4 mr-2" />
-                          Attach images & files
-                        </div>
-                        <div onClick={() => setMenuMode("design")} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer w-full">
-                          <Palette className="h-4 w-4 mr-2" />
-                          System Design
-                        </div>
-                        <div
-                          className="relative flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer w-full"
-                          onMouseEnter={() => setShowDatabaseHover(true)}
-                          onMouseLeave={() => setShowDatabaseHover(false)}
-                          onClick={(e) => {
-                            if (projectId && onOpenDatabase) {
-                              onOpenDatabase()
-                            }
-                          }}
-                        >
-                          <Database className="h-4 w-4 mr-2" />
-                          Database
-                          {isFalborDb && <span className="ml-auto text-blue-600 text-[10px] font-bold">Falbor</span>}
-                          {credentialsSaved && !isFalborDb && <span className="ml-auto text-green-600 text-[10px] font-bold">Connected</span>}
+                      style={{ bottom: "100%", left: "0", marginBottom: "10px" }}
+                    >
+                      {menuMode === "main" ? (
+                        <>
+                          <div
+                            onClick={() => {
+                              fileInputRef.current?.click()
+                              setShowMenu(false)
+                            }}
+                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                          >
+                            <Link1Icon className="h-4 w-4 mr-2" />
+                            Attach images & files
+                          </div>
+                          <div
+                            onClick={() => {
+                              if (!message.includes("Capture from URL:")) {
+                                setMenuMode("design")
+                              }
+                            }}
+                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm w-full", message.includes("Capture from URL:") ? "opacity-50 cursor-not-allowed grayscale" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                          >
+                            <Palette className="h-4 w-4 mr-2" />
+                            System Design
+                          </div>
+                          <div
+                            className="relative flex items-center px-2 py-1.5 text-sm rounded-sm hover:bg-[#e7e7e7] cursor-pointer w-full"
+                            onMouseEnter={() => setShowDatabaseHover(true)}
+                            onMouseLeave={() => setShowDatabaseHover(false)}
+                            onClick={(e) => {
+                              if (projectId && onOpenDatabase) {
+                                onOpenDatabase()
+                              }
+                            }}
+                          >
+                            <Database className="h-4 w-4 mr-2" />
+                            Database
+                            {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
+                            {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>}
 
-                          {showDatabaseHover && (!projectId || !onOpenDatabase) && (
-                            <div
-                              className="absolute z-50 w-56
+                            {showDatabaseHover && (!projectId || !onOpenDatabase) && (
+                              <div
+                                className="absolute z-50 w-56
                               BackgroundStyleButton
                               focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
                               data-[variant=destructive]:focus:bg-destructive/10
@@ -1900,251 +2081,399 @@ Please analyze this error and fix it in the code. Make sure to:
                               outline-hidden select-none data-[disabled]:pointer-events-none 
                               data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
                               [&_svg:not([class*='size-'])]:size-4"
-                              style={{ left: "100%", top: 0, marginLeft: "-7px" }}
-                              onMouseEnter={() => setShowDatabaseHover(true)}
-                              onMouseLeave={() => setShowDatabaseHover(false)}
-                            >
-                              <TooltipProvider>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                      onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setShowMenu(false); setShowDatabaseHover(false); }}
-                                    >
-                                      <img src="/icons/falbor.png" className="w-4 h-4 mr-2" alt="" />
-                                      <span className="flex-1 text-left">Falbor Database</span>
-                                      {isFalborDb && <Check className="h-4 w-4 text-black" />}
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Use the Falbor built-in database</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                      onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
-                                    >
-                                      <img src="/icons/supabase.png" className="w-4 h-4 mr-2" alt="" />
-                                      <span className="flex-1 text-left">Connect Supabase</span>
-                                      {!isFalborDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Connect your own Supabase database</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <div
-                                      className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                      onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
-                                    >
-                                      <img src="/icons/database-off.png" className="w-4 h-4 mr-2" alt="" />
-                                      <span className="flex-1 text-left">Create without DB</span>
-                                    </div>
-                                  </TooltipTrigger>
-                                  <TooltipContent>
-                                    <p>Proceed without connecting any database</p>
-                                  </TooltipContent>
-                                </Tooltip>
-                              </TooltipProvider>
-                            </div>
-                          )}
-                        </div>
-                        <div
-                          onClick={() => {
-                            if (!isImproving && message.trim() && !isLoading) {
-                              handleImprovePrompt()
-                              setShowMenu(false)
-                            }
-                          }}
-                          className={cn("flex items-center px-2 py-1.5 text-sm rounded-md w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
-                        >
-                          {!isImproving ? (
-                            <StarsIcon className="h-4 w-4 mr-2" />
-                          ) : (
-                            <Loader className="h-4 w-4 mr-2 animate-spin" />
-                          )}
-                          Enhance Prompt
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full">
-                          <ArrowLeft className="h-4 w-4 mr-2" />
-                          Back
-                        </div>
-                        {designSystems.map((system) => (
+                                style={{ left: "100%", top: 0, marginLeft: "-7px" }}
+                                onMouseEnter={() => setShowDatabaseHover(true)}
+                                onMouseLeave={() => setShowDatabaseHover(false)}
+                              >
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                                      >
+                                        <img src="/icons/falbor.png" className="w-4 h-4 mr-2" alt="" />
+                                        <span className="flex-1 text-left">Falbor Database</span>
+                                        {isFalborDb && <Check className="h-4 w-4 text-black" />}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Use the Falbor built-in database</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                                      >
+                                        <img src="/icons/supabase.png" className="w-4 h-4 mr-2" alt="" />
+                                        <span className="flex-1 text-left">Connect Supabase</span>
+                                        {!isFalborDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Connect your own Supabase database</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                                      >
+                                        <img src="/icons/database-off.png" className="w-4 h-4 mr-2" alt="" />
+                                        <span className="flex-1 text-left">Create without DB</span>
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Proceed without connecting any database</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
+                            )}
+                          </div>
                           <div
-                            key={system.name}
+                            className="relative flex items-center px-2 py-1.5 text-sm rounded-sm hover:bg-[#e7e7e7] cursor-pointer w-full"
+                            onMouseEnter={() => setShowModelHover(true)}
+                            onMouseLeave={() => setShowModelHover(false)}
+                          >
+                            <img src={currentModel.iconUrl || "/placeholder.svg"} className="h-4 w-4 mr-2" alt="" />
+                            <span className="flex-1 text-left">AI Model</span>
+                            <span className="ml-auto text-muted-foreground text-[10px]">{currentModel.label}</span>
+
+                            {showModelHover && (
+                              <div
+                                className="absolute z-50 w-[260px]
+                              bg-white
+                              focus:bg-accent focus:text-accent-foreground
+                              items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
+                              outline-hidden select-none border shadow-xs"
+                                style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
+                                onMouseEnter={() => setShowModelHover(true)}
+                                onMouseLeave={() => setShowModelHover(false)}
+                              >
+                                <div className="px-2.5 py-1 text-xs font-semibold text-muted-foreground">Claude Agent</div>
+                                <div className="space-y-0.5">
+                                  {MODEL_OPTIONS.slice(0, 6).map((model) => (
+                                    <div
+                                      key={model.id}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        if (model.isPremium && !hasSubscription) {
+                                          setShowPremiumAlert(true)
+                                          return
+                                        }
+                                        handleModelSelect(model.id)
+                                        setShowModelHover(false)
+                                        setShowMenu(false)
+                                      }}
+                                      className={cn(
+                                        "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative",
+                                        model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "hover:bg-[#f3f3f3]"
+                                      )}
+                                    >
+                                      <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
+                                      <span className={cn("flex-1", model.isPremium && !hasSubscription ? "blur-[0.5px]" : "")}>{model.label}</span>
+                                      {model.isPremium && !hasSubscription && (
+                                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-blue-500 to-purple-500 backdrop-blur-md text-white border border-white/20 shadow-xl text-[10px] uppercase font-bold px-2 py-0.5 rounded-full z-10 flex items-center gap-1 opacity-100 grayscale-0">
+                                          <Lock className="w-2.5 h-2.5" /> Pro Plus
+                                        </span>
+                                      )}
+                                      {selectedModel === model.id && (
+                                        <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
+                                      )}
+                                      {model.isPremium && hasSubscription && (
+                                        <Lock className="w-3 h-3 text-gray-600" />
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                                {/* <div className="h-px bg-gray-100 w-full m-0 p-0 my-1" />
+                              <div className="p-0.5 space-y-0.5">
+                                {MODEL_OPTIONS.slice(6).map((model) => (
+                                  <div
+                                    key={model.id}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      if (model.isPremium && !hasSubscription) {
+                                        setShowPremiumAlert(true)
+                                        return
+                                      }
+                                      handleModelSelect(model.id)
+                                      setShowModelHover(false)
+                                      setShowMenu(false)
+                                    }}
+                                    className={cn(
+                                      "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative",
+                                      model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "hover:bg-[#f3f3f3]"
+                                    )}
+                                  >
+                                    <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
+                                    <span className={cn("flex-1", model.isPremium && !hasSubscription ? "blur-[0.5px]" : "")}>{model.label}</span>
+                                    {model.isPremium && !hasSubscription && (
+                                      <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-blue-500 to-purple-500 backdrop-blur-md text-white border border-white/20 shadow-xl text-[10px] uppercase font-bold px-2 py-0.5 rounded-full z-10 flex items-center gap-1 opacity-100 grayscale-0">
+                                        <Lock className="w-2.5 h-2.5" /> Pro Plus
+                                      </span>
+                                    )}
+                                    {selectedModel === model.id && (
+                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
+                                    )}
+                                    {model.isPremium && hasSubscription && (
+                                      <Lock className="w-3 h-3 text-gray-600" />
+                                    )}
+                                  </div>
+                                ))}
+                              </div> */}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* {!projectId && (
+                          <div
+                            className="relative flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer w-full"
+                            onMouseEnter={() => setShowFrameworkHover(true)}
+                            onMouseLeave={() => setShowFrameworkHover(false)}
+                          >
+                            <Square className="h-4 w-4 mr-2 text-muted-foreground stroke-1" />
+                            <span className="flex-1 text-left">Choose framework</span>
+                            <span className="ml-auto text-muted-foreground text-[10px] uppercase font-bold">{selectedFramework}</span>
+
+                            {showFrameworkHover && (
+                              <div
+                                className="absolute z-50 w-64
+                              BackgroundStyleButton
+                              focus:bg-accent focus:text-accent-foreground
+                              items-center gap-2 rounded-md  text-sm
+                              outline-hidden select-none border"
+                                style={{ left: "100%", top: 0, marginLeft: "-7px" }}
+                                onMouseEnter={() => setShowFrameworkHover(true)}
+                                onMouseLeave={() => setShowFrameworkHover(false)}
+                              >
+                                <div className="p-0.5 space-y-0.5">
+                                  {["vite", "nextjs", "vue"].map((fw) => {
+                                    const icon =
+                                      fw === "nextjs" ? <img src="/icons/nextjs.png" className="w-5 h-5 mr-2" alt="" /> :
+                                        fw === "vue" ? <img src="/icons/vue.png" className="w-7 h-7 ml-[-3px]" alt="" /> :
+                                          <img src="/icons/Vite.png" className="w-5 h-5 mr-2" alt="" />
+
+                                    return (
+                                      <div
+                                        key={fw}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          setSelectedFramework(fw)
+                                          setShowFrameworkHover(false)
+                                          setShowMenu(false)
+                                        }}
+                                        className="flex items-center gap-3 px-3 py-1.5 rounded-sm cursor-pointer relative hover:bg-white"
+                                      >
+                                        {icon}
+
+                                        <span className="flex-1 capitalize text-sm">
+                                          {fw === "nextjs"
+                                            ? "Next.js (React + TypeScript)"
+                                            : fw === "vue"
+                                              ? "Vue + TypeScript"
+                                              : "Vite + TypeScript"}
+                                        </span>
+
+                                        {selectedFramework === fw && (
+                                          <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">
+                                            ACTIVE
+                                          </span>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )} */}
+
+                          {/* <div
+                            className="relative flex items-center px-2 py-1.5 text-sm rounded-sm hover:bg-[#e7e7e7] cursor-pointer w-full"
+                            onMouseEnter={() => setShowUrlHover(true)}
+                            onMouseLeave={() => setShowUrlHover(false)}
+                          >
+                            <Globe className="h-4 w-4 mr-2" />
+                            <span className="flex-1 text-left">Capture from URL</span>
+                            <Badge>Beta</Badge>
+                            {showUrlHover && (
+                              <div
+                                className="absolute z-50 w-64
+                              bg-white
+                              focus:bg-accent focus:text-accent-foreground
+                              items-center gap-2 rounded-md px-3 py-3 text-sm
+                              outline-hidden select-none border shadow-sm"
+                                style={{ left: "100%", top: "-50px", marginLeft: "-7px" }}
+                                onMouseEnter={() => setShowUrlHover(true)}
+                                onMouseLeave={() => setShowUrlHover(false)}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="mb-2 text-xs font-semibold text-muted-foreground">Website URL</div>
+                                <div className="flex gap-2">
+                                  <Input
+                                    placeholder="https://example.com"
+                                    value={captureUrlInput}
+                                    onChange={(e) => setCaptureUrlInput(e.target.value)}
+                                    className="h-8 text-xs font-normal"
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") {
+                                        e.preventDefault();
+                                        if (captureUrlInput.trim()) {
+                                          const promptText = `Capture from URL: ${captureUrlInput.trim()}`;
+                                          setMessage(prev => prev + (prev.trim() ? "\\n\\n" : "") + promptText);
+                                          setCaptureUrlInput("");
+                                          setShowUrlHover(false);
+                                          setShowMenu(false);
+                                        }
+                                      }
+                                    }}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    className="h-8"
+                                    onClick={() => {
+                                      if (captureUrlInput.trim()) {
+                                        const promptText = `Capture from URL: ${captureUrlInput.trim()}`;
+                                        setMessage(prev => prev + (prev.trim() ? "\\n\\n" : "") + promptText);
+                                        setCaptureUrlInput("");
+                                        setShowUrlHover(false);
+                                        setShowMenu(false);
+                                      }
+                                    }}
+                                  >
+                                    Add
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
+                          </div> */}
+                          <div
                             onClick={() => {
-                              setSelectedDesign(system.name)
-                              setDesignConfig(designPresets[system.name])
+                              if (!isImproving && message.trim() && !isLoading) {
+                                handleImprovePrompt()
+                                setShowMenu(false)
+                              }
+                            }}
+                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                          >
+                            {!isImproving ? (
+                              <StarsIcon className="h-4 w-4 mr-2" />
+                            ) : (
+                              <Loader className="h-4 w-4 mr-2 animate-spin" />
+                            )}
+                            Enhance Prompt
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full">
+                            <ArrowLeft className="h-4 w-4 mr-2" />
+                            Back
+                          </div>
+                          {designSystems.map((system) => (
+                            <div
+                              key={system.name}
+                              onClick={() => {
+                                setSelectedDesign(system.name)
+                                setDesignConfig(designPresets[system.name])
+                                setShowMenu(false)
+                              }}
+                              className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
+                            >
+                              <div className={`h-4 w-4 rounded mr-2 ${system.previewColor}`} />
+                              {system.name}
+                            </div>
+                          ))}
+                          <div
+                            onClick={() => {
+                              setSelectedDesign("Custom")
+                              setShowDesignModal(true)
                               setShowMenu(false)
                             }}
                             className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
                           >
-                            <div className={`h-4 w-4 rounded mr-2 ${system.previewColor}`} />
-                            {system.name}
+                            <Plus className="h-4 w-4 mr-2" />
+                            New Design System
                           </div>
-                        ))}
-                        <div
-                          onClick={() => {
-                            setSelectedDesign("Custom")
-                            setShowDesignModal(true)
-                            setShowMenu(false)
-                          }}
-                          className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
-                          New Design System
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="h-5 w-px bg-gray-300 mx-2" />
-              <div className="flex items-center relative" ref={dropdownRef}>
-                <DropdownMenu open={showModelDropdown} onOpenChange={setShowModelDropdown}>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="flex items-center cursor-pointer gap-2 px-3 py-1.5 h-7 rounded-md text-sm font-medium BackgroundStyle text-black"
-                      disabled={isLoading}
-                    >
-                      <img src={currentModel.iconUrl || "/placeholder.svg"} alt="" className="w-4 h-4" />
-                      <span>{currentModel.label}</span>
-                      {currentModel.isPremium && !hasSubscription && (
-                        <Crown className="w-4 h-4 text-amber-500 ml-1" />
+                        </>
                       )}
-                      <ChevronDown className="w-4 h-4 ml-1" />
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center relative" ref={dropdownRef}>
+                  {connected && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={onCloseIdeas}
+                      className="px-2 py-1 text-sm text-black/75 hover:text-black hover:bg-[#e4e4e48c] h-auto ml-1"
+                    >
+                      Close
                     </Button>
-                  </DropdownMenuTrigger>
-
-                  <DropdownMenuContent
-                    align="start"
-                    side="top"
-                    className="w-64 p-0 shadow-xs border"
-                  >
-                    {/* Claude Agent Title */}
-                    <div className="px-2.5 py-1 mt-1 text-xs font-semibold text-muted-foreground">
-                      Claude Agent
-                    </div>
-
-                    {/* Claude Models */}
-                    <div className="p-0.5">
-                      {MODEL_OPTIONS.slice(0, 6).map((model) => (
-                        <DropdownMenuItem
-                          key={model.id}
-                          onSelect={() => handleModelSelect(model.id)}
-                          className="flex items-center gap-3 cursor-pointer px-3"
-                        >
-                          <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
-                          <span className="flex-1">{model.label}</span>
-
-                          {model.isPremium && !hasSubscription && (
-                            <Lock className="w-3 h-3 text-gray-600" />
-                          )}
-
-                          {selectedModel === model.id && (
-                            <span className="text-xs bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl">active</span>
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </div>
-                    {/* Full-width divider */}
-                    <div className="h-px bg-gray-100 w-full m-0 p-0" />
-
-                    {/* Other Models */}
-                    <div className="p-0.5">
-                      {MODEL_OPTIONS.slice(6).map((model) => (
-                        <DropdownMenuItem
-                          key={model.id}
-                          onSelect={() => handleModelSelect(model.id)}
-                          className="flex items-center gap-3 cursor-pointer px-3"
-                        >
-                          <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
-                          <span className="flex-1">{model.label}</span>
-
-                          {selectedModel === model.id && (
-                            <span className="text-xs bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl">active</span>
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-
-                {connected && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={onCloseIdeas}
-                    className="px-2 py-1 text-sm text-black/75 hover:text-black hover:bg-[#e4e4e48c] h-auto ml-1"
-                  >
-                    Close
-                  </Button>
-                )}
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".ts,.tsx,.js,.jsx,.py,.css,.html,.json,.md,.txt,image/*"
-            multiple
-            onChange={handleFileUpload}
-            className="hidden"
-          />
-          <div className="flex items-center gap-px">
-            {!isListening && (
-              <Button
-                type="button"
-                onClick={handleVoiceToggle}
-                className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
-                title="Voice input"
-                disabled={isLoading}
-                variant="ghost"
-                size="sm"
-              >
-                <AudioLinesIcon className="w-4 h-4" />
-              </Button>
             )}
-            <Button
-              type={isListening ? "button" : effectiveIsLoading ? "button" : "submit"}
-              onClick={isListening ? stopVoiceInput : effectiveIsLoading ? handleStop : undefined}
-              size={isProvisioning ? "default" : "icon"}
-              className={cn(
-                "h-7 p-1.5 rounded-md mr-1",
-                isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-red-500 hover:bg-red-600" : "bg-black"),
-                isProvisioning ? "w-auto px-4 gap-2" : "w-7"
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".ts,.tsx,.js,.jsx,.py,.css,.html,.json,.md,.txt,image/*"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+            <div className="flex items-center gap-px">
+              {!isListening && (
+                <Button
+                  type="button"
+                  onClick={handleVoiceToggle}
+                  className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                  title="Voice input"
+                  disabled={isLoading}
+                  variant="ghost"
+                  size="sm"
+                >
+                  <AudioLinesIcon className="w-4 h-4" />
+                </Button>
               )}
-              disabled={
-                (!effectiveIsLoading && !isListening &&
-                  ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
-                    !isAuthenticated))
-              }
-            >
-              {isProvisioning ? (
-                <>
-                  <Loader className="w-4 h-4 animate-spin text-white" />
-                  <span className="text-[10px] text-white font-bold uppercase tracking-wider">Provisioning DB...</span>
-                </>
-              ) : effectiveIsLoading ? (
-                <StopCircle className="w-5 h-5 text-white" />
-              ) : isListening ? (
-                <Circle className="w-4 h-4 text-white" />
-              ) : (
-                <ArrowUp className="w-5 h-5 text-white" />
-              )}
-            </Button>
+              <Button
+                type={isListening ? "button" : effectiveIsLoading ? "button" : "submit"}
+                onClick={isListening ? stopVoiceInput : effectiveIsLoading ? handleStop : undefined}
+                size={isProvisioning ? "default" : "icon"}
+                className={cn(
+                  "h-7 p-1.5 rounded-md mr-1",
+                  isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-red-500 hover:bg-red-600" : "bg-black"),
+                  isProvisioning ? "w-auto px-4 gap-2" : "w-7"
+                )}
+                disabled={
+                  (!effectiveIsLoading && !isListening &&
+                    ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
+                      !isAuthenticated))
+                }
+              >
+                {isProvisioning ? (
+                  <>
+                    <Loader className="w-4 h-4 animate-spin text-white" />
+                    <span className="text-[10px] text-white font-bold uppercase tracking-wider">Provisioning DB...</span>
+                  </>
+                ) : effectiveIsLoading ? (
+                  <StopCircle className="w-5 h-5 text-white" />
+                ) : isListening ? (
+                  <Circle className="w-4 h-4 text-white" />
+                ) : (
+                  <ArrowUp className="w-5 h-5 text-white" />
+                )}
+              </Button>
+            </div>
           </div>
-        </div>
-      </form>
+        </form >
+      </div>
       <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
         <DialogContent>
           <DialogTitle>Confirm Build</DialogTitle>
@@ -2369,7 +2698,7 @@ Please analyze this error and fix it in the code. Make sure to:
           </div>
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   )
 })
 export function ChatInput(props: ChatInputProps) {

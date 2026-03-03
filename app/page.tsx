@@ -12,6 +12,9 @@ import { Suspense } from "react"
 import "@/styles/bg.css"
 import Example from "@/components/layout/Example"
 import Example2 from "@/components/layout/Example/Example"
+import FeatureScroller from "@/components/layout/features/feature-scroller";
+import ApplicationPreview from "@/components/layout/features/feature-scroller/application-preview"
+import PricingSection from "@/components/layout/features/feature-scroller/pricing"
 
 interface ProjectItem {
   id: string
@@ -116,11 +119,15 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div className="w-full space-y-20 pb-20">
+            <div className="flex flex-col min-h-screen">
               <HeroSection />
+              <div className="flex justify-center mt-20">
+                <ApplicationPreview />
+              </div>
+              <PricingSection />
               <FAQ />
-              <Example />
-              <CompanyLogos />
+              {/* <Example /> */}
+              {/* <CompanyLogos /> */}
             </div>
           </div>
         )}
@@ -137,8 +144,11 @@ export default async function HomePage() {
             }}
           >
             <div className="flex flex-col items-center h-full justify-center top-[-120px] relative">
-              <HeroText />
-              <div className="w-full flex justify-center mt-6">
+              <div className="z-10">
+                <HeroText />
+              </div>
+              <img src="/bg/bg-text.png" alt="" className="absolute mt-[-160px] ml-25 w-[50%]" />
+              <div className="w-full flex justify-center mt-6 z-10">
                 <InputArea isAuthenticated />
               </div>
             </div>

@@ -26,7 +26,7 @@ export async function POST(
         }
 
         const genAI = new GoogleGenerativeAI(googleKey)
-        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" })
+        const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" })
 
         const systemPrompt = `
       You are an expert HTML email designer specializing in Supabase Auth templates.

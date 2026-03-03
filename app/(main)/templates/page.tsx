@@ -149,7 +149,9 @@ export default async function TemplatesPage() {
             Start faster by cloning high-quality templates shared by the community
           </p>
 
-          <TemplatesGrid templates={templatesData} />
+          <div className="max-w-7xl mx-auto">
+            <TemplatesGrid templates={templatesData} />
+          </div>
         </div>
       </div>
     )
@@ -169,7 +171,9 @@ export default async function TemplatesPage() {
           </p>
         </div>
 
-        <TemplatesGrid templates={templatesData} />
+        <div className="max-w-7xl mx-auto">
+          <TemplatesGrid templates={templatesData} />
+        </div>
       </main>
 
       <Footer />

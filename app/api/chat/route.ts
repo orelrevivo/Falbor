@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { db } from "@/config/db"
-import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase } from "@/config/schema"
+import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, userCredits } from "@/config/schema"
 import { eq, asc } from "drizzle-orm"
 import { getSystemPrompt } from "@/lib/common/prompts/prompt"
 import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
@@ -246,7 +246,18 @@ async function handleModelRequest(
 
   // Append context if it's an iteration
   if (history.length > 1) {
-    systemPrompt += `\n\n### ITERATION MODE ###\nYou are working on an existing project. DO NOT rewrite all files. Only generate or modify the exact file(s) requested by the user or where the error originated. Maintain the existing design unless explicitly asked to change it. Outputting existing untouched files will cause the user to lose credits and is strictly forbidden.\n### END ITERATION MODE ###`
+    systemPrompt += `\n\n### ITERATION MODE (STRICTLY ENFORCED) ###
+You are continuing work on an existing project. Follow these rules without exception:
+
+1. **IDENTIFY FIRST**: Before writing any code, use <FileSearch> to identify which specific file(s) contain the error or need changes.
+2. **ONLY output the file(s) that need to change** — do NOT rewrite files that are already working.
+3. **If the user reports an error**, trace the error to its source file and ONLY output that file with the fix applied.
+4. **NEVER rewrite all files from scratch** — doing so wastes the user's credits and is strictly forbidden.
+5. **Preserve existing design, colors, and layout** unless the user explicitly requests changes.
+6. **Error-fix workflow**: <FileSearch query="error location"> → identify the broken file → output ONLY that fixed file.
+
+Violating these rules by outputting unrelated files is STRICTLY FORBIDDEN.
+### END ITERATION MODE ###`
   }
 
   // Optimization for Email Template Edits
@@ -360,7 +371,7 @@ async function handleGeminiRequest(
     let inCodeBlock = false
 
     const geminiModel = genAI.getGenerativeModel({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-flash",
       systemInstruction: systemPrompt,
       generationConfig: { maxOutputTokens: 32768 },
     })
@@ -424,38 +435,7 @@ async function handleGeminiRequest(
                     .then(() => console.log(`[Gemini] Partial progress saved for ${assistantMsgId}`))
                 }
 
-                if (isCodeRequest && messageType === "build") {
-                  accumulatedBuffer += part.text
-                  const lines = accumulatedBuffer.split("\n")
-                  let textToSend = ""
-
-                  for (let i = 0; i < lines.length - 1; i++) {
-                    const line = lines[i]
-
-                    if (line.match(/^```\w+\s+file="/)) {
-                      inCodeBlock = true
-                      continue
-                    }
-
-                    if (line.trim() === "```" && inCodeBlock) {
-                      inCodeBlock = false
-                      continue
-                    }
-
-                    if (!inCodeBlock) {
-                      textToSend += line + "\n"
-                    }
-                  }
-
-                  accumulatedBuffer = lines[lines.length - 1]
-
-                  if (textToSend) {
-                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
-                  }
-                } else {
-                  // For greetings and questions, stream everything
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: part.text })}\n\n`))
-                }
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: part.text })}\n\n`))
               }
               if (chunk.candidates?.[0]?.finishReason) {
                 finishReason = chunk.candidates[0].finishReason
@@ -473,6 +453,21 @@ async function handleGeminiRequest(
 
           console.log(`[Gemini] Response length: ${fullResponse.length}`)
 
+          // Estimate or get tokens (Gemini Flash usage is usually low cost, but we use a flat rate)
+          const estimateTokens = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const tokensUsed = estimateTokens
+          const cost = Math.max(5, Math.ceil(tokensUsed / 500)) // 5 cents minimum or 1 cent per 500 tokens
+
+          // Extra deduction if cost > 5 (5 already deducted by UI)
+          if (cost > 5) {
+            const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+            if (userCredit) {
+              await db.update(userCredits)
+                .set({ balance: (userCredit.balance || 0) - (cost - 5) })
+                .where(eq(userCredits.userId, userId))
+            }
+          }
+
           if (messageType === "build" && isCodeRequest) {
             await saveAssistantMessageWithParallelGeneration(
               projectId,
@@ -485,6 +480,8 @@ async function handleGeminiRequest(
               false,
               discussMode,
               isAutomated,
+              tokensUsed,
+              cost,
             )
           } else {
             await saveAssistantMessage(
@@ -498,6 +495,8 @@ async function handleGeminiRequest(
               false,
               discussMode,
               isAutomated,
+              tokensUsed,
+              cost,
             )
           }
         } catch (error) {
@@ -652,27 +651,31 @@ async function handleOpenRouterRequest(
                       const lines = accumulatedBuffer.split("\n")
                       let textToSend = ""
 
-                      for (let i = 0; i < lines.length - 1; i++) {
-                        const line = lines[i]
+                      const lastLine = lines[lines.length - 1]
+                      const completeLines = lines.slice(0, -1)
 
+                      for (const line of completeLines) {
                         if (line.match(/^```\w+\s+file="/)) {
                           inCodeBlock = true
                           continue
                         }
-
                         if (line.trim() === "```" && inCodeBlock) {
                           inCodeBlock = false
                           continue
                         }
-
                         if (!inCodeBlock) {
                           textToSend += line + "\n"
                         }
                       }
 
-                      accumulatedBuffer = lines[lines.length - 1]
+                      if (lastLine.match(/^```\w+\s+file="/)) {
+                        inCodeBlock = true
+                        accumulatedBuffer = ""
+                      } else {
+                        accumulatedBuffer = lastLine
+                      }
 
-                      if (textToSend) {
+                      if (textToSend.trim()) {
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
                       }
                     } else {
@@ -688,6 +691,20 @@ async function handleOpenRouterRequest(
 
           console.log(`[OpenRouter/${modelId}] Response length: ${fullResponse.length}`)
 
+          // Estimate tokens for OpenRouter models
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = Math.max(5, Math.ceil(tokensUsed / 500))
+
+          // Extra deduction if cost > 5
+          if (cost > 5) {
+            const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+            if (userCredit) {
+              await db.update(userCredits)
+                .set({ balance: (userCredit.balance || 0) - (cost - 5) })
+                .where(eq(userCredits.userId, userId))
+            }
+          }
+
           if (messageType === "build" && isCodeRequest) {
             await saveAssistantMessageWithParallelGeneration(
               projectId,
@@ -700,6 +717,8 @@ async function handleOpenRouterRequest(
               false,
               discussMode,
               isAutomated,
+              tokensUsed,
+              cost,
             )
           } else {
             await saveAssistantMessage(
@@ -713,6 +732,8 @@ async function handleOpenRouterRequest(
               false,
               discussMode,
               isAutomated,
+              tokensUsed,
+              cost,
             )
           }
         } catch (error) {
@@ -858,27 +879,31 @@ async function handleZaiRequest(
                       const lines = accumulatedBuffer.split("\n")
                       let textToSend = ""
 
-                      for (let i = 0; i < lines.length - 1; i++) {
-                        const line = lines[i]
+                      const lastLine = lines[lines.length - 1]
+                      const completeLines = lines.slice(0, -1)
 
+                      for (const line of completeLines) {
                         if (line.match(/^```\w+\s+file="/)) {
                           inCodeBlock = true
                           continue
                         }
-
                         if (line.trim() === "```" && inCodeBlock) {
                           inCodeBlock = false
                           continue
                         }
-
                         if (!inCodeBlock) {
                           textToSend += line + "\n"
                         }
                       }
 
-                      accumulatedBuffer = lines[lines.length - 1]
+                      if (lastLine.match(/^```\w+\s+file="/)) {
+                        inCodeBlock = true
+                        accumulatedBuffer = ""
+                      } else {
+                        accumulatedBuffer = lastLine
+                      }
 
-                      if (textToSend) {
+                      if (textToSend.trim()) {
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
                       }
                     } else {
@@ -894,6 +919,20 @@ async function handleZaiRequest(
 
           console.log(`[Z.ai/${modelId}] Response length: ${fullResponse.length}`)
 
+          // Estimate tokens for Z.ai models
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = Math.max(5, Math.ceil(tokensUsed / 500))
+
+          // Extra deduction if cost > 5
+          if (cost > 5) {
+            const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+            if (userCredit) {
+              await db.update(userCredits)
+                .set({ balance: (userCredit.balance || 0) - (cost - 5) })
+                .where(eq(userCredits.userId, userId))
+            }
+          }
+
           if (messageType === "build" && isCodeRequest) {
             await saveAssistantMessageWithParallelGeneration(
               projectId,
@@ -906,6 +945,8 @@ async function handleZaiRequest(
               false,
               discussMode,
               isAutomated,
+              tokensUsed,
+              cost,
             )
           } else {
             await saveAssistantMessage(
@@ -919,6 +960,8 @@ async function handleZaiRequest(
               false,
               discussMode,
               isAutomated,
+              tokensUsed,
+              cost,
             )
           }
         } catch (error) {
@@ -994,23 +1037,29 @@ async function saveAssistantMessage(
   generateImages?: boolean,
   discussMode = false,
   isAutomated = false,
+  tokensUsed: number | null = null,
+  cost: number | null = null,
 ) {
   try {
     console.log("[Save] Extracting code blocks from response...")
     const codeBlocks = discussMode ? [] : extractCodeBlocks(fullResponse)
     console.log(`[Save] Found ${codeBlocks.length} code blocks`)
 
-    const cleanContent = discussMode ? fullResponse.trim() : removeCodeBlocks(fullResponse)
+    const cleanContent = fullResponse.trim()
     const hasArtifact = codeBlocks.length > 0 && !discussMode
 
     let newMessage: any
     if (existingMessageId) {
       console.log("[Save] Updating existing message:", existingMessageId)
+      const versionNameMatch = fullResponse.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+      const versionName = versionNameMatch ? versionNameMatch[1].trim() : null
+
       const [updatedMessage] = await db
         .update(messagesTable)
         .set({
           content: cleanContent,
           hasArtifact,
+          versionName,
           searchQueries: searchQueries.length > 0 ? searchQueries : null,
         })
         .where(eq(messagesTable.id, existingMessageId))
@@ -1018,6 +1067,9 @@ async function saveAssistantMessage(
       newMessage = updatedMessage
     } else {
       console.log("[Save] Inserting message into database...")
+      const versionNameMatch = fullResponse.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+      const versionName = versionNameMatch ? versionNameMatch[1].trim() : null
+
       const [insertedMessage] = await db
         .insert(messagesTable)
         .values({
@@ -1025,11 +1077,19 @@ async function saveAssistantMessage(
           role: "assistant",
           content: cleanContent,
           hasArtifact,
+          versionName,
           searchQueries: searchQueries.length > 0 ? searchQueries : null,
           isAutomated,
+          tokensUsed,
+          cost,
         })
         .returning()
       newMessage = insertedMessage
+
+      // Update project with active message ID for versioning
+      if (hasArtifact) {
+        await db.update(projects).set({ activeMessageId: newMessage.id }).where(eq(projects.id, projectId))
+      }
     }
 
     if (hasArtifact && codeBlocks.length > 0) {
@@ -1081,7 +1141,7 @@ async function saveAssistantMessage(
 
     console.log("[Save] Sending done signal to client")
     controller.enqueue(
-      encoder.encode(`data: ${JSON.stringify({ done: true, messageId: newMessage.id, hasArtifact, projectId })}\n\n`),
+      encoder.encode(`data: ${JSON.stringify({ done: true, messageId: newMessage.id, content: cleanContent, hasArtifact, projectId, tokensUsed, cost, versionName: newMessage.versionName })}\n\n`),
     )
   } catch (e) {
     console.error("[Save] Assistant error:", e)
@@ -1105,6 +1165,8 @@ async function saveAssistantMessageWithParallelGeneration(
   generateImages?: boolean,
   discussMode = false,
   isAutomated = false,
+  tokensUsed: number | null = null,
+  cost: number | null = null,
 ) {
   try {
     console.log("[ParallelGen] Extracting code blocks from response...")
@@ -1113,10 +1175,13 @@ async function saveAssistantMessageWithParallelGeneration(
       `[ParallelGen] Found ${codeBlocks.length} code blocks - splitting into ${codeBlocks.length} parallel workers`,
     )
 
-    const cleanContent = discussMode ? fullResponse.trim() : removeCodeBlocks(fullResponse)
+    const cleanContent = discussMode ? fullResponse.trim() : fullResponse.trim()
     const hasArtifact = codeBlocks.length > 0 && !discussMode
 
     let newMessage: any
+    const versionNameMatch = fullResponse.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+    const versionName = versionNameMatch ? versionNameMatch[1].trim() : null
+
     if (existingMessageId) {
       console.log("[ParallelGen] Updating existing message:", existingMessageId)
       const [updatedMessage] = await db
@@ -1124,6 +1189,7 @@ async function saveAssistantMessageWithParallelGeneration(
         .set({
           content: cleanContent,
           hasArtifact,
+          versionName,
           searchQueries: searchQueries.length > 0 ? searchQueries : null,
         })
         .where(eq(messagesTable.id, existingMessageId))
@@ -1138,11 +1204,19 @@ async function saveAssistantMessageWithParallelGeneration(
           role: "assistant",
           content: cleanContent,
           hasArtifact,
+          versionName,
           searchQueries: searchQueries.length > 0 ? searchQueries : null,
           isAutomated,
+          tokensUsed,
+          cost,
         })
         .returning()
       newMessage = insertedMessage
+    }
+
+    // Update project with active message ID for versioning
+    if (hasArtifact) {
+      await db.update(projects).set({ activeMessageId: newMessage.id }).where(eq(projects.id, projectId))
     }
 
     if (hasArtifact && codeBlocks.length > 0) {
@@ -1202,7 +1276,7 @@ async function saveAssistantMessageWithParallelGeneration(
 
     console.log("[ParallelGen] Sending done signal to client")
     controller.enqueue(
-      encoder.encode(`data: ${JSON.stringify({ done: true, messageId: newMessage.id, hasArtifact, projectId })}\n\n`),
+      encoder.encode(`data: ${JSON.stringify({ done: true, messageId: newMessage.id, content: cleanContent, hasArtifact, projectId, tokensUsed, cost, versionName: newMessage.versionName })}\n\n`),
     )
   } catch (e) {
     console.error("[ParallelGen] Error:", e)
@@ -1255,6 +1329,19 @@ Use these tags throughout:
 - <FileChecks>validation notes</FileChecks> — if needed
 - <Testing>test steps and results</Testing> — after generating code
 - <ReviewedWork>deep professional summary of what was built</ReviewedWork> — at the very end
+
+## TASK BREAKDOWN (REQUIRED for build/code requests ONLY):
+BEFORE writing any code, output a <Tasks> block listing ALL tasks you plan to complete, marking each with ⏳:
+<Tasks>
+1. Set up project structure ⏳
+2. Create main component ⏳
+3. Add routing ⏳
+4. Style components ⏳
+</Tasks>
+
+As you COMPLETE each task (after writing its file/code), output an UPDATED <Tasks> block marking completed tasks with ✓ and remaining tasks with ⏳. Output a new <Tasks> block after EACH completed task so the user can see live progress.
+
+DO NOT output <Tasks> for simple questions, greetings, or informational requests — ONLY for actual build/code generation.
 
 After ALL code is generated, write a detailed <ReviewedWork> summary. Do NOT output any raw code or file contents inside <ReviewedWork> — only prose.
 

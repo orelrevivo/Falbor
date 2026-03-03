@@ -18,6 +18,8 @@ import {
   X,
   Loader2,
   RefreshCw,
+  TerminalIcon,
+  AppWindow,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -42,6 +44,7 @@ function PayPalButtonWrapper({
   onSuccess: () => void
 }) {
   const [{ isPending, isRejected }] = usePayPalScriptReducer()
+  const { getToken } = useAuth()
 
   if (isRejected) {
     return (
@@ -65,7 +68,7 @@ function PayPalButtonWrapper({
         disabled={price <= 0}
         createOrder={async () => {
           try {
-            const token = await getToken() // getToken from useAuth in parent component
+            const token = await getToken()
             const res = await fetch(`/api/projects/${projectId}/domain/purchase`, {
               method: "POST",
               headers: {
@@ -161,6 +164,10 @@ interface DomainResult {
 interface NavbarProps {
   projectId: string
   handleDownload: () => void
+  isTerminalOpen?: boolean
+  onToggleTerminal?: () => void
+  isSplitScreen?: boolean
+  onEnterSplit?: () => void
 }
 
 type OpenDropdown = "profile" | "publish" | "share" | null
@@ -237,7 +244,14 @@ function ViewTransition({
 
 // ─── Main Navbar ────────────────────────────────────────────────────────────────
 
-export function Navbar({ projectId, handleDownload }: NavbarProps) {
+export function Navbar({
+  projectId,
+  handleDownload,
+  isTerminalOpen,
+  onToggleTerminal,
+  isSplitScreen,
+  onEnterSplit,
+}: NavbarProps) {
   const { user, isLoaded } = useUser()
   const clerk = useClerk()
   const { getToken } = useAuth()
@@ -638,13 +652,12 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <nav className="z-50 fixed w-full">
-      <div className="container mx-auto flex h-16 items-center justify-between px-4">
-        <Link href="/" className="text-xl font-sans font-light text-white absolute left-8">
-          <img width={140} className="relative top-[-1px]" src="/logo_light.png" alt="Logo" />
-        </Link>
+    <nav className="z-[9999] fixed w-[50%] right-0">
+      <div className="container mx-auto flex h-14 items-center justify-between px-4">
 
-        <div className="flex items-center gap-2 absolute right-3">
+        {/* Tab buttons are rendered inside CodePreview to stay within the same Tabs context */}
+
+        <div className="flex items-center gap-2 absolute right-7">
           {user ? (
             <>
               {/* Download */}
@@ -659,6 +672,38 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
               >
                 Download
               </button>
+
+              {/* Split Screen */}
+              {onEnterSplit && !isSplitScreen && (
+                <button
+                  onClick={onEnterSplit}
+                  className={cn(
+                    "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
+                    "text-black hover:text-black/80 BackgroundStyle"
+                  )}
+                  style={{ border: "1px solid #d6d4ce" }}
+                  title="Split screen"
+                >
+                  <AppWindow className="w-4 h-4" />
+                  Split screen
+                </button>
+              )}
+
+              {/* Terminal */}
+              {onToggleTerminal && (
+                <button
+                  onClick={onToggleTerminal}
+                  className={cn(
+                    "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
+                    isTerminalOpen ? "bg-[#d6d4ce] text-black" : "text-black hover:text-black/80 BackgroundStyle"
+                  )}
+                  style={{ border: "1px solid #d6d4ce" }}
+                  title="Toggle Terminal"
+                >
+                  <TerminalIcon className="w-4 h-4" />
+                  Terminal
+                </button>
+              )}
 
               {/* Share */}
               <div className="relative">
@@ -696,7 +741,7 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
                   className={cn(
                     "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
                     isPublishing
-                      ? "bg-gray-700 text-gray-400 cursor-not-allowed"
+                      ? "bg-[#0099ff]/20 text-[#0099ff] cursor-not-allowed"
                       : "BackgroundStyleButton text-black/80"
                   )}
                   disabled={isPublishing}
@@ -1194,7 +1239,7 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
                                         <span>
                                           {selectedDomain.price > 0
                                             ? `$${selectedDomain.price.toFixed(2)}`
-                                            : <span className="text-red-600">—</span>}
+                                            : <span className="text-red-600">{"—"}</span>}
                                         </span>
                                       </div>
                                     </div>
@@ -1249,7 +1294,7 @@ export function Navbar({ projectId, handleDownload }: NavbarProps) {
                                     )}
 
                                     <p className="text-xs text-gray-500 text-center pt-2">
-                                      Secure payment processed by PayPal • Domain registered via GoDaddy
+                                      Secure payment processed by PayPal · Domain registered via GoDaddy
                                     </p>
                                   </>
                                 )}

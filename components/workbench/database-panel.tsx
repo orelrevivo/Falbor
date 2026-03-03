@@ -1120,13 +1120,13 @@ export function DatabasePanel({ projectId, filesOverride }: DatabasePanelProps) 
                     ))}
 
                     <div className="mt-8 pt-6 border-t border-gray-100">
-                      <div className="bg-blue-50/50 rounded-2xl p-6 border border-blue-100 shadow-sm">
+                      <div className="bg-blue-50/50 rounded-2xl p-6">
                         <div className="flex items-start gap-3 mb-4">
-                          <Info className="w-5 h-5 text-blue-500 mt-0.5" />
+                          <Info className="w-5 h-5 text-gray-900 mt-0.5" />
                           <div>
-                            <h4 className="text-sm font-bold text-blue-900">Reset System Templates</h4>
-                            <p className="text-xs text-blue-700/80 leading-relaxed mt-1">
-                              You can also <button onClick={handleResetTemplates} className="text-blue-600 font-bold hover:underline">reset all templates to their defaults</button>.
+                            <h4 className="text-sm font-bold text-gray-900">Reset System Templates</h4>
+                            <p className="text-xs text-gray-900 mt-1">
+                              You can also <button onClick={handleResetTemplates} className="cursor-pointer text-blue-600 font-bold hover:underline">reset all templates to their defaults</button>.
                               This will insert default headers and messages into all the templates.
                             </p>
                           </div>

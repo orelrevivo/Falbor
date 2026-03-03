@@ -18,17 +18,17 @@ export function CreditsSection({
     formatTime,
 }: CreditsSectionProps) {
     return (
-        <div className="px-2 py-2 space-y-2 border rounded-sm shadow-sm">
+        <div className="px-2 py-2 space-y-2 border rounded-sm">
             <div className="flex justify-between text-xs">
-                <span className="font-medium text-gray-600">Credits</span>
+                <span className="font-medium text-gray-600">Balance</span>
                 <span className="font-semibold text-gray-900">
-                    {credits} / {maxCredits}
+                    ${(credits / 100).toFixed(2)} / ${(maxCredits / 100).toFixed(2)}
                 </span>
             </div>
 
             <div className="relative w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
                 <div
-                    className="absolute inset-y-0 left-0 bg-[#c1603cdc] transition-all rounded-full"
+                    className="absolute inset-y-0 left-0 bg-[#0099ff] transition-all rounded-full"
                     style={{ width: `${progressValue}%` }}
                 />
             </div>

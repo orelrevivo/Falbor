@@ -2,7 +2,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Save, Play, Loader2, ChevronRight, Database, X } from "lucide-react"
+import { Save, Play, Loader2, ChevronRight, Database, X, AppWindow } from "lucide-react"
 import * as React from "react"
 import { FileSidebar } from "./file-sidebar"
 import { useUser } from "@clerk/nextjs"
@@ -35,6 +35,8 @@ interface EditorPaneProps {
   setSelectedFile: (file: { path: string; content: string; language: string } | null) => void
   projectId: string
   fetchFiles: () => void
+  isSplitScreen?: boolean
+  onExitSplit?: () => void
 }
 
 interface DatabaseCredentials {
@@ -105,6 +107,8 @@ export function EditorPane({
   setSelectedFile,
   projectId,
   fetchFiles,
+  isSplitScreen,
+  onExitSplit,
 }: EditorPaneProps) {
   const { isSignedIn } = useUser()
 
@@ -341,24 +345,36 @@ export function EditorPane({
                 })}
             </div>
 
-            {isSqlFile && (
-              <button
-                onClick={handleApplySql}
-                disabled={isApplying || !connectionStatus?.connected}
-                className={cn(
-                  "flex items-center gap-1.5 text-xs px-3 rounded-2xl cursor-pointer",
-                  (isApplying || !connectionStatus?.connected) &&
-                  "opacity-70 cursor-not-allowed"
-                )}
-              >
-                {isApplying ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Play className="w-3.5 h-3.5" />
-                )}
-                {isApplying ? "Pushing..." : "Push to Supabase"}
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {isSplitScreen && onExitSplit && (
+                <button
+                  onClick={onExitSplit}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-black rounded-lg cursor-pointer transition-colors"
+                >
+                  <AppWindow className="w-3.5 h-3.5" />
+                  Exit split
+                </button>
+              )}
+              {isSqlFile && (
+                <button
+                  onClick={handleApplySql}
+                  disabled={isApplying || !connectionStatus?.connected}
+                  className={cn(
+                    "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
+                    (isApplying || !connectionStatus?.connected)
+                      ? "opacity-70 cursor-not-allowed bg-gray-100"
+                      : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                  )}
+                >
+                  {isApplying ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                  {isApplying ? "Pushing..." : "Push to Supabase"}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Editor */}

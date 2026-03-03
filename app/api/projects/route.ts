@@ -40,6 +40,7 @@ export async function POST(request: Request) {
       serviceRoleKey,
       projectRef,
       dbPassword,
+      selectedFramework = "vite",
     } = await request.json()
 
     const [project] = await db
@@ -57,6 +58,10 @@ export async function POST(request: Request) {
     // If Falbor Database is requested, prepare placeholder message
     if (isFalborDb && !supabaseUrl) {
       finalMessage += `\n\n## Database Connection (Managed by Falbor)\nSetting up your database... Credentials will be available in a few seconds.`
+    }
+
+    if (selectedFramework && selectedFramework !== 'vite') {
+      finalMessage += `\n\n## Project Configuration\nFramework: ${selectedFramework}`
     }
 
     const [userMessage] = await db.insert(messages).values({

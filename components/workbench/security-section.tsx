@@ -188,12 +188,12 @@ export function SecuritySection({ projectId }: SecuritySectionProps) {
       {/* Tabs for Issues and Logs */}
       <Tabs defaultValue="issues" className="w-full flex-1">
         <button
-         onClick={runSecurityScan}
-         disabled={scanning}
-         className={cn(
-            "flex items-center gap-1 text-sm px-2 py-1 w-39 rounded transition-colors cursor-pointer bg-[#2b2525] hover:bg-[#2b2525ce] text-white"
-         )}
-          >
+          onClick={runSecurityScan}
+          disabled={scanning}
+          className={cn(
+            "flex items-center gap-1 text-sm px-2 py-1 w-42 rounded transition-colors cursor-pointer border bg-white hover:bg-white text-black"
+          )}
+        >
           <RefreshCw className={`h-4 w-4 mr-2 ${scanning ? "animate-spin" : ""}`} />
           {scanning ? "Scanning..." : "Run Security Scan"}
         </button>

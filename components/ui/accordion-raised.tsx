@@ -44,14 +44,14 @@ function AccordionTrigger({
       <AccordionPrimitive.Trigger
         data-slot='accordion-trigger'
         className={cn(
-          'text-md text-black glass-4 hover:glass-5 hover:text-black/90 bg-[#e4e4e4a8] mb-3 flex flex-1 items-center justify-between rounded-lg px-4 py-4 text-left font-medium shadow-none transition-all [&[data-state=open]_svg]:rotate-45',
+          'text-md text-black glass-4 hover:glass-5 hover:text-black/90 bg-[#F7F7F2] mb-3 flex flex-1 items-center justify-between rounded-lg px-4 py-4 text-left font-medium shadow-none transition-all [&[data-state=open]_svg]:rotate-45',
           className
         )}
         {...props}
       >
         {children}
-        <div className='icon bg-[#8d8d8d49] dark:bg-muted/50 rounded-full p-2'>
-          <PlusIcon className='text-white size-4 shrink-0 transition-transform duration-200' />
+        <div className='icon bg-[#0099ff]/20 dark:bg-muted/50 rounded-full p-2'>
+          <PlusIcon className='text-[#0099ff] size-4 shrink-0 transition-transform duration-200' />
         </div>
       </AccordionPrimitive.Trigger>
     </AccordionPrimitive.Header>

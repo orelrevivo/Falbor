@@ -36,8 +36,8 @@ interface MacOSMenuBarProps {
   className?: string;
 }
 
-interface CreditsData {
-  credits: number
+interface BalanceData {
+  balance: number
   secondsUntilNextRegen: number
   pendingGift?: number
   pendingMonthly?: number
@@ -205,7 +205,7 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
   const [automationOpen, setAutomationOpen] = useState(false);
   const [automationSettings, setAutomationSettings] = useState<AutomationSettings | null>(null);
   const [loading, setLoading] = useState(false);
-  const [creditsData, setCreditsData] = useState<CreditsData | null>(null);
+  const [balanceData, setBalanceData] = useState<BalanceData | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -229,28 +229,28 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
     fetchAutomation();
   }, [user?.id, isLoaded]);
 
-  const fetchCredits = async () => {
+  const fetchBalance = async () => {
     if (!user?.id || !isLoaded) return;
     try {
       const res = await fetch("/api/user/credits");
       if (res.ok) {
-        const data: CreditsData = await res.json();
-        setCreditsData(data);
+        const data: BalanceData = await res.json();
+        setBalanceData(data);
         setTimeLeft(data.secondsUntilNextRegen);
       }
     } catch (err) {
-      console.error("Failed to fetch credits:", err);
+      console.error("Failed to fetch balance:", err);
     }
   };
 
   useEffect(() => {
-    fetchCredits();
+    fetchBalance();
 
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          fetchCredits();
+          fetchBalance();
           return 60;
         }
         return prev - 1;
@@ -262,9 +262,9 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
     };
   }, [user?.id, isLoaded]);
 
-  const refetchCredits = async () => {
+  const refetchBalance = async () => {
     if (!user?.id) return;
-    await fetchCredits();
+    await fetchBalance();
   };
 
   const saveAutomation = async (settings: AutomationSettings) => {
@@ -302,7 +302,7 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
         });
         if (res.ok) {
           alert("Test run triggered! Check your /projects page in 10 seconds.");
-          refetchCredits();
+          refetchBalance();
         } else {
           const err = await res.text();
           alert(`Test failed: ${err || "Unknown error"}`);
@@ -515,14 +515,14 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
           <div className="flex items-center space-x-4">
             {user ? (
               <div className="relative top-[-1.5px] flex items-center">
-                {creditsData && (
+                {balanceData && (
                   <button
                     ref={(el) => { triggerRefs.current['credits'] = el; }}
                     onClick={() => toggleMenu('credits')}
                     className="text-black/90 text-[14px] mt-4 p-1 px-2.5 top-[-6px] relative hover:opacity-80"
                   >
                     <span className="flex items-center gap-2 rounded-md py-1">
-                      <span>{creditsData.credits} credits</span>
+                      <span>${((balanceData.balance || 0) / 100).toFixed(2)}</span>
                     </span>
                   </button>
                 )}

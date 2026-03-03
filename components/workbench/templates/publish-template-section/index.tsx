@@ -37,7 +37,7 @@ interface DeploymentData {
   updatedAt: string
 }
 
-interface CreditsData {
+interface BalanceData {
   subscriptionTier: string
 }
 
@@ -70,10 +70,10 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
     const fetchData = async () => {
       try {
         // Fetch subscription status
-        const creditsRes = await fetch("/api/user/credits")
-        if (creditsRes.ok) {
-          const creditsData: CreditsData = await creditsRes.json()
-          setHasSubscription(creditsData.subscriptionTier !== "none")
+        const balanceRes = await fetch("/api/user/credits")
+        if (balanceRes.ok) {
+          const balanceData: BalanceData = await balanceRes.json()
+          setHasSubscription(balanceData.subscriptionTier !== "none")
         }
 
         // Fetch deployment
@@ -297,19 +297,16 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
           </p>
         </div>
 
-        <Card className="mt-6 border-orange-200 bg-orange-50">
-          <CardContent className="pt-6">
+        <Card className="mt-6 border bg-white shadow-xs rounded-sm">
+          <CardContent className="pt-">
             <div className="flex flex-col items-center gap-4 text-center">
-              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <Rocket className="w-6 h-6 text-orange-600" />
-              </div>
               <div>
-                <h3 className="text-lg font-semibold text-orange-800">Publish Your Site First</h3>
-                <p className="text-sm text-orange-600 mt-1">
+                <h3 className="text-lg font-semibold text-gray-800">Publish Your Site First</h3>
+                <p className="text-sm text-gray-600 mt-1">
                   Before creating a template, you need to publish your site to get a live URL.
                 </p>
               </div>
-              <Button onClick={handlePublishSite} disabled={isPublishingSite} className="mt-2">
+              <Button onClick={handlePublishSite} disabled={isPublishingSite} className="mt-2 bg-[#0099ff]/20 hover:bg-[#0099ff]/25 text-[#0099ff]">
                 {isPublishingSite ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -17,33 +17,30 @@ export function UserProfileMenu() {
     const { user, isLoaded } = useUser()
     const clerk = useClerk()
 
-    const [credits, setCredits] = useState<number>(0)
-    const [maxCredits, setMaxCredits] = useState<number>(10)
+    const [balance, setBalance] = useState<number>(0)
+    const [balancePerMonth, setBalancePerMonth] = useState<number>(500)
     const [subscriptionTier, setSubscriptionTier] = useState<string>("none")
     const [secondsUntilRegen, setSecondsUntilRegen] = useState<number>(0)
 
     useEffect(() => {
         if (!isLoaded || !user) return
 
-        const fetchCredits = async () => {
+        const fetchBalance = async () => {
             try {
                 const res = await fetch("/api/user/credits")
                 if (res.ok) {
                     const data = await res.json()
-                    setCredits(data.credits)
+                    setBalance(data.balance || 0)
+                    setBalancePerMonth(data.balancePerMonth || 500)
                     setSubscriptionTier(data.subscriptionTier || "none")
                     setSecondsUntilRegen(data.secondsUntilNextRegen || 0)
-
-                    if (data.subscriptionTier !== "none") {
-                        setMaxCredits(100)
-                    }
                 }
             } catch (error) {
-                console.error("Failed to fetch credits:", error)
+                console.error("Failed to fetch balance:", error)
             }
         }
 
-        fetchCredits()
+        fetchBalance()
     }, [isLoaded, user])
 
     const formatTime = (seconds: number) => {
@@ -58,9 +55,13 @@ export function UserProfileMenu() {
         return `${mins}m`
     }
 
-    if (!isLoaded || !user) return null
+    if (!isLoaded || !user) {
+        return (
+            <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse" />
+        )
+    }
 
-    const progressValue = Math.min((credits / maxCredits) * 100, 100)
+    const progressValue = Math.min((balance / balancePerMonth) * 100, 100)
 
     return (
         <DropdownMenu>
@@ -76,7 +77,7 @@ export function UserProfileMenu() {
             </DropdownMenuTrigger>
 
             <DropdownMenuContent
-                className="w-60 p-1 mr-3 bg-white border border-gray-200 shadow-sm rounded-lg mt-[-20px]"
+                className="w-60 p-1 mr-3 bg-white border border-gray-200 shadow-xs rounded-lg mt-[-20px]"
                 align="end"
                 forceMount
             >
@@ -101,8 +102,8 @@ export function UserProfileMenu() {
 
                 {/* Credits */}
                 <CreditsSection
-                    credits={credits}
-                    maxCredits={maxCredits}
+                    credits={balance}
+                    maxCredits={balancePerMonth}
                     progressValue={progressValue}
                     secondsUntilRegen={secondsUntilRegen}
                     subscriptionTier={subscriptionTier}

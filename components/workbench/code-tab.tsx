@@ -30,6 +30,8 @@ interface CodeTabProps {
   monacoRef: React.RefObject<any>
   editorOptions: any
   loading?: boolean // For no files message
+  isSplitScreen?: boolean
+  onExitSplit?: () => void
 }
 export function CodeTab({
   sidebarView,
@@ -54,6 +56,8 @@ export function CodeTab({
   monacoRef,
   editorOptions,
   loading,
+  isSplitScreen,
+  onExitSplit,
 }: CodeTabProps) {
   const handleFileSelect = (file: any) => {
     console.log("[v0] User selected file:", file.path)
@@ -110,6 +114,8 @@ export function CodeTab({
         setSelectedFile={setSelectedFile} // Added
         projectId={projectId} // Added
         fetchFiles={fetchFiles} // Added
+        isSplitScreen={isSplitScreen}
+        onExitSplit={onExitSplit}
       />
     </div>
   )

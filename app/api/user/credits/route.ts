@@ -1,5 +1,4 @@
 import { auth } from '@clerk/nextjs/server'
-import { clerkClient } from '@clerk/nextjs/server'
 import { db } from '@/config/db'
 import { eq, sum, gt, desc, sql } from 'drizzle-orm'
 import { userCredits, giftEvents } from '@/config/schema'
@@ -7,18 +6,19 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
 
-const REGEN_INTERVAL_MINUTES = 400 // How much time the user need to wait
-const CREDITS_PER_INTERVAL = 3 // How much credits the user need to get
-const INTERVAL_MS = REGEN_INTERVAL_MINUTES * 60 * 1000 // 60000 ms for 1 min
+const REGEN_INTERVAL_MINUTES = 400
+const INTERVAL_MS = REGEN_INTERVAL_MINUTES * 60 * 1000
 
 // Helper to check if a month has passed since last monthly claim
-function isMonthPassed(lastClaim: Date | null): boolean {
+function isMonthPassed(lastClaim: any): boolean {
   if (!lastClaim) return true
+  const lastDate = new Date(lastClaim)
+  if (isNaN(lastDate.getTime())) return true
+
   const today = new Date()
-  const nextMonth = new Date(lastClaim.getFullYear(), lastClaim.getMonth() + 1, lastClaim.getDate())
-  // If next month day doesn't exist (e.g., Jan 31 to Feb), adjust to last day of month
-  if (nextMonth.getDate() !== lastClaim.getDate()) {
-    nextMonth.setDate(0) // Last day of previous month (which is Feb in this case)
+  const nextMonth = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, lastDate.getDate())
+  if (nextMonth.getDate() !== lastDate.getDate()) {
+    nextMonth.setDate(0)
   }
   return today >= nextMonth
 }
@@ -83,7 +83,6 @@ async function isSubscriptionActive(subscriptionId: string | null): Promise<bool
   }
 }
 
-// Helper to calculate and apply regeneration without resetting timer
 async function applyRegeneration(userId: string) {
   let record = await db
     .select()
@@ -92,31 +91,23 @@ async function applyRegeneration(userId: string) {
     .then(r => r[0])
 
   if (!record) {
-    // Create initial record
     await db.insert(userCredits).values({
       userId,
-      credits: 10,
+      balance: 500, // $5.00
       lastRegenTime: new Date(),
       lastClaimedGiftId: null,
       lastMonthlyClaim: null,
       lastDispense: null,
       subscriptionTier: 'none',
-      creditsPerMonth: 0,
+      balancePerMonth: 0,
       paypalSubscriptionId: null,
       stripeCustomerId: null,
     })
-    record = {
-      userId,
-      credits: 10,
-      lastRegenTime: new Date(),
-      lastClaimedGiftId: null,
-      lastMonthlyClaim: null,
-      lastDispense: null,
-      subscriptionTier: 'none',
-      creditsPerMonth: 0,
-      paypalSubscriptionId: null,
-      stripeCustomerId: null,
-    }
+    record = await db
+      .select()
+      .from(userCredits)
+      .where(eq(userCredits.userId, userId))
+      .then(r => r[0])
   }
 
   const now = new Date()
@@ -124,120 +115,71 @@ async function applyRegeneration(userId: string) {
   const isPaid = record.subscriptionTier !== 'none' && record.paypalSubscriptionId !== null
 
   if (isPaid) {
-    // Check subscription status
     const active = await isSubscriptionActive(record.paypalSubscriptionId);
     if (!active) {
-      // Deactivate if not active
       await db
         .update(userCredits)
         .set({
           subscriptionTier: 'none',
-          creditsPerMonth: 0,
+          balancePerMonth: 0,
           paypalSubscriptionId: null,
         })
         .where(eq(userCredits.userId, userId));
-      // Recurse with free logic
       return applyRegeneration(userId);
     }
 
-    // Premium logic: Monthly credits
-    let newCredits = record.credits
+    let newBalance = record.balance
     let lastDispense = record.lastDispense
     let secondsUntilNextRegen = 0
 
     if (!lastDispense || isMonthPassed(lastDispense)) {
-      newCredits += record.creditsPerMonth
+      newBalance += record.balancePerMonth
       lastDispense = now
-      // Update DB
       await db
         .update(userCredits)
         .set({
-          credits: newCredits,
+          balance: newBalance,
           lastDispense: now,
         })
         .where(eq(userCredits.userId, userId))
     } else {
-      // Calculate time to next month
-      const nextMonth = new Date(lastDispense.getFullYear(), lastDispense.getMonth() + 1, lastDispense.getDate())
-      if (nextMonth.getDate() !== lastDispense.getDate()) {
+      const d = new Date(lastDispense)
+      const nextMonth = new Date(d.getFullYear(), d.getMonth() + 1, d.getDate())
+      if (nextMonth.getDate() !== d.getDate()) {
         nextMonth.setDate(0)
       }
       const timeLeftMs = nextMonth.getTime() - nowMs
       secondsUntilNextRegen = Math.max(0, Math.ceil(timeLeftMs / 1000))
     }
 
-    const updatedRecord = {
-      ...record,
-      credits: newCredits,
-      lastDispense: lastDispense,
-    }
-
     return {
-      credits: newCredits,
+      balance: newBalance,
       secondsUntilNextRegen,
-      record: updatedRecord,
-      pendingMonthly: 0 // No pending for paid
+      record: { ...record, balance: newBalance, lastDispense },
+      pendingMonthly: 0
     }
   } else {
-    // Non-paid: Hourly regen
-    const lastTimeMs = new Date(record.lastRegenTime).getTime()
-    const elapsedMs = nowMs - lastTimeMs
-    const fullIntervals = Math.floor(elapsedMs / INTERVAL_MS)
-
-    let newCredits = record.credits
-    let newLastTimeMs = lastTimeMs
-
-    if (fullIntervals > 0) {
-      newCredits += fullIntervals * CREDITS_PER_INTERVAL
-      // Advance lastRegenTime to the start of the current interval (end of last full interval)
-      newLastTimeMs = lastTimeMs + (fullIntervals * INTERVAL_MS)
-      // Update db
-      await db
-        .update(userCredits)
-        .set({
-          credits: newCredits,
-          lastRegenTime: new Date(newLastTimeMs),
-        })
-        .where(eq(userCredits.userId, userId))
+    // Free user logic
+    const pendingMonthly = isMonthPassed(record.lastMonthlyClaim) ? 500 : 0
+    const lastClaim = record.lastMonthlyClaim || record.lastRegenTime
+    const lastDate = new Date(lastClaim)
+    const nextMonth = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, lastDate.getDate())
+    if (nextMonth.getDate() !== lastDate.getDate()) {
+      nextMonth.setDate(0)
     }
-
-    // Calculate time left in current interval
-    const timeSinceLastMs = nowMs - newLastTimeMs
-    let timeLeftMs = INTERVAL_MS - timeSinceLastMs
-
-    // If somehow negative (clock skew), reset to full interval
-    if (timeLeftMs < 0) {
-      timeLeftMs = INTERVAL_MS
-      newLastTimeMs = nowMs
-      await db
-        .update(userCredits)
-        .set({ lastRegenTime: new Date(nowMs) })
-        .where(eq(userCredits.userId, userId))
-    }
-
-    const secondsUntilNext = Math.ceil(timeLeftMs / 1000)
-
-    // Update record in memory
-    const updatedRecord = {
-      ...record,
-      credits: newCredits,
-      lastRegenTime: new Date(newLastTimeMs),
-    }
-
-    // Calculate pending monthly credits
-    const pendingMonthly = isMonthPassed(updatedRecord.lastMonthlyClaim) ? 10 : 0
+    const timeLeftMs = nextMonth.getTime() - nowMs
+    const secondsUntilNextRegen = Math.max(0, Math.ceil(timeLeftMs / 1000))
 
     return {
-      credits: newCredits,
-      lastRegenTime: updatedRecord.lastRegenTime,
-      secondsUntilNextRegen: secondsUntilNext,
-      record: updatedRecord,
+      balance: record.balance,
+      lastRegenTime: record.lastRegenTime,
+      secondsUntilNextRegen,
+      record,
       pendingMonthly
     }
   }
 }
 
-// Helper to calculate pending gift amount
 async function calculatePendingGift(userRecord: any) {
   const lastGiftId = userRecord?.lastClaimedGiftId
   let pendingGift = 0
@@ -271,173 +213,103 @@ async function calculatePendingGift(userRecord: any) {
 }
 
 export async function GET(request: NextRequest) {
-  const { userId } = await auth()
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const data = await applyRegeneration(userId)
+    const pendingGift = data.record.subscriptionTier === 'none' ? await calculatePendingGift(data.record) : 0
+
+    return NextResponse.json({
+      balance: data.balance,
+      pendingGift,
+      pendingMonthly: data.pendingMonthly,
+      secondsUntilNextRegen: data.secondsUntilNextRegen,
+      subscriptionTier: data.record.subscriptionTier,
+    })
+  } catch (error: any) {
+    console.error("[API/Credits] GET error:", error)
+    return NextResponse.json({
+      error: 'Internal Server Error',
+      details: error.message,
+    }, { status: 500 })
   }
-
-  const data = await applyRegeneration(userId)
-  const pendingGift = data.record.subscriptionTier === 'none' ? await calculatePendingGift(data.record) : 0 // No gifts for paid
-
-  return NextResponse.json({
-    credits: data.credits,
-    pendingGift,
-    pendingMonthly: data.pendingMonthly,
-    secondsUntilNextRegen: data.secondsUntilNextRegen,
-    subscriptionTier: data.record.subscriptionTier,
-  })
 }
 
 export async function POST(request: NextRequest) {
-  const { userId } = await auth()
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  let record = await db
-    .select()
-    .from(userCredits)
-    .where(eq(userCredits.userId, userId))
-    .then(r => r[0])
-
-  if (!record) {
-    await db.insert(userCredits).values({
-      userId,
-      credits: 10,
-      lastRegenTime: new Date(),
-      lastClaimedGiftId: null,
-      lastMonthlyClaim: null,
-      lastDispense: null,
-      subscriptionTier: 'none',
-      creditsPerMonth: 0,
-      paypalSubscriptionId: null,
-      stripeCustomerId: null,
-    })
-    record = {
-      userId,
-      credits: 10,
-      lastRegenTime: new Date(),
-      lastClaimedGiftId: null,
-      lastMonthlyClaim: null,
-      lastDispense: null,
-      subscriptionTier: 'none',
-      creditsPerMonth: 0,
-      paypalSubscriptionId: null,
-      stripeCustomerId: null,
-    }
-  }
-
-  const isPaid = record.subscriptionTier !== 'none' && record.paypalSubscriptionId !== null
-
-  let body: any = null
   try {
-    body = await request.json()
-  } catch { }
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
-  // Handle adding a new gift (admin action) - only non-paid
-  if (body?.addGift !== undefined && typeof body.addGift === 'number' && body.addGift > 0 && !isPaid) {
-    await db.insert(giftEvents).values({
-      amount: body.addGift
-    })
-    return NextResponse.json({ success: true, message: 'Gift event added successfully' })
-  }
-
-  // Handle claiming gift - only non-paid
-  if (body?.claimGift === true && !isPaid) {
     const data = await applyRegeneration(userId)
-    const userRecord = data.record
-    const pendingGift = await calculatePendingGift(userRecord)
+    const record = data.record
+    const isPaid = record.subscriptionTier !== 'none' && record.paypalSubscriptionId !== null
 
-    if (pendingGift <= 0) {
-      return NextResponse.json({ error: 'No pending gift to claim' }, { status: 400 })
+    let body: any = null
+    try {
+      body = await request.json()
+    } catch { }
+
+    if (body?.addGift !== undefined && typeof body.addGift === 'number' && body.addGift > 0 && !isPaid) {
+      await db.insert(giftEvents).values({ amount: body.addGift })
+      return NextResponse.json({ success: true })
     }
 
-    // Get the latest gift event ID
-    const latestGift = await db
-      .select()
-      .from(giftEvents)
-      .orderBy(desc(giftEvents.createdAt))
-      .limit(1)
-      .then(r => r[0])
+    if (body?.claimGift === true && !isPaid) {
+      const pendingGift = await calculatePendingGift(record)
+      if (pendingGift <= 0) return NextResponse.json({ error: 'No gift' }, { status: 400 })
 
-    if (!latestGift) {
-      return NextResponse.json({ error: 'No gift events available' }, { status: 400 })
-    }
+      const latestGift = await db.select().from(giftEvents).orderBy(desc(giftEvents.createdAt)).limit(1).then(r => r[0])
+      if (!latestGift) return NextResponse.json({ error: 'No gift events' }, { status: 400 })
 
-    // Update credits and last claimed
-    const newCredits = data.credits + pendingGift
-    await db
-      .update(userCredits)
-      .set({
-        credits: newCredits,
+      await db.update(userCredits).set({
+        balance: record.balance + pendingGift,
         lastClaimedGiftId: latestGift.id
-      })
-      .where(eq(userCredits.userId, userId))
+      }).where(eq(userCredits.userId, userId))
 
-    return NextResponse.json({
-      success: true,
-      claimed: pendingGift,
-      newCredits
-    })
-  }
-
-  // Handle claiming monthly credits - only non-paid
-  if (body?.claimMonthly === true && !isPaid) {
-    const data = await applyRegeneration(userId)
-    const userRecord = data.record
-    const isAvailable = isMonthPassed(userRecord.lastMonthlyClaim)
-
-    if (!isAvailable) {
-      return NextResponse.json({ error: 'Monthly credits not yet available' }, { status: 400 })
+      return NextResponse.json({ success: true, newBalance: record.balance + pendingGift })
     }
 
-    const newCredits = data.credits + 10
-    const now = new Date()
-    await db
-      .update(userCredits)
-      .set({
-        credits: newCredits,
-        lastMonthlyClaim: now
-      })
-      .where(eq(userCredits.userId, userId))
+    if (body?.claimMonthly === true && !isPaid) {
+      if (!isMonthPassed(record.lastMonthlyClaim)) {
+        return NextResponse.json({ error: 'Not yet available' }, { status: 400 })
+      }
+      const newBal = record.balance + 500
+      await db.update(userCredits).set({
+        balance: newBal,
+        lastMonthlyClaim: new Date()
+      }).where(eq(userCredits.userId, userId))
 
-    return NextResponse.json({
-      success: true,
-      claimed: 10,
-      newCredits
-    })
-  }
-
-  // Handle one-time payment for credits or tier
-  if (body?.orderId && body?.credits) {
-    const data = await applyRegeneration(userId);
-    const added = Number(body.credits);
-    if (isNaN(added) || added <= 0) {
-      return NextResponse.json({ error: 'Invalid credits amount' }, { status: 400 });
+      return NextResponse.json({ success: true, newBalance: newBal })
     }
-    let updates: any = { credits: data.credits + added };
-    if (body.tier && data.record.subscriptionTier === 'none') {
-      updates.subscriptionTier = body.tier;
-      updates.creditsPerMonth = 0;
+
+    if (body?.orderId && body?.amount) {
+      const added = Number(body.amount);
+      if (isNaN(added) || added <= 0) return NextResponse.json({ error: 'Invalid amount' }, { status: 400 });
+
+      let updates: any = { balance: record.balance + added };
+      if (body.tier && record.subscriptionTier === 'none') {
+        updates.subscriptionTier = body.tier;
+        const balanceMap: Record<string, number> = { standard: 2000, pro: 5000, teams: 10000 };
+        updates.balancePerMonth = balanceMap[body.tier] || 0;
+      }
+      await db.update(userCredits).set(updates).where(eq(userCredits.userId, userId));
+      return NextResponse.json({ success: true, newBalance: record.balance + added });
     }
-    await db
-      .update(userCredits)
-      .set(updates)
-      .where(eq(userCredits.userId, userId));
-    return NextResponse.json({ success: true, newCredits: data.credits + added });
+
+    // Default: deduct
+    const cost = body?.cost || 5
+    if (record.balance < cost) return NextResponse.json({ error: 'Insufficient balance' }, { status: 402 })
+
+    await db.update(userCredits).set({ balance: record.balance - cost }).where(eq(userCredits.userId, userId))
+    return NextResponse.json({ success: true, remainingBalance: record.balance - cost })
+
+  } catch (error: any) {
+    console.error("[API/Credits] POST error:", error)
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 })
   }
-
-  // Default: deduct credit for message send
-  const data = await applyRegeneration(userId)
-
-  if (data.credits <= 0) {
-    return NextResponse.json({ error: 'Insufficient credits' }, { status: 402 })
-  }
-
-  await db
-    .update(userCredits)
-    .set({ credits: data.credits - 1 })
-    .where(eq(userCredits.userId, userId))
-
-  return NextResponse.json({ success: true })
 }

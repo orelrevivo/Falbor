@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useUser } from "@clerk/nextjs"
 import { CardContent } from "@/components/ui/card"
-import { Loader2, Save, Trash2, Lock, Globe } from "lucide-react"
+import { Loader2, Save, Trash2, Lock, Globe, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
@@ -18,6 +18,12 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface Project {
   id: string
@@ -120,7 +126,6 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
     }
   }
 
-  // ✅ REAL IMAGE UPLOAD THAT SAVES
   const handleImageUpload = async (file: File) => {
     const formData = new FormData()
     formData.append("file", file)
@@ -136,8 +141,6 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
     }
 
     const data = await res.json()
-
-    // Save image URL into tempProject
     updateTempField("coverImage", data.url)
   }
 
@@ -155,7 +158,6 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
 
   return (
     <div className="p-2 space-y-3">
-
       {/* HEADER */}
       <div className="flex justify-between items-center">
         <div>
@@ -164,129 +166,161 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
         </div>
 
         <Button onClick={handleSave} disabled={saving} className="h-7">
-          {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+          {saving ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="h-4 w-4 mr-2" />
+          )}
           Save
         </Button>
       </div>
 
       {/* TITLE */}
-      <div className="border rounded-sm">
-        <CardContent className="px-2 py-2">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+        <CardContent className="px-2 py-4">
           <h3 className="font-semibold mb-2 ml-1">Main chat title</h3>
-          <Input
-            value={project.title}
-            className="text-lg font-medium bg-white border-none"
-            disabled
-          />
+          <p className="mb-2 ml-1 mt-[-8px] text-[12px]">
+            Get access to your name chat
+          </p>
+          <div className="flex items-center bg-white rounded-md">
+            <Input
+              value={project.title}
+              className="text-lg font-medium bg-white border-none"
+              disabled
+            />
+          </div>
         </CardContent>
       </div>
 
       {/* DESCRIPTION */}
-      <div className="border rounded-sm">
-        <CardContent className="px-2 py-2">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+        <CardContent className="px-2 py-4">
           <h3 className="font-semibold text-md mb-2 ml-1">Chat Description</h3>
-          <Textarea
-            value={tempProject.description || ""}
-            onChange={(e) => updateTempField("description", e.target.value)}
-            rows={3}
-            placeholder="Project description..."
-          />
+          <div className="flex items-center bg-white rounded-md">
+            <Textarea
+              value={tempProject.description || ""}
+              onChange={(e) => updateTempField("description", e.target.value)}
+              rows={3}
+              placeholder="Project description..."
+            />
+          </div>
         </CardContent>
       </div>
 
       {/* COVER IMAGE */}
-      <div className="border rounded-sm">
-        <CardContent className="px-2 py-2">
-          <h3 className="font-semibold text-md mb-2 ml-1">Upload a cover photo for the chat</h3>
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+        <CardContent className="px-2 py-4">
+          <h3 className="font-semibold text-md mb-2 ml-1">
+            Upload a cover photo for the chat
+          </h3>
           {tempProject.coverImage && (
             <img
               src={tempProject.coverImage}
               className="w-full h-32 object-cover rounded mb-2"
             />
           )}
-
-          <Input
-            type="file"
-            accept="image/*"
-            onChange={(e) => e.target.files && handleImageUpload(e.target.files[0])}
-          />
+          <div className="flex items-center bg-white rounded-md">
+            <Input
+              type="file"
+              accept="image/*"
+              onChange={(e) =>
+                e.target.files && handleImageUpload(e.target.files[0])
+              }
+            />
+          </div>
         </CardContent>
       </div>
 
-      {/* PROJECT VISIBILITY */}
-      <div className="border rounded-lg p-3 space-y-2">
-        <h3 className="font-semibold text-md">Project Visibility</h3>
-        <p className="mb-2 mt-[-8px] text-[12px]">Control who can access your chat</p>
-        <div className="grid grid-cols-2 gap-3">
+      {/* PROJECT VISIBILITY — DROPDOWN VERSION */}
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+        <CardContent className="px-3.5 py-4">
+          <h3 className="font-semibold text-md">Project Visibility</h3>
+          <p className="mb-2 mt-[-3px] text-[12px]">
+            Control who can access your chat
+          </p>
 
-          {/* PRIVATE */}
-          <button
-            onClick={() => updateTempField("isPublic", false)}
-            className={`flex flex-col items-start p-3 rounded-lg border transition cursor-pointer
-              ${!tempProject.isPublic
-                ? "bg-blue-950 border-blue-500 text-blue-300"
-                : "bg-neutral-900 border-neutral-700 text-neutral-400"
-              }`}
-          >
-            <div className="flex items-center gap-2 font-medium">
-              <Lock className="h-4 w-4" />
-              Private
-            </div>
-            <span className="text-xs opacity-80">Only owner can access</span>
-          </button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-28 justify-between border bg-white hover:bg-white text-black"
+              >
+                <span className="flex items-center gap-2">
+                  {tempProject.isPublic ? (
+                    <Globe className="h-4 w-4" />
+                  ) : (
+                    <Lock className="h-4 w-4" />
+                  )}
+                  {tempProject.isPublic ? "Public" : "Private"}
+                </span>
+                <ChevronDown className="h-4 w-4 opacity-60" />
+              </Button>
+            </DropdownMenuTrigger>
 
-          {/* PUBLIC */}
-          <button
-            onClick={() => updateTempField("isPublic", true)}
-            className={`flex flex-col items-start p-3 rounded-lg border transition cursor-pointer
-              ${tempProject.isPublic
-                ? "bg-blue-950 border-blue-500 text-blue-300"
-                : "bg-neutral-900 border-neutral-700 text-neutral-400"
-              }`}
-          >
-            <div className="flex items-center gap-2 font-medium">
-              <Globe className="h-4 w-4" />
-              Public
-            </div>
-            <span className="text-xs opacity-80">Everyone can view</span>
-          </button>
+            <DropdownMenuContent align="start" className="w-48 shadow-xs">
+              <DropdownMenuItem
+                onClick={() => updateTempField("isPublic", false)}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Lock className="h-4 w-4" />
+                Private
+              </DropdownMenuItem>
 
-        </div>
+              <DropdownMenuItem
+                onClick={() => updateTempField("isPublic", true)}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <Globe className="h-4 w-4" />
+                Public
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </CardContent>
       </div>
 
       {/* DELETE */}
-      <div className="border rounded-sm p-4 mt-6">
-        <h3 className="font-semibold text-md">Delete Project</h3>
-        <p className="mb-2 text-[12px]">This action is permanent and cannot be undone.</p>
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+        <CardContent className="px-3.5 py-4">
+          <h3 className="font-semibold text-md">Delete Project</h3>
+          <p className="mb-2 text-[12px]">
+            This action is permanent and cannot be undone.
+          </p>
 
-        <AlertDialog>
-          <AlertDialogTrigger asChild>
-            <Button variant="destructive" className="w-full">
-              <Trash2 className="h-4 w-4 mr-2" /> Delete Project
-            </Button>
-          </AlertDialogTrigger>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" className="w-38 border bg-white hover:bg-white text-black cursor-pointer">
+                <Trash2 className="h-4 w-4 mr-2" /> Delete Project
+              </Button>
+            </AlertDialogTrigger>
 
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle className="text-2xl">Delete Chat?</AlertDialogTitle>
-              <AlertDialogDescription className="text-lg">
-                You are about to delete {project.title}.
-              </AlertDialogDescription>
-              <AlertDialogDescription className="text-lg">
-                Are you sure you want to delete this chat?
-              </AlertDialogDescription>
-            </AlertDialogHeader>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-2xl">
+                  Delete Chat?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-lg">
+                  You are about to delete {project.title}.
+                </AlertDialogDescription>
+                <AlertDialogDescription className="text-lg">
+                  Are you sure you want to delete this chat?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
 
-            <AlertDialogFooter>
-              <AlertDialogCancel className="">Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete} disabled={deleting}>
-                {deleting ? "Deleting..." : "Delete"}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="">
+                  Cancel
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDelete}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete"}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </CardContent>
       </div>
-
     </div>
   )
 }

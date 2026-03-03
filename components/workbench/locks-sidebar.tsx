@@ -27,7 +27,7 @@ export function LocksSidebar({ files, projectId, onFilesChange }: LocksSidebarPr
   })
 
   const toggleSelect = (path: string) => {
-    setSelected(prev => 
+    setSelected(prev =>
       prev.includes(path) ? prev.filter(p => p !== path) : [...prev, path]
     )
   }
@@ -76,7 +76,7 @@ export function LocksSidebar({ files, projectId, onFilesChange }: LocksSidebarPr
           className="flex-1 h-8 text-sm"
         />
         <Select value={filter} onValueChange={(v: "all" | "file" | "folder") => setFilter(v)}>
-          <SelectTrigger className="w-[100px] h-8 text-sm">
+          <SelectTrigger className="w-[100px] h-4 text-sm border bg-white hover:bg-white text-black rounded-sm">
             <SelectValue placeholder="Filter" />
           </SelectTrigger>
           <SelectContent>
@@ -98,7 +98,7 @@ export function LocksSidebar({ files, projectId, onFilesChange }: LocksSidebarPr
           size="sm"
           disabled={selected.length === 0}
           onClick={handleUnlockSelected}
-          className="ml-auto h-6 text-xs"
+          className="ml-auto h-6 text-xs border bg-white hover:bg-white text-black"
         >
           <Unlock className="w-3 h-3 mr-1" />
           Unlock Selected
