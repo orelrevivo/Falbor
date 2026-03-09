@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { db } from "@/config/db"
-import { projects, messages, files } from "@/config/schema"
+import { projects, messages, files, userGithubConnections } from "@/config/schema"
 import { eq } from "drizzle-orm"
 
 interface GitHubFile {
@@ -29,6 +29,29 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Missing owner or repo" }, { status: 400 })
     }
 
+    // Try finding user's github connection for auth
+    let accessToken
+    try {
+      const [conn] = await db
+        .select()
+        .from(userGithubConnections)
+        .where(eq(userGithubConnections.userId, userId))
+      if (conn && conn.accessToken && conn.isActive) {
+        accessToken = conn.accessToken
+      }
+    } catch (e) {
+      console.error("No github connection found", e)
+    }
+
+    const authHeader = accessToken
+      ? `Bearer ${accessToken}`
+      : process.env.GITHUB_TOKEN ? `Bearer ${process.env.GITHUB_TOKEN}` : ""
+
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github.v3+json",
+    }
+    if (authHeader) headers["Authorization"] = authHeader
+
     // Create project
     const [project] = await db
       .insert(projects)
@@ -37,21 +60,26 @@ export async function POST(request: Request) {
         title: `${owner}/${repo}`,
         isGithubClone: true,
         githubUrl: githubUrl || `https://github.com/${owner}/${repo}`,
+        githubOwner: owner,
+        githubRepoName: repo,
+        githubBranch: "main", // Default
+        isGitAdopted: !!accessToken // Auto-adopt if they used their own token (meaning they own it or connected intentionally)
       })
       .returning()
 
     console.log("[v0] Created project:", project.id)
 
-    // Fetch repository tree from GitHub API
-    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`
-    const treeResponse = await fetch(treeUrl, {
-      headers: {
-        Accept: "application/vnd.github.v3+json",
-        ...(process.env.GITHUB_TOKEN && {
-          Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-        }),
-      },
+    // 1. Create a user message to record the import request
+    await db.insert(messages).values({
+      projectId: project.id,
+      role: "user",
+      content: `Do an import for me to the files from ${githubUrl || `https://github.com/${owner}/${repo}`}`,
+      hasArtifact: false,
     })
+
+    // 2. Fetch repository tree from GitHub API
+    const treeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/main?recursive=1`
+    const treeResponse = await fetch(treeUrl, { headers })
 
     console.log("[v0] GitHub API response status:", treeResponse.status)
 
@@ -62,32 +90,29 @@ export async function POST(request: Request) {
 
       // Try 'master' branch if 'main' fails
       const masterTreeUrl = `https://api.github.com/repos/${owner}/${repo}/git/trees/master?recursive=1`
-      const masterResponse = await fetch(masterTreeUrl, {
-        headers: {
-          Accept: "application/vnd.github.v3+json",
-          ...(process.env.GITHUB_TOKEN && {
-            Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-          }),
-        },
-      })
+      const masterResponse = await fetch(masterTreeUrl, { headers })
 
       if (!masterResponse.ok) {
         const masterErrorText = await masterResponse.text()
         console.error(`[v0] GitHub error (master): ${masterResponse.status} - ${masterErrorText}`)
-        throw new Error("Failed to fetch repository tree from both main and master branches")
+        throw new Error("Failed to fetch repository tree. Ensure the repo exists and you have access permissions.")
       }
 
       const masterData = await masterResponse.json()
       treeData = masterData
       console.log("[v0] Fetched tree from master, files count:", masterData.tree?.length || 0)
-      await processRepositoryFiles(masterData.tree, owner, repo, project.id, "master")
+
+      // Update branch in project
+      await db.update(projects).set({ githubBranch: "master" }).where(eq(projects.id, project.id))
+
+      await processRepositoryFiles(masterData.tree, owner, repo, project.id, "master", authHeader)
     } else {
       treeData = await treeResponse.json()
       console.log("[v0] Fetched tree from main, files count:", treeData.tree?.length || 0)
-      await processRepositoryFiles(treeData.tree, owner, repo, project.id, "main")
+      await processRepositoryFiles(treeData.tree, owner, repo, project.id, "main", authHeader)
     }
 
-    // Create initial system message
+    // 3. Count saved files and create assistant message
     const fileCount = await db
       .select()
       .from(files)
@@ -99,8 +124,8 @@ export async function POST(request: Request) {
     await db.insert(messages).values({
       projectId: project.id,
       role: "assistant",
-      content: `Successfully cloned **${owner}/${repo}** repository!\n\nFetched **${fileCount} files** from GitHub. You can now explore the codebase and ask me questions about it.\n\nWhat would you like to know about this project?`,
-      hasArtifact: true,
+      content: `Successfully cloned **${owner}/${repo}** repository!\n\nFetched **${fileCount} files** from GitHub. You can now explore the codebase, edit files, and use the "Push to GitHub" button if you've adopted the project.\n\nWhat would you like to build?`,
+      hasArtifact: false,
     })
 
     return NextResponse.json({ projectId: project.id })
@@ -119,19 +144,20 @@ async function processRepositoryFiles(
   repo: string,
   projectId: string,
   branch = "main",
+  authHeader = ""
 ) {
-  // Filter only files (blobs, not trees) and limit to reasonable size
   const fileItems = tree.filter(
-    (item) => item.type === "blob" && item.size < 1000000, // 1MB limit per file
+    (item) => item.type === "blob" && item.size < 1000000,
   )
 
   console.log("[v0] Processing files, filtered count:", fileItems.length)
 
-  // Limit total files to prevent overwhelming the system
-  const limitedFiles = fileItems.slice(0, 100)
-
-  // Fetch file contents in batches
+  const limitedFiles = fileItems.slice(0, 2000)
   const batchSize = 10
+
+  const headers: Record<string, string> = {}
+  if (authHeader) headers["Authorization"] = authHeader
+
   for (let i = 0; i < limitedFiles.length; i += batchSize) {
     const batch = limitedFiles.slice(i, i + batchSize)
     console.log(`[v0] Processing batch ${Math.floor(i / batchSize) + 1}/${Math.ceil(limitedFiles.length / batchSize)}`)
@@ -139,20 +165,13 @@ async function processRepositoryFiles(
       batch.map(async (file) => {
         try {
           const contentUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${file.path}`
-          const contentResponse = await fetch(contentUrl, {
-            headers: {
-              ...(process.env.GITHUB_TOKEN && {
-                Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-              }),
-            },
-          })
+          const contentResponse = await fetch(contentUrl, { headers })
 
           if (!contentResponse.ok) {
             console.error(`[v0] Failed to fetch ${file.path}: ${contentResponse.status}`)
             return
           }
 
-          // Skip binary/non-text files (e.g., images, zips) to avoid text() errors
           const contentType = contentResponse.headers.get('content-type') || ''
           if (!contentType.startsWith('text/') && !contentType.includes('javascript') && !contentType.includes('json')) {
             console.log(`[v0] Skipped binary/non-text file: ${file.path}`)

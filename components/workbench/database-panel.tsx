@@ -27,12 +27,14 @@ import {
   Mail,
   Sparkles,
   Save,
-  Bell
+  Bell,
+  ShieldCheck
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "../ui/badge"
 import { SignupChart } from "./signup-chart"
+import { AuthProviders } from "./auth-providers"
 import dynamic from "next/dynamic"
 
 const Editor = dynamic(
@@ -82,6 +84,7 @@ const DEFAULT_TEMPLATES = {
 interface DatabasePanelProps {
   projectId: string
   filesOverride?: Array<{ path: string; content: string; language: string }>
+  onSendMessage?: (message: string) => void
 }
 
 interface SupabaseUser {
@@ -127,9 +130,9 @@ interface ConnectionData {
   projectName?: string
 }
 
-type TabType = "tables" | "users" | "sql" | "emails" | "storage" | "functions" | "credentials"
+type TabType = "tables" | "users" | "sql" | "emails" | "storage" | "functions" | "credentials" | "auth_providers"
 
-export function DatabasePanel({ projectId, filesOverride }: DatabasePanelProps) {
+export function DatabasePanel({ projectId, filesOverride, onSendMessage }: DatabasePanelProps) {
   const [activeTab, setActiveTab] = useState<TabType>("tables")
   const [users, setUsers] = useState<SupabaseUser[]>([])
   const [tables, setTables] = useState<TableInfo[]>([])
@@ -626,6 +629,7 @@ export function DatabasePanel({ projectId, filesOverride }: DatabasePanelProps) 
             { id: "emails", icon: Mail, label: "Emails" },
             { id: "storage", icon: HardDrive, label: "Storage" },
             { id: "functions", icon: Cpu, label: "Functions" },
+            { id: "auth_providers", icon: ShieldCheck, label: "Auth Providers" },
             // { id: "credentials", icon: Shield, label: "API Keys" },
           ].map((tab) => (
             <button
@@ -792,6 +796,12 @@ export function DatabasePanel({ projectId, filesOverride }: DatabasePanelProps) 
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === "auth_providers" && (
+            <div className="h-full bg-white">
+              <AuthProviders projectId={projectId} onSendMessage={onSendMessage} />
             </div>
           )}
 

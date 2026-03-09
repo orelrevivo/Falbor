@@ -1,10 +1,11 @@
 import { auth } from "@clerk/nextjs/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { db } from "@/config/db"
-import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, userCredits } from "@/config/schema"
+import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, userCredits, projectSecrets, userMcpConnections } from "@/config/schema"
 import { eq, asc } from "drizzle-orm"
 import { getSystemPrompt } from "@/lib/common/prompts/prompt"
 import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
+import { discordActions, gmailActions } from "@/lib/mcp/actions"
 import { runMigration } from "@/lib/supabase/management-api"
 
 const GREETING_KEYWORDS = ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"]
@@ -37,16 +38,68 @@ const ZAI_MODELS = {
 const OPENROUTER_MODELS = {
   "gpt-5.2": "openai/gpt-5.2",
   "gpt-5.1-codex": "openai/gpt-5.1-codex-max",
+  "gpt-5.4-pro": "openai/gpt-5.4-pro",
+  "gpt-5.4": "openai/gpt-5.4",
   "claude-sonnet-4.6": "anthropic/claude-sonnet-4.6",
   "claude-opus-4.6": "anthropic/claude-opus-4.6",
   "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
   "claude-opus-4.5": "anthropic/claude-opus-4.5",
   "claude-sonnet-4.5": "anthropic/claude-sonnet-4.5",
   "claude-opus-4": "anthropic/claude-opus-4",
-  "grok-4.1": "x-ai/grok-4.1-fast",
   "claude-3.5-haiku": "anthropic/claude-3.5-haiku",
   "claude-3.5-sonnet": "anthropic/claude-3.5-sonnet",
+  "grok-4.1-fast": "x-ai/grok-4.1-fast",
+  "grok-4-fast": "x-ai/grok-4-fast",
+  "grok-code-fast-1": "x-ai/grok-code-fast-1",
+  "grok-4": "x-ai/grok-4",
   "grok-3-mini": "x-ai/grok-3-mini",
+  "gemini-3.1-flash-lite": "google/gemini-3.1-flash-lite-preview",
+  "qwen-3.5-35b": "qwen/qwen3.5-35b-a3b",
+  "qwen-3.5-27b": "qwen/qwen3.5-27b",
+}
+
+async function dispatchMcpTool(name: string, args: any, userId: string): Promise<any> {
+  console.log(`[MCP] Dispatching tool: ${name}`, args)
+  switch (name) {
+    case "discord_send_message":
+      return await discordActions.sendMessage(userId, args.channelId, args.content)
+    case "discord_get_messages":
+      return await discordActions.getMessages(userId, args.channelId, args.limit)
+    case "discord_get_guilds":
+      return await discordActions.getGuilds(userId)
+    case "discord_get_channels":
+      return await discordActions.getChannels(userId, args.guildId)
+    case "discord_create_dm":
+      return await discordActions.createDM(userId, args.recipientId)
+    case "discord_delete_message":
+      return await discordActions.deleteMessage(userId, args.channelId, args.messageId)
+    case "gmail_list_messages":
+      return await gmailActions.listMessages(userId, args.q, args.maxResults)
+    case "gmail_get_message":
+      return await gmailActions.getMessage(userId, args.id)
+    case "gmail_send_message":
+      return await gmailActions.sendMessage(userId, args.to, args.subject, args.body)
+    case "gmail_delete_message":
+      return await gmailActions.deleteMessage(userId, args.id)
+    default:
+      console.error(`[MCP] Tool NOT found: ${name}`)
+      return { success: false, error: `Tool ${name} not found.` }
+  }
+}
+
+async function executeActionTags(content: string, userId: string) {
+  const actionRegex = /<Action>(\w+)\(([\s\S]*?)\)<\/Action>/g;
+  let match;
+  while ((match = actionRegex.exec(content)) !== null) {
+    const toolName = match[1];
+    try {
+      const args = JSON.parse(match[2]);
+      console.log(`[MCP/TagFallback] Auto-executing action: ${toolName}`, args);
+      await dispatchMcpTool(toolName, args, userId);
+    } catch (e) {
+      console.error(`[MCP/TagFallback] Failed to execute ${toolName}:`, e);
+    }
+  }
 }
 
 export async function POST(request: Request) {
@@ -160,6 +213,7 @@ export async function POST(request: Request) {
     supabaseUrl,
     anonKey,
     selectedMcps,
+    project,
   )
 
   return new Response(responseStream, {
@@ -203,7 +257,9 @@ async function handleModelRequest(
   supabaseUrl?: string,
   anonKey?: string,
   selectedMcps: any[] = [],
+  project?: any,
 ) {
+
   const messageType = detectMessageType(message)
   const isCodeRequest =
     messageType === "build" || CODE_KEYWORDS.some((keyword) => message.toLowerCase().includes(keyword))
@@ -232,6 +288,25 @@ async function handleModelRequest(
     console.error("Failed to fetch database credentials:", err)
   }
 
+  // Fetch Project Secrets (Environment Variables)
+  try {
+    const fetchedSecrets = await db
+      .select()
+      .from(projectSecrets)
+      .where(eq(projectSecrets.projectId, projectId))
+
+    if (fetchedSecrets.length > 0) {
+      console.log(`[Chat] Injecting ${fetchedSecrets.length} secrets for project ${projectId}`)
+      let secretsPrompt = "\n\n## Project Secrets (Environment Variables)\nThe following secrets are configured for this project. Use these names in your code and .env file. The values are provided here for your internal knowledge to ensure correct configuration."
+      fetchedSecrets.forEach(secret => {
+        secretsPrompt += `\n${secret.name}=${secret.value}`
+      })
+      effectiveMessage += secretsPrompt
+    }
+  } catch (err) {
+    console.error("Failed to fetch project secrets:", err)
+  }
+
   // Prepare Supabase Context for System Prompt
   const supabaseContext = supabaseConfig ? {
     isConnected: true,
@@ -243,6 +318,50 @@ async function handleModelRequest(
   } : undefined
 
   let systemPrompt = discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext)
+
+  // GitHub Project Awareness
+  if (project.isGithubClone && project.githubUrl) {
+    let gitContext = `\n\n## GitHub Integration Context
+This project is connected to a GitHub repository: ${project.githubUrl}
+- **Owner**: ${project.githubOwner}
+- **Repo**: ${project.githubRepoName}
+- **Branch**: ${project.githubBranch || "main"}
+- **Status**: ${project.isGitAdopted ? "Adopted (User owned)" : "Cloned (Public/Read-Only)"}
+
+### Git-Aware Workflow:
+1. **SCAN BEFORE EDIT**: Use <FileSearch> to map out the structure before making changes.
+2. **SMART EDITS**: Since this is a real GitHub project, protect the existing architecture. ONLY modify relevant files.
+3. **COMMIT ACCESS**: ${project.isGitAdopted ? "You have permission to propose commits that the user can push back to GitHub." : "This repo is currently read-only. Suggest changes the user can manually apply or adopt."}`
+
+    try {
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, projectId))
+      if (projectFiles.length > 0) {
+        const filePaths = projectFiles.map((f: any) => f.path)
+        gitContext += `\n\n### Repository Structure:\n${filePaths.join("\n")}`
+
+        const mentionedFiles = projectFiles.filter((f: any) => {
+          const fileName = f.path.split("/").pop() || f.path
+          return message.includes(f.path) || message.includes(fileName)
+        })
+
+        if (mentionedFiles.length > 0) {
+          gitContext += `\n\n### Mentioned Files Content (for your reference):\n`
+          mentionedFiles.forEach((f: any) => {
+            const content = f.content.length > 15000 ? f.content.substring(0, 15000) + "\n...[TRUNCATED]" : f.content
+            gitContext += `\n--- ${f.path} ---\n${content}\n`
+          })
+        } else {
+          gitContext += `\n\n*(Note: No specific files were mentioned in the user's prompt. If you need file contents to make accurate edits, ask the user or guess the file names to get them in the next turn.)*`
+        }
+      }
+    } catch (err) {
+      console.error("[Chat] Failed to attach project files to Git context", err)
+    }
+
+    effectiveMessage += gitContext
+  }
+
+
 
   // Append context if it's an iteration
   if (history.length > 1) {
@@ -263,7 +382,7 @@ Violating these rules by outputting unrelated files is STRICTLY FORBIDDEN.
   // Optimization for Email Template Edits
   if (message.includes("@Email/")) {
     systemPrompt += `\n\n### EMAIL EDIT MODE ###
-When editing an email template, focus ONLY on the template content. 
+When editing an email template, focus ONLY on the template content.
 1. Use the "email_template/template_id" file path.
 2. DO NOT create redundant React components for the email unless explicitly asked.
 3. Be CONCISE in your thinking.
@@ -278,14 +397,35 @@ When editing an email template, focus ONLY on the template content.
   if (selectedMcps.length > 0) {
     let mcpPrompt = "\n\n## Connected MCP Context"
     selectedMcps.forEach(mcp => {
-      mcpPrompt += `\n### ${mcp.name} (${mcp.type})`
-      if (mcp.apiKey) mcpPrompt += `\nAPI_KEY=${mcp.apiKey}`
-      if (mcp.accessToken) mcpPrompt += `\nACCESS_TOKEN=${mcp.accessToken}`
+      mcpPrompt += `\n- ${mcp.name} (${mcp.type}): Connected. Status: ACTIVE.`
       if (mcp.metadata && Object.keys(mcp.metadata).length > 0) {
-        mcpPrompt += `\nMETADATA=${JSON.stringify(mcp.metadata)}`
+        mcpPrompt += `\n  METADATA=${JSON.stringify(mcp.metadata)}`
       }
     })
     effectiveMessage += mcpPrompt
+  }
+
+  // Also inject ALL connected MCPs for awareness, even if not explicitly selected for the turn
+  try {
+    const allMcpConnections = await db
+      .select()
+      .from(userMcpConnections)
+      .where(eq(userMcpConnections.userId, userId))
+
+    const activeMcps = allMcpConnections.filter(c => c.isActive)
+    if (activeMcps.length > 0) {
+      let availableMcpsPrompt = "\n\n## Available User Account Integrations (MCP)"
+      availableMcpsPrompt += "\nThe following accounts are connected to this user profile. Use the provided tokens only when necessary to perform requested tasks."
+      activeMcps.forEach(mcp => {
+        // Avoid duplicate injection if already in selectedMcps
+        if (!selectedMcps.find(sm => sm.id === mcp.id)) {
+          availableMcpsPrompt += `\n- ${mcp.name} (${mcp.type}): Connected. Status: ACTIVE.`
+        }
+      })
+      effectiveMessage += availableMcpsPrompt
+    }
+  } catch (err) {
+    console.error("Failed to fetch all MCP connections:", err)
   }
 
   if (selectedModel === "gemini") {
@@ -299,7 +439,8 @@ When editing an email template, focus ONLY on the template content.
       isAutomated,
       isCodeRequest,
       messageType,
-      systemPrompt
+      systemPrompt,
+      (text: string) => executeActionTags(text, userId)
     )
   } else if (ZAI_MODELS[selectedModel as keyof typeof ZAI_MODELS]) {
     return handleZaiRequest(
@@ -312,7 +453,8 @@ When editing an email template, focus ONLY on the template content.
       isCodeRequest,
       selectedModel,
       messageType,
-      systemPrompt
+      systemPrompt,
+      (text: string) => executeActionTags(text, userId)
     )
   } else {
     return handleOpenRouterRequest(
@@ -325,7 +467,8 @@ When editing an email template, focus ONLY on the template content.
       isCodeRequest,
       selectedModel,
       messageType,
-      systemPrompt
+      systemPrompt,
+      (text: string) => executeActionTags(text, userId)
     )
   }
 }
@@ -341,6 +484,7 @@ async function handleGeminiRequest(
   isCodeRequest: boolean,
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
 ) {
   const googleKey = process.env.GOOGLE_API_KEY
 
@@ -359,6 +503,127 @@ async function handleGeminiRequest(
   const maxContinuations = 5
   const continueMessage = "Continue exactly from where you left off without repeating any previous content."
 
+  // --- MCP TOOL DEFINITIONS ---
+  const geminiTools = [
+    {
+      functionDeclarations: [
+        {
+          name: "discord_send_message",
+          description: "Sends a message to a Discord channel or user ID. Use this for REAL actions.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channelId: { type: "STRING", description: "The ID of the channel or user to send to." },
+              content: { type: "STRING", description: "The message content." }
+            },
+            required: ["channelId", "content"]
+          }
+        },
+        {
+          name: "discord_get_messages",
+          description: "Retrieves recent messages from a Discord channel. Use this for REAL data retrieval.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channelId: { type: "STRING", description: "The ID of the channel." },
+              limit: { type: "NUMBER", description: "Number of messages (default 10)." }
+            },
+            required: ["channelId"]
+          }
+        },
+        {
+          name: "discord_create_dm",
+          description: "Creates a Direct Message channel with a user. Returns a channelId. Use this BEFORE discord_send_message if you only have a user ID.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              recipientId: { type: "STRING", description: "The ID of the user to open a DM with." }
+            },
+            required: ["recipientId"]
+          }
+        },
+        {
+          name: "discord_get_guilds",
+          description: "Lists all Discord servers (guilds) the user is in.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "discord_get_channels",
+          description: "Lists all channels in a specific Discord guild.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              guildId: { type: "STRING", description: "The ID of the guild to list channels for." }
+            },
+            required: ["guildId"]
+          }
+        },
+        {
+          name: "discord_delete_message",
+          description: "Deletes a specific message from a Discord channel.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channelId: { type: "STRING", description: "The ID of the channel." },
+              messageId: { type: "STRING", description: "The ID of the message to delete." }
+            },
+            required: ["channelId", "messageId"]
+          }
+        },
+        {
+          name: "gmail_send_message",
+          description: "Sends an email from the user's account.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              to: { type: "STRING", description: "Recipient address." },
+              subject: { type: "STRING", description: "Email subject." },
+              body: { type: "STRING", description: "Email body (HTML supported)." }
+            },
+            required: ["to", "subject", "body"]
+          }
+        },
+        {
+          name: "gmail_list_messages",
+          description: "Lists emails matching a query.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              q: { type: "STRING", description: "The search query." },
+              maxResults: { type: "NUMBER", description: "Max results." }
+            }
+          }
+        },
+        {
+          name: "gmail_get_message",
+          description: "Gets full details of a specific email.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              id: { type: "STRING", description: "Message ID." }
+            },
+            required: ["id"]
+          }
+        },
+        {
+          name: "gmail_delete_message",
+          description: "Deletes a specific email.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              id: { type: "STRING", description: "Message ID." }
+            },
+            required: ["id"]
+          }
+        }
+      ]
+    }
+  ]
+
+  async function dispatchMcpToolLocal(name: string, args: any, uId: string) {
+    return await dispatchMcpTool(name, args, uId)
+  }
+
   try {
     const conversationHistory = history.slice(0, -1).map((msg) => ({
       role: msg.role,
@@ -367,13 +632,15 @@ async function handleGeminiRequest(
 
     const encoder = new TextEncoder()
     let fullResponse = ""
+    let fullResponseRaw = ""
     let accumulatedBuffer = ""
     let inCodeBlock = false
 
     const geminiModel = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-3-flash-preview",
       systemInstruction: systemPrompt,
       generationConfig: { maxOutputTokens: 32768 },
+      tools: geminiTools,
     })
 
     return new ReadableStream({
@@ -422,24 +689,63 @@ async function handleGeminiRequest(
 
             let finishReason = null
             let chunkCount = 0
+            let toolCalls = []
             for await (const chunk of stream.stream) {
-              const part = chunk.candidates?.[0]?.content?.parts?.[0]
-              if (part?.text) {
-                fullResponse += part.text
-                chunkCount++
+              const parts = chunk.candidates?.[0]?.content?.parts || []
+              for (const part of parts) {
+                if (part.text) {
+                  // Hide Internal Action Tags from UI and fullResponse
+                  if (part.text.includes("<Action>")) {
+                    // We don't add this part to fullResponse or send to client
+                    // But we keep it for executeActionTags at the end
+                    fullResponseRaw += part.text;
+                    continue;
+                  }
+                  fullResponseRaw += part.text;
+                  fullResponse += part.text;
+                  chunkCount++;
 
-                if (chunkCount % 50 === 0) {
-                  db.update(messagesTable)
-                    .set({ content: fullResponse })
-                    .where(eq(messagesTable.id, assistantMsgId))
-                    .then(() => console.log(`[Gemini] Partial progress saved for ${assistantMsgId}`))
+                  if (chunkCount % 50 === 0) {
+                    db.update(messagesTable)
+                      .set({ content: fullResponse })
+                      .where(eq(messagesTable.id, assistantMsgId))
+                      .then(() => console.log(`[Gemini] Partial progress saved for ${assistantMsgId}`))
+                  }
+
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: part.text })}\n\n`))
                 }
-
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: part.text })}\n\n`))
+                if (part.functionCall) {
+                  toolCalls.push(part.functionCall)
+                }
               }
               if (chunk.candidates?.[0]?.finishReason) {
                 finishReason = chunk.candidates[0].finishReason
               }
+            }
+
+            // Handle Tool Calls
+            if (toolCalls.length > 0) {
+              console.log(`[Gemini] Executing ${toolCalls.length} tool calls...`)
+              const toolParts = []
+              const toolResponseParts = []
+
+              for (const call of toolCalls) {
+                const result = await dispatchMcpTool(call.name, call.args, userId)
+                toolParts.push({ functionCall: call })
+                toolResponseParts.push({
+                  functionResponse: {
+                    name: call.name,
+                    response: result
+                  }
+                })
+              }
+
+              contents.push({ role: "model", parts: toolParts as any[] } as any)
+              contents.push({ role: "function", parts: toolResponseParts as any[] } as any)
+
+              // Increment continuation but allow the loop to run again to produce text
+              continuationCount++
+              continue // Next iteration will call Gemini again with the tool results
             }
 
             if (finishReason === "MAX_TOKENS" && continuationCount < maxContinuations) {
@@ -450,6 +756,11 @@ async function handleGeminiRequest(
               break
             }
           } while (true)
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await executeActionTags(fullResponseRaw);
+          }
 
           console.log(`[Gemini] Response length: ${fullResponse.length}`)
 
@@ -532,6 +843,7 @@ async function handleOpenRouterRequest(
   selectedModel: string,
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
 ) {
   const openRouterKey = process.env.OPENROUTER_API_KEY
 
@@ -552,6 +864,7 @@ async function handleOpenRouterRequest(
 
     const encoder = new TextEncoder()
     let fullResponse = ""
+    let fullResponseRaw = ""
     let accumulatedBuffer = ""
     let inCodeBlock = false
 
@@ -587,106 +900,138 @@ async function handleOpenRouterRequest(
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
-
-          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${openRouterKey}`,
-              "Content-Type": "application/json",
-              "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-              "X-Title": "AI Website Builder",
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: chatMessages,
-              stream: true,
-              max_tokens: 32768,
-            }),
-          })
-
-          if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`OpenRouter API error: ${response.status} ${errorText}`)
-          }
-
-          const reader = response.body?.getReader()
-          if (!reader) {
-            throw new Error("No response body reader")
-          }
-
-          const decoder = new TextDecoder()
-          let buffer = ""
+          let continuationCount = 0
           let chunkCount = 0
+          const maxContinuations = 5
+          const continueMessage = "Continue exactly from where you left off without repeating any previous content."
 
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+          do {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${openRouterKey}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+                "X-Title": "AI Website Builder",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: chatMessages,
+                stream: true,
+                max_tokens: 32768,
+              }),
+            })
 
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split("\n")
-            buffer = lines.pop() || ""
+            if (!response.ok) {
+              const errorText = await response.text()
+              throw new Error(`OpenRouter API error: ${response.status} ${errorText}`)
+            }
 
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6)
-                if (data === "[DONE]") continue
+            const reader = response.body?.getReader()
+            if (!reader) {
+              throw new Error("No response body reader")
+            }
 
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  if (content) {
-                    fullResponse += content
-                    chunkCount++
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let finishReason = null
 
-                    // Periodically persist progress to database for continuity
-                    if (chunkCount % 50 === 0) {
-                      db.update(messagesTable)
-                        .set({ content: fullResponse })
-                        .where(eq(messagesTable.id, assistantMsgId))
-                        .then(() => console.log(`[OpenRouter] Partial progress saved for ${assistantMsgId}`))
-                    }
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
 
-                    if (isCodeRequest && messageType === "build") {
-                      accumulatedBuffer += content
-                      const lines = accumulatedBuffer.split("\n")
-                      let textToSend = ""
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
 
-                      const lastLine = lines[lines.length - 1]
-                      const completeLines = lines.slice(0, -1)
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6)
+                  if (data === "[DONE]") continue
 
-                      for (const line of completeLines) {
-                        if (line.match(/^```\w+\s+file="/)) {
+                  try {
+                    const parsed = JSON.parse(data)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      // Hide Action Tags
+                      if (content.includes("<Action>")) {
+                        fullResponseRaw += content;
+                        continue;
+                      }
+
+                      fullResponseRaw += content;
+                      fullResponse += content
+                      chunkCount++
+
+                      // Periodically persist progress to database for continuity
+                      if (chunkCount % 50 === 0) {
+                        db.update(messagesTable)
+                          .set({ content: fullResponse })
+                          .where(eq(messagesTable.id, assistantMsgId))
+                          .then(() => console.log(`[OpenRouter] Partial progress saved for ${assistantMsgId}`))
+                      }
+
+                      if (isCodeRequest && messageType === "build") {
+                        accumulatedBuffer += content
+                        const lines = accumulatedBuffer.split("\n")
+                        let textToSend = ""
+
+                        const lastLine = lines[lines.length - 1]
+                        const completeLines = lines.slice(0, -1)
+
+                        for (const line of completeLines) {
+                          if (line.match(/^```\w+\s+file="/)) {
+                            inCodeBlock = true
+                            continue
+                          }
+                          if (line.trim() === "```" && inCodeBlock) {
+                            inCodeBlock = false
+                            continue
+                          }
+                          if (!inCodeBlock) {
+                            textToSend += line + "\n"
+                          }
+                        }
+
+                        if (lastLine.match(/^```\w+\s+file="/)) {
                           inCodeBlock = true
-                          continue
+                          accumulatedBuffer = ""
+                        } else {
+                          accumulatedBuffer = lastLine
                         }
-                        if (line.trim() === "```" && inCodeBlock) {
-                          inCodeBlock = false
-                          continue
-                        }
-                        if (!inCodeBlock) {
-                          textToSend += line + "\n"
-                        }
-                      }
 
-                      if (lastLine.match(/^```\w+\s+file="/)) {
-                        inCodeBlock = true
-                        accumulatedBuffer = ""
+                        if (textToSend.trim()) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        }
                       } else {
-                        accumulatedBuffer = lastLine
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                       }
-
-                      if (textToSend.trim()) {
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
-                      }
-                    } else {
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                     }
+
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      finishReason = parsed.choices[0].finish_reason
+                    }
+                  } catch (e) {
+                    console.error("[OpenRouter] Parse error:", e)
                   }
-                } catch (e) {
-                  console.error("[OpenRouter] Parse error:", e)
                 }
               }
             }
+
+            if ((finishReason === "length" || finishReason === "max_tokens") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[OpenRouter] Truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              chatMessages.push({ role: "assistant", content: fullResponse })
+              chatMessages.push({ role: "user", content: continueMessage })
+            } else {
+              break
+            }
+          } while (true)
+
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await executeActionTags(fullResponseRaw);
           }
 
           console.log(`[OpenRouter/${modelId}] Response length: ${fullResponse.length}`)
@@ -751,6 +1096,7 @@ async function handleOpenRouterRequest(
   }
 }
 
+
 async function handleZaiRequest(
   history: any[],
   message: string,
@@ -762,6 +1108,7 @@ async function handleZaiRequest(
   selectedModel: string,
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
 ) {
   const zaiKey = process.env.ZAI_API_KEY
 
@@ -782,6 +1129,7 @@ async function handleZaiRequest(
 
     const encoder = new TextEncoder()
     let fullResponse = ""
+    let fullResponseRaw = ""
     let accumulatedBuffer = ""
     let inCodeBlock = false
 
@@ -817,104 +1165,135 @@ async function handleZaiRequest(
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
-
-          const response = await fetch("https://api.z.ai/api/paas/v4/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${zaiKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: chatMessages,
-              stream: true,
-              max_tokens: 32768,
-            }),
-          })
-
-          if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`Z.ai API error: ${response.status} ${errorText}`)
-          }
-
-          const reader = response.body?.getReader()
-          if (!reader) {
-            throw new Error("No response body reader")
-          }
-
-          const decoder = new TextDecoder()
-          let buffer = ""
+          let continuationCount = 0
           let chunkCount = 0
+          const maxContinuations = 5
+          const continueMessage = "Continue exactly from where you left off without repeating any previous content."
 
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+          do {
+            const response = await fetch("https://api.z.ai/api/paas/v4/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${zaiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: chatMessages,
+                stream: true,
+                max_tokens: 32768,
+              }),
+            })
 
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split("\n")
-            buffer = lines.pop() || ""
+            if (!response.ok) {
+              const errorText = await response.text()
+              throw new Error(`Z.ai API error: ${response.status} ${errorText}`)
+            }
 
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6)
-                if (data === "[DONE]") continue
+            const reader = response.body?.getReader()
+            if (!reader) {
+              throw new Error("No response body reader")
+            }
 
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  if (content) {
-                    fullResponse += content
-                    chunkCount++
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let finishReason = null
 
-                    // Periodically persist progress to database for continuity
-                    if (chunkCount % 50 === 0) {
-                      db.update(messagesTable)
-                        .set({ content: fullResponse })
-                        .where(eq(messagesTable.id, assistantMsgId))
-                        .then(() => console.log(`[Z.ai] Partial progress saved for ${assistantMsgId}`))
-                    }
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
 
-                    if (isCodeRequest && messageType === "build") {
-                      accumulatedBuffer += content
-                      const lines = accumulatedBuffer.split("\n")
-                      let textToSend = ""
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
 
-                      const lastLine = lines[lines.length - 1]
-                      const completeLines = lines.slice(0, -1)
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6)
+                  if (data === "[DONE]") continue
 
-                      for (const line of completeLines) {
-                        if (line.match(/^```\w+\s+file="/)) {
+                  try {
+                    const parsed = JSON.parse(data)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      // Action Tag handling
+                      if (content.includes("<Action>")) {
+                        fullResponseRaw += content;
+                        continue;
+                      }
+                      fullResponseRaw += content;
+                      fullResponse += content
+                      chunkCount++
+
+                      // Periodically persist progress to database for continuity
+                      if (chunkCount % 50 === 0) {
+                        db.update(messagesTable)
+                          .set({ content: fullResponse })
+                          .where(eq(messagesTable.id, assistantMsgId))
+                          .then(() => console.log(`[Z.ai] Partial progress saved for ${assistantMsgId}`))
+                      }
+
+                      if (isCodeRequest && messageType === "build") {
+                        accumulatedBuffer += content
+                        const lines = accumulatedBuffer.split("\n")
+                        let textToSend = ""
+
+                        const lastLine = lines[lines.length - 1]
+                        const completeLines = lines.slice(0, -1)
+
+                        for (const line of completeLines) {
+                          if (line.match(/^```\w+\s+file="/)) {
+                            inCodeBlock = true
+                            continue
+                          }
+                          if (line.trim() === "```" && inCodeBlock) {
+                            inCodeBlock = false
+                            continue
+                          }
+                          if (!inCodeBlock) {
+                            textToSend += line + "\n"
+                          }
+                        }
+
+                        if (lastLine.match(/^```\w+\s+file="/)) {
                           inCodeBlock = true
-                          continue
+                          accumulatedBuffer = ""
+                        } else {
+                          accumulatedBuffer = lastLine
                         }
-                        if (line.trim() === "```" && inCodeBlock) {
-                          inCodeBlock = false
-                          continue
-                        }
-                        if (!inCodeBlock) {
-                          textToSend += line + "\n"
-                        }
-                      }
 
-                      if (lastLine.match(/^```\w+\s+file="/)) {
-                        inCodeBlock = true
-                        accumulatedBuffer = ""
+                        if (textToSend.trim()) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        }
                       } else {
-                        accumulatedBuffer = lastLine
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                       }
-
-                      if (textToSend.trim()) {
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
-                      }
-                    } else {
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                     }
+
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      finishReason = parsed.choices[0].finish_reason
+                    }
+                  } catch (e) {
+                    console.error("[Z.ai] Parse error:", e)
                   }
-                } catch (e) {
-                  console.error("[Z.ai] Parse error:", e)
                 }
               }
             }
+
+            if ((finishReason === "length" || finishReason === "max_tokens") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[Z.ai] Truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              chatMessages.push({ role: "assistant", content: fullResponse })
+              chatMessages.push({ role: "user", content: continueMessage })
+            } else {
+              break
+            }
+          } while (true)
+
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await executeActionTags(fullResponseRaw);
           }
 
           console.log(`[Z.ai/${modelId}] Response length: ${fullResponse.length}`)

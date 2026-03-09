@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { db } from "@/config/db"
-import { projectSupabase, projects } from "@/config/schema"
+import { projectSupabase, projects, projectSecrets } from "@/config/schema"
 import { eq, and } from "drizzle-orm"
 
 type RouteContext = {
@@ -112,6 +112,39 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
         region: "unknown",
         isActive: true,
       })
+    }
+
+    // Synchronize with projectSecrets
+    const secretUpdates = [
+      { name: "VITE_SUPABASE_URL", value: supabaseUrl },
+      { name: "VITE_SUPABASE_ANON_KEY", value: anonKey },
+    ]
+
+    for (const secret of secretUpdates) {
+      const [existingSecret] = await db
+        .select()
+        .from(projectSecrets)
+        .where(
+          and(
+            eq(projectSecrets.projectId, projectId),
+            eq(projectSecrets.userId, userId),
+            eq(projectSecrets.name, secret.name)
+          )
+        )
+
+      if (existingSecret) {
+        await db
+          .update(projectSecrets)
+          .set({ value: secret.value, updatedAt: new Date() })
+          .where(eq(projectSecrets.id, existingSecret.id))
+      } else {
+        await db.insert(projectSecrets).values({
+          projectId,
+          userId,
+          name: secret.name,
+          value: secret.value,
+        })
+      }
     }
 
     return NextResponse.json({ success: true })

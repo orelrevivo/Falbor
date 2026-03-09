@@ -1,13 +1,13 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Brain, Cpu, Settings, Shield, CheckSquare, Upload } from "lucide-react"
+import { Brain, Cpu, Settings, Shield, CheckSquare, Upload, Key, Github } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 interface SettingsSidebarProps {
-  activeSection: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template"
+  activeSection: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github"
   onSectionChange: (
-    section: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template",
+    section: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github",
   ) => void
 }
 
@@ -25,11 +25,24 @@ const menuItems = [
     group: "Project Settings",
   },
   {
+    id: "secrets" as const,
+    label: "Secrets",
+    icon: Key,
+    group: "Project Settings",
+  },
+  {
     id: "automations" as const,
     label: "Automations",
     icon: CheckSquare,
     group: "Project Settings",
   },
+  {
+    id: "github" as const,
+    label: "GitHub",
+    icon: Github,
+    group: "Project Settings",
+  },
+
   {
     id: "publish-template" as const,
     label: "Publish to Template",

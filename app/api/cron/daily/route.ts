@@ -8,7 +8,7 @@ import { calculateNextRunTime, isTimeToRun } from "@/lib/common/prompts/automati
 async function deductCredits(userId: string, amount: number) {
   await db
     .update(userCredits)
-    .set({ credits: sql`${userCredits.credits} - ${amount}` })
+    .set({ balance: sql`${userCredits.balance} - ${amount}` })
     .where(eq(userCredits.userId, userId))
 }
 
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       .select()
       .from(userAutomations)
       .where(eq(userAutomations.userId, testUserId))
-    
+
     if (auto && auto.isActive) {
       activeUsers = [auto]
       console.log(`[Cron] Test mode - Found active user: ${testUserId}`)
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       .select()
       .from(userAutomations)
       .where(eq(userAutomations.isActive, true))
-    
+
     activeUsers = allActive.filter(auto => auto.nextRunAt && isTimeToRun(auto.nextRunAt))
     console.log(`[Cron] Found ${activeUsers.length} active users ready to run`)
   }
@@ -60,19 +60,19 @@ export async function POST(request: Request) {
 }
 
 async function processUser(userId: string, auto: any) {
-  if (!auto || auto.maxMessages < 2) {
-    console.log(`[Cron] Skip ${userId}: Invalid settings or maxMessages < 2`)
+  if (!auto) {
+    console.log(`[Cron] Skip ${userId}: Invalid settings`)
     return { success: false, reason: "Invalid settings" }
   }
 
   const [creditRecord] = await db
-    .select({ credits: userCredits.credits })
+    .select({ balance: userCredits.balance })
     .from(userCredits)
     .where(eq(userCredits.userId, userId))
 
-  if (!creditRecord || creditRecord.credits < auto.maxMessages) {
-    console.log(`[Cron] Skip ${userId}: Insufficient credits (${creditRecord?.credits || 0} < ${auto.maxMessages})`)
-    return { success: false, reason: "Low credits" }
+  if (!creditRecord || creditRecord.balance <= 0) {
+    console.log(`[Cron] Skip ${userId}: Zero credits`)
+    return { success: false, reason: "No credits" }
   }
 
   try {
@@ -98,9 +98,8 @@ async function processUser(userId: string, auto: any) {
       isAutomated: true,
     })
 
-    // Deduct credits upfront
-    await deductCredits(userId, auto.maxMessages)
-    console.log(`[Cron] Deducted ${auto.maxMessages} credits from ${userId}`)
+    // Credits are no longer deducted upfront; the chat route will handle it organically
+    console.log(`[Cron] Ready to generate messages for ${userId}`)
 
     // Generate follow-up messages with AI
     for (let i = 0; i < auto.maxMessages; i++) {
@@ -132,7 +131,7 @@ async function processUser(userId: string, auto: any) {
     }
 
     const nextRun = calculateNextRunTime(auto.activatedAt || new Date())
-    await db.update(userAutomations).set({ 
+    await db.update(userAutomations).set({
       lastRun: new Date(),
       nextRunAt: nextRun,
     }).where(eq(userAutomations.userId, userId))

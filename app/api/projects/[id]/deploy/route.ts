@@ -195,40 +195,43 @@ export async function POST(
         .returning()
     }
 
-    // Handle distHtml with meta tag injection
-    if (body.distHtml) {
-      let finalHtml = body.distHtml
+    // Handle distFiles / distHtml with meta tag injection
+    const distFiles = body.distFiles || [];
+    if (body.distHtml && !distFiles.find((f: any) => f.path === "dist/index.html")) {
+      distFiles.push({ path: "dist/index.html", content: body.distHtml, language: "html" });
+    }
 
-      // Safely get deployment record (updated or existing)
-      const deploymentRecord = updatedDeployment || existing
+    if (distFiles.length > 0) {
+      // 1. Process index.html for meta tags
+      const indexFile = distFiles.find((f: any) => f.path === "dist/index.html");
+      const deploymentRecord = updatedDeployment || existing;
 
-      if (deploymentRecord) {
-        finalHtml = injectMetaTags(finalHtml, {
+      if (indexFile && deploymentRecord) {
+        indexFile.content = injectMetaTags(indexFile.content, {
           favicon: deploymentRecord.favicon ?? null,
           siteTitle: deploymentRecord.siteTitle ?? null,
           siteDescription: deploymentRecord.siteDescription ?? null,
-        })
+        });
       }
 
-      const [existingDist] = await db
-        .select()
-        .from(files)
-        .where(and(eq(files.projectId, projectId), eq(files.path, "dist/index.html")))
-        .limit(1)
+      // 2. Identify and clear old dist files to prevent orphans
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, projectId));
+      const oldDistFiles = projectFiles.filter(f => f.path.startsWith("dist/"));
 
-      if (existingDist) {
-        await db
-          .update(files)
-          .set({ content: finalHtml, updatedAt: new Date() })
-          .where(eq(files.id, existingDist.id))
-      } else {
-        await db.insert(files).values({
-          projectId,
-          path: "dist/index.html",
-          content: finalHtml,
-          language: "html",
-        })
+      for (const oldFile of oldDistFiles) {
+        await db.delete(files).where(eq(files.id, oldFile.id));
       }
+
+      // 3. Batch insert new dist files
+      const toInsert = distFiles.map((f: any) => ({
+        projectId,
+        path: f.path,
+        content: f.content,
+        language: f.language || f.path.split('.').pop() || "text",
+        updatedAt: new Date()
+      }));
+
+      await db.insert(files).values(toInsert);
     }
 
     return NextResponse.json({

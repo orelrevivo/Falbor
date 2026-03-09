@@ -228,8 +228,8 @@ export function SecuritySection({ projectId }: SecuritySectionProps) {
           ) : (
             <ScrollArea className="h-[calc(100%-2rem)] w-full pr-4">
               <div className="space-y-4">
-                {lastScan.issues.map((issue) => (
-                  <Card key={issue.id}>
+                {lastScan.issues.map((issue, index) => (
+                  <Card key={`${issue.id}-${index}`}>
                     <CardHeader>
                       <div className="flex items-start justify-between">
                         <div className="space-y-1">
@@ -295,4 +295,4 @@ export function SecuritySection({ projectId }: SecuritySectionProps) {
       </Tabs>
     </div>
   )
-}
+} 

@@ -16,27 +16,27 @@ const ApplicationPreview = () => {
         {
             id: "inventory",
             name: "Inventory Management App",
-            url: "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/9f35d81d-bc39-4994-a22c-4c9eb1fa138d-base44-com/assets/images/1__20Inventory_20Management_20App-5.jpg",
+            url: "/layout/website/website1.png",
         },
         {
             id: "finances",
             name: "Finances",
-            url: "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/9f35d81d-bc39-4994-a22c-4c9eb1fa138d-base44-com/assets/images/2__20Finances-7.jpg",
+            url: "/layout/website/website2.png",
         },
         {
             id: "treks",
             name: "Treks Planner App",
-            url: "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/9f35d81d-bc39-4994-a22c-4c9eb1fa138d-base44-com/assets/images/3__20Treks_20Planner_20App-9.jpg",
+            url: "/layout/website/website3.png",
         },
         {
             id: "meal",
             name: "Meal Planner App",
-            url: "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/9f35d81d-bc39-4994-a22c-4c9eb1fa138d-base44-com/assets/images/4__20Meal_20Planner_20App-8.jpg",
+            url: "/layout/website/website4.png",
         },
         {
             id: "learning",
             name: "Learning Hub",
-            url: "https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/9f35d81d-bc39-4994-a22c-4c9eb1fa138d-base44-com/assets/images/5__20Learning_20hub-6.jpg",
+            url: "/layout/website/website5.png",
         },
     ];
 
@@ -140,7 +140,7 @@ const ApplicationPreview = () => {
                                 className="relative w-full h-full flex items-center justify-center"
                             >
                                 {/* Blurred App Slider Background */}
-                                <div className="flex gap-4 items-center justify-center h-full perspective-[2000px] opacity-40 blur-sm pointer-events-none scale-90">
+                                <div className="flex gap-4 items-center justify-center h-full perspective-[2000px] opacity-100 blur-sm pointer-events-none scale-90">
                                     {appTemplates.map((template, index) => (
                                         <div
                                             key={template.id}
@@ -175,7 +175,7 @@ const ApplicationPreview = () => {
                                                     <span className="text-accent-orange text-sm font-bold"><img src="/icons/falbor.png" alt="" /></span>
                                                 </div>
                                                 <div className=" w-full" >
-                                                    <span className="text-black text-sm font-sans font-light">Build an AI-powered writing assistant - should help improve writing with suggestions for grammar, style, and clarity using AI algorithms.</span>
+                                                    <span className="text-black text-sm font-sans font-light">Build a modern AI-powered SaaS website builder where users describe their business and instantly generate, edit, preview, export, and deploy a fully responsive professional website with authentication, dashboard, project management, subdomains, and Free/Pro subscription plans.</span>
                                                 </div>
                                             </div>
                                         </div>
@@ -286,7 +286,7 @@ const ApplicationPreview = () => {
                                     <motion.div
                                         initial={{ opacity: 0, y: 20, scale: 0.95 }}
                                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                                        className="relative w-full h-[540px] max-w-[900px] rounded-3xl overflow-hidden shadow-2xl border-4 border-white group"
+                                        className="relative w-[1400px] h-[700px] max-w-[900px] rounded-3xl overflow-hidden shadow-2xl border-4 border-white group"
                                     >
                                         {/* Browser Shell UI */}
                                         <div className="absolute top-0 left-0 right-0 h-10 bg-gray-50 border-b border-gray-200 z-20 flex items-center px-4 gap-1.5">
@@ -299,27 +299,11 @@ const ApplicationPreview = () => {
                                         </div>
 
                                         <Image
-                                            src="https://slelguoygbfzlpylpxfs.supabase.co/storage/v1/object/public/test-clones/9f35d81d-bc39-4994-a22c-4c9eb1fa138d-base44-com/assets/images/1__20Inventory_20Management_20App-5.jpg"
+                                            src="/layout/Improve-website.png"
                                             alt="Created Application"
                                             fill
-                                            className="object-cover pt-10 group-hover:scale-105 transition-transform duration-1000"
+                                            className="object-cover w-[300px] h-[540px] pt-10 group-hover:scale-105 transition-transform duration-1000"
                                         />
-
-                                        {/* Success Badge */}
-                                        <motion.div
-                                            initial={{ opacity: 0, x: 20 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: 0.5 }}
-                                            className="absolute bottom-8 right-8 z-30 bg-green-500 text-white px-5 py-3 rounded-2xl shadow-xl flex items-center gap-3"
-                                        >
-                                            <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center">
-                                                <MonitorCheck size={18} />
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] opacity-80 font-bold uppercase tracking-wider leading-none mb-0.5">Status</p>
-                                                <p className="font-bold leading-none">Ready to Launch</p>
-                                            </div>
-                                        </motion.div>
                                     </motion.div>
                                 )}
                             </motion.div>

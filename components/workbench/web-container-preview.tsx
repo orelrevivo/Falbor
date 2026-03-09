@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { WebContainer } from "@webcontainer/api"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useAuth } from "@clerk/nextjs"
 
 // Import types only for SSR safety
 import type { Terminal } from "@xterm/xterm"
@@ -15,6 +16,7 @@ import { DEVICE_PRESETS, DevicePreset } from "./device-presets"
 const isBrowser = typeof window !== "undefined"
 
 interface WebContainerPreviewProps {
+    projectId: string
     files: Array<{ path: string; content: string }>
     isTerminalOpen: boolean
     isCodeGenerating?: boolean
@@ -24,10 +26,12 @@ interface WebContainerPreviewProps {
 let webcontainerPromise: Promise<WebContainer> | null = null;
 
 export function WebContainerPreview({
+    projectId,
     files,
     isTerminalOpen,
     isCodeGenerating = false,
 }: WebContainerPreviewProps) {
+    const { getToken } = useAuth()
     const [webcontainerInstance, setWebcontainerInstance] = useState<WebContainer | null>(null)
     const [iframeUrl, setIframeUrl] = useState<string | null>(null)
     const [status, setStatus] = useState<"waiting" | "booting" | "installing" | "ready" | "error">("waiting")
@@ -157,7 +161,7 @@ export function WebContainerPreview({
     }, [webcontainerInstance]);
 
     useEffect(() => {
-        if (hasBooted.current) return
+        if (hasBooted.current || files.length === 0) return
 
         hasBooted.current = true
 
@@ -204,8 +208,42 @@ export function WebContainerPreview({
                 // Mount files
                 const fileSystem: any = {}
 
+                // Inject Environment Variables into .env for Vite
+                try {
+                    let envContent = '';
+
+                    // 1. Fetch Supabase Config
+                    const supabaseRes = await fetch(`/api/projects/${projectId}/supabase`);
+                    if (supabaseRes.ok) {
+                        const supabaseData = await supabaseRes.json();
+                        if (supabaseData.supabaseUrl) envContent += `VITE_SUPABASE_URL=${supabaseData.supabaseUrl}\n`;
+                        if (supabaseData.anonKey) envContent += `VITE_SUPABASE_ANON_KEY=${supabaseData.anonKey}\n`;
+                    }
+
+                    // 2. Fetch Project Secrets
+                    const secretsRes = await fetch(`/api/projects/${projectId}/secrets`);
+                    if (secretsRes.ok) {
+                        const secretsData = await secretsRes.json();
+                        secretsData.forEach((s: any) => {
+                            // Ensure VITE_ prefix for Vite to pick it up, or use the original name if already prefixed
+                            const key = s.key.startsWith('VITE_') ? s.key : `VITE_${s.key}`;
+                            envContent += `${key}=${s.value}\n`;
+                        });
+                    }
+
+                    if (envContent) {
+                        fileSystem[".env"] = {
+                            file: { contents: envContent }
+                        };
+                        console.log("[WebContainer] Injected environment variables into .env");
+                    }
+                } catch (envErr) {
+                    console.warn("[WebContainer] Failed to fetch environment variables for preview:", envErr);
+                }
+
                 // Helper to ensure directory exists in fileSystem object
                 const ensureDir = (obj: any, path: string) => {
+                    if (!path) return obj;
                     const parts = path.split("/").filter(Boolean);
                     let current = obj;
                     for (const part of parts) {
@@ -218,12 +256,12 @@ export function WebContainerPreview({
                 };
 
                 // 1. Analyze existing files to provide smart fallbacks
-                const hasPackageJson = files.some(f => f.path === "package.json")
-                const hasIndexHtml = files.some(f => f.path === "index.html")
-                const hasViteConfig = files.some(f => f.path === "vite.config.js" || f.path === "vite.config.ts")
-                const hasTsConfig = files.some(f => f.path === "tsconfig.json")
-                const hasTailwindConfig = files.some(f => f.path === "tailwind.config.js" || f.path === "tailwind.config.ts")
-                const hasPostcssConfig = files.some(f => f.path === "postcss.config.js" || f.path === "postcss.config.ts")
+                const hasPackageJson = files.some(f => f?.path === "package.json")
+                const hasIndexHtml = files.some(f => f?.path === "index.html")
+                const hasViteConfig = files.some(f => f?.path === "vite.config.js" || f?.path === "vite.config.ts")
+                const hasTsConfig = files.some(f => f?.path === "tsconfig.json")
+                const hasTailwindConfig = files.some(f => f?.path === "tailwind.config.js" || f?.path === "tailwind.config.ts")
+                const hasPostcssConfig = files.some(f => f?.path === "postcss.config.js" || f?.path === "postcss.config.ts")
 
                 // 2. Default Boilerplate Fallbacks
                 if (!hasPackageJson) {
@@ -360,8 +398,8 @@ export default {
                     }
                 }
 
-                const hasTailwindCss = files.some(f => f.content.includes("@tailwind base") || f.path === "src/index.css")
-                if (!hasTailwindCss && !files.some(f => f.path.endsWith(".css"))) {
+                const hasTailwindCss = files.some(f => f?.content?.includes("@tailwind base") || f?.path === "src/index.css")
+                if (!hasTailwindCss && !files.some(f => f?.path?.endsWith(".css"))) {
                     ensureDir(fileSystem, "src");
                     fileSystem["src"]["directory"]["index.css"] = {
                         file: {
@@ -372,6 +410,7 @@ export default {
 
                 // 3. Mount user files with path normalization and aggressive shimming
                 files.forEach(file => {
+                    if (!file || !file.path) return;
                     // Normalize backslashes and split
                     const normalizedPath = file.path.replace(/\\/g, "/");
                     const pathParts = normalizedPath.split("/").filter(Boolean);
@@ -390,15 +429,13 @@ export default {
                     }
 
                     const fileName = pathParts[pathParts.length - 1];
-                    let fileContent = file.content;
+                    let fileContent = file.content || "";
 
-                    // Aggressive Shimming for existing files
+                    // Legacy compatibility: shim window.process.env to use Vite's import.meta.env
                     if (fileName === "index.html") {
-                        const shim = `<script>window.process = { env: ${JSON.stringify(process.env || {})} };</script>`;
+                        const shim = `<script>window.process = { env: new Proxy({}, { get: (target, prop) => import.meta.env[prop] }) };</script>`;
                         if (fileContent.includes("<head>")) {
                             fileContent = fileContent.replace("<head>", `<head>\n    ${shim}`);
-                        } else if (fileContent.includes("<html>")) {
-                            fileContent = fileContent.replace("<html>", `<html>\n<head>\n    ${shim}\n</head>`);
                         } else {
                             fileContent = shim + fileContent;
                         }
@@ -454,7 +491,9 @@ export default {
         }
 
         boot()
-    }, [isCodeGenerating])
+    }, [files.length])
+
+
 
     // Resize terminal
     useEffect(() => {
@@ -500,9 +539,13 @@ export default {
                 return;
             }
 
-            const { projectId, subdomain, republish, token } = e.detail;
+            const { projectId, subdomain, republish } = e.detail;
 
             try {
+                // Always get a fresh token here — the token passed via the event may be
+                // stale/expired by the time this handler runs (Clerk JWTs are short-lived).
+                const token = await getToken();
+
                 const terminal = xtermRef.current;
                 terminal?.writeln('\r\n\x1b[34m[Deploy] Preparing production build...\x1b[0m');
 
@@ -523,6 +566,13 @@ export default {
                             newConfig.replace('plugins: [', 'plugins: [viteSingleFile(), ');
                     }
 
+                    // Force relative base path for assets
+                    if (!newConfig.includes('base:')) {
+                        newConfig = newConfig.replace('defineConfig({', 'defineConfig({\n  base: "",');
+                    } else {
+                        newConfig = newConfig.replace(/base:\s*['"][^'"]*['"]/, 'base: ""');
+                    }
+
                     // Scrub legacy 'process.env': 'import.meta.env' hack from config
                     if (newConfig.includes('process.env')) {
                         newConfig = newConfig.replace(/'process\.env'\s*:\s*'import\.meta\.env'\,?/g, '');
@@ -531,29 +581,126 @@ export default {
                     await webcontainerInstance.fs.writeFile('vite.config.ts', newConfig);
                 }
 
-                // Scrub legacy process.env syntax from old supabase.ts files
-                const supabaseTs = await webcontainerInstance.fs.readFile('src/lib/supabase.ts', 'utf8').catch(() => null);
-                if (supabaseTs && supabaseTs.includes('process.env')) {
-                    const fixedSupabaseTs = supabaseTs.replace(/process\.env\.VITE_SUPABASE_URL/g, 'import.meta.env.VITE_SUPABASE_URL')
-                        .replace(/process\.env\.VITE_SUPABASE_ANON_KEY/g, 'import.meta.env.VITE_SUPABASE_ANON_KEY');
-                    await webcontainerInstance.fs.writeFile('src/lib/supabase.ts', fixedSupabaseTs);
+                // 3. Scrub legacy process.env syntax globally in src
+                terminal?.writeln('\x1b[34m[Deploy] Optimizing source code for production...\x1b[0m');
+                const srcFiles = await webcontainerInstance.spawn("find", ["src", "-type", "f", "-name", "*.ts", "-o", "-name", "*.tsx"]);
+                let output = '';
+                srcFiles.output.pipeTo(new WritableStream({ write(data) { output += data } }));
+                await srcFiles.exit;
+
+                const fileList = output.split('\n').filter(Boolean);
+                for (const file of fileList) {
+                    const content = await webcontainerInstance.fs.readFile(file.trim(), 'utf8').catch(() => null);
+                    if (content && content.includes('process.env')) {
+                        const fixedContent = content.replace(/process\.env\.VITE_SUPABASE_URL/g, 'import.meta.env.VITE_SUPABASE_URL')
+                            .replace(/process\.env\.VITE_SUPABASE_ANON_KEY/g, 'import.meta.env.VITE_SUPABASE_ANON_KEY')
+                            .replace(/process\.env\./g, 'import.meta.env.'); // General replacement
+                        await webcontainerInstance.fs.writeFile(file.trim(), fixedContent);
+                    }
                 }
 
-                // 3. Run build
+                // 3. Inject Environment Variables from Secrets (REQUIRED for build)
+                terminal?.writeln('\x1b[34m[Deploy] Injecting environment variables...\x1b[0m');
+                
+                let envContent = '';
+                
+                // Fetch secrets
+                const secretsRes = await fetch(`/api/projects/${projectId}/secrets`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (secretsRes.ok) {
+                    const secrets = await secretsRes.json();
+                    secrets.forEach((s: any) => {
+                        if (!s || !s.key) return; // Skip invalid entries
+                        const key = s.key.startsWith('VITE_') ? s.key : `VITE_${s.key}`;
+                        envContent += `${key}=${s.value}\n`;
+                    });
+                    terminal?.writeln(`\x1b[32m[Deploy] Loaded ${secrets.length} secrets\x1b[0m`);
+                } else {
+                    terminal?.writeln('\x1b[33m[Deploy] No secrets found or failed to fetch\x1b[0m');
+                }
+
+                // Fetch Supabase config
+                const supabaseRes = await fetch(`/api/projects/${projectId}/supabase`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (supabaseRes.ok) {
+                    const supabaseData = await supabaseRes.json();
+                    if (supabaseData.supabaseUrl) {
+                        envContent += `VITE_SUPABASE_URL=${supabaseData.supabaseUrl}\n`;
+                        terminal?.writeln('\x1b[32m[Deploy] Added VITE_SUPABASE_URL\x1b[0m');
+                    }
+                    if (supabaseData.anonKey) {
+                        envContent += `VITE_SUPABASE_ANON_KEY=${supabaseData.anonKey}\n`;
+                        terminal?.writeln('\x1b[32m[Deploy] Added VITE_SUPABASE_ANON_KEY\x1b[0m');
+                    }
+                } else {
+                    terminal?.writeln('\x1b[33m[Deploy] No Supabase config found\x1b[0m');
+                }
+
+                // Write .env file (REQUIRED - build fails without it)
+                if (!envContent) {
+                    throw new Error("No environment variables found. The app needs at least VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to build correctly.");
+                }
+                
+                await webcontainerInstance.fs.writeFile('.env', envContent);
+                terminal?.writeln('\x1b[32m[Deploy] .env file created with ' + envContent.split('\n').filter(Boolean).length + ' variables\x1b[0m');
+                
+                // Verify .env was written
+                const envVerify = await webcontainerInstance.fs.readFile('.env', 'utf-8').catch(() => null);
+                if (!envVerify) {
+                    throw new Error("Failed to verify .env file was written");
+                }
+
+                // 4. Run build
                 terminal?.writeln('\x1b[34m[Deploy] Creating dist bundle...\x1b[0m');
                 const buildProc = await webcontainerInstance.spawn("npm", ["run", "build"]);
                 buildProc.output.pipeTo(new WritableStream({ write(data) { terminal?.write(data) } }));
                 if (await buildProc.exit !== 0) throw new Error("Build failed");
 
-                // 4. Read dist/index.html
-                const distHtml = await webcontainerInstance.fs.readFile('dist/index.html', 'utf8');
+                // 4. Gather dist files
+                terminal?.writeln('\x1b[34m[Deploy] Gathering build artifacts...\x1b[0m');
+                const distFiles: Array<{ path: string, content: string }> = [];
+
+                async function collectFiles(dir: string) {
+                    const entries = await webcontainerInstance.fs.readdir(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        const path = `${dir}/${entry.name}`;
+                        if (entry.isDirectory()) {
+                            await collectFiles(path);
+                        } else {
+                            let content = await webcontainerInstance.fs.readFile(path, 'utf-8');
+
+                            // Hot-Patch JS bundles: swap import.meta.env to process.env 
+                            // so our runtime shim can inject the keys.
+                            if (path.endsWith('.js') || path.endsWith('.mjs')) {
+                                content = content.replace(/import\.meta\.env/g, 'process.env');
+                            }
+
+                            distFiles.push({ path, content });
+                        }
+                    }
+                }
+
+                try {
+                    await collectFiles('dist');
+                } catch (err) {
+                    console.error("Failed to read dist directory:", err);
+                    throw new Error("Could not find build output in 'dist' folder.");
+                }
 
                 // 5. Send to deploy API
                 terminal?.writeln('\x1b[34m[Deploy] Uploading to production...\x1b[0m');
+                if (!webcontainerInstance) throw new Error("WebContainer not initialized");
+
+                // Refresh the token right before the deploy request — the build can take
+                // several minutes and the earlier token may have expired by now.
+                const deployToken = await getToken();
+
                 const res = await fetch(`/api/projects/${projectId}/deploy`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ subdomain, republish, distHtml })
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${deployToken}` },
+                    body: JSON.stringify({ subdomain, republish, distFiles })
                 });
 
                 if (!res.ok) throw new Error("Upload failed");
@@ -571,7 +718,7 @@ export default {
 
         window.addEventListener('initiate-build-and-deploy', handleBuildAndDeploy);
         return () => window.removeEventListener('initiate-build-and-deploy', handleBuildAndDeploy);
-    }, [webcontainerInstance])
+    }, [webcontainerInstance, getToken])
 
     // Sync URL from iframe
     useEffect(() => {

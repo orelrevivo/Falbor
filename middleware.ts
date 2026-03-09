@@ -14,13 +14,23 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   // 1. Skip auth & rewrites for special routes
   if (
     pathname.startsWith("/api/webhooks") ||
-    pathname.startsWith("/api/stripe/webhook") ||
-    pathname.startsWith("/deploy/")
+    pathname.startsWith("/api/stripe/webhook")
   ) {
     return NextResponse.next()
   }
 
-  // 2. Detect subdomain
+  // 2. Handle /deploy/ routes — serve HTML directly (no iframe)
+  if (pathname.startsWith("/deploy/")) {
+    const rootMatch = pathname.match(/^\/deploy\/([^/]+)\/?$/)
+    if (rootMatch) {
+      const url = req.nextUrl.clone()
+      url.pathname = `/deploy/${rootMatch[1]}/__html`
+      return NextResponse.rewrite(url)
+    }
+    return NextResponse.next()
+  }
+
+  // 3. Detect subdomain
   const hostname = req.headers.get("host") || ""
   const baseDomain = process.env.NEXT_PUBLIC_BASE_DOMAIN || "falbor.xyz"
 
@@ -32,27 +42,30 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
   if (process.env.NODE_ENV === "production" && isSubdomain) {
     const subdomain = hostname.replace(`.${baseDomain}`, "")
 
-    let targetPath = `/deploy/${subdomain}${pathname}`
-    if (targetPath.endsWith('/') && targetPath !== '/') {
-      targetPath = targetPath.slice(0, -1)
+    let targetPath: string
+    if (pathname === "/" || pathname === "") {
+      // Root → serve HTML directly (no iframe)
+      targetPath = `/deploy/${subdomain}/__html`
+    } else {
+      // Sub-paths → static files or SPA fallback
+      targetPath = `/deploy/${subdomain}${pathname}`
+      if (targetPath.endsWith('/') && targetPath !== '/') {
+        targetPath = targetPath.slice(0, -1)
+      }
     }
 
     const url = req.nextUrl.clone()
     url.pathname = targetPath
 
-    console.log("Rewriting subdomain:", hostname, "->", url.pathname)
-
     return NextResponse.rewrite(url)
   }
 
-  // 3. Protect private routes
+  // 4. Protect private routes
   if (isProtectedRoute(req)) {
     await auth.protect()
   }
 
-  // 4. Add Cross-Origin Isolation headers ONLY for WebContainer routes
-  // These headers enable SharedArrayBuffer (needed by WebContainer)
-  // They are NOT applied to pricing or other pages so PayPal works normally
+  // 5. Add Cross-Origin Isolation headers for WebContainer routes
   const response = NextResponse.next()
   if (needsIsolation(pathname)) {
     response.headers.set("Cross-Origin-Opener-Policy", "same-origin")
@@ -64,7 +77,7 @@ export default clerkMiddleware(async (auth, req: NextRequest) => {
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    // Broad matcher so subdomain static assets (JS, CSS, images) also get rewritten
+    "/((?!_next).*)",
   ],
 }

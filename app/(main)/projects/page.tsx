@@ -31,8 +31,8 @@ export default async function ProjectsPage() {
         <div className="max-w-6xl mx-auto w-full space-y-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Your Projects</h1>
-              <p className="text-zinc-500 mt-1">Manage and access all your generated applications.</p>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-900">Your Chats</h1>
+              <p className="text-zinc-500 mt-1">Manage and access all your generated chats and automated applications.</p>
             </div>
           </div>
 

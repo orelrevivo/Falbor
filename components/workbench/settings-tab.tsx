@@ -8,6 +8,8 @@ import ProjectSettings from "./ProjectSettings"
 import { SecuritySection } from "./security-section"
 import { TasksSection } from "./tasks"
 import { PublishTemplateSection } from "./templates/publish-template-section"
+import { SecretsSection } from "./secrets-section"
+import { GithubSection } from "./github-section"
 
 interface SettingsTabProps {
   projectId: string
@@ -15,7 +17,7 @@ interface SettingsTabProps {
 
 export function SettingsTab({ projectId }: SettingsTabProps) {
   const [activeSection, setActiveSection] = useState<
-    "custom-knowledge" | "project-settings" | "ai-models" | "security" | "automations" | "publish-template"
+    "custom-knowledge" | "project-settings" | "ai-models" | "security" | "automations" | "publish-template" | "secrets" | "github"
   >("project-settings")
 
   return (
@@ -29,6 +31,8 @@ export function SettingsTab({ projectId }: SettingsTabProps) {
         {activeSection === "security" && <SecuritySection projectId={projectId} />}
         {activeSection === "automations" && <TasksSection projectId={projectId} />}
         {activeSection === "publish-template" && <PublishTemplateSection projectId={projectId} />}
+        {activeSection === "secrets" && <SecretsSection projectId={projectId} />}
+        {activeSection === "github" && <GithubSection projectId={projectId} />}
       </div>
     </div>
   )

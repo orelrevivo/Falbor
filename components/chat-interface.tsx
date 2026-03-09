@@ -71,6 +71,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
     }
   }, [])
 
+
   // ─── Check project files on mount (once) ─────────────────────────────────
   useEffect(() => {
     if (!project.id) return
@@ -309,6 +310,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   // ─── Handle new messages from ChatInput ──────────────────────────────────
   const handleNewMessage = useCallback((message: SchemaMessage | null) => {
     if (!message || !message.id || (message.role !== "user" && message.role !== "assistant")) return
+    
     const safeMessage: StrictMessage = {
       ...message,
       role: message.role as "user" | "assistant",
@@ -344,7 +346,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
       return [...filteredPrev, safeMessage]
     })
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 0)
-  }, [])
+  }, [project.id])
 
   // ─── Scroll to bottom when messages change ────────────────────────────────
   useEffect(() => {
@@ -453,6 +455,35 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
     }
   }, [project.id, getToken])
 
+  const handleSendMessage = useCallback((content: string) => {
+    const newUserMsg: StrictMessage = {
+      id: `user-${Date.now()}`,
+      projectId: project.id,
+      role: "user",
+      content,
+      hasArtifact: false,
+      createdAt: new Date(),
+      thinking: null,
+      versionName: null,
+      searchQueries: null,
+      isAutomated: false,
+      tokensUsed: null,
+      cost: null,
+    }
+    setMessages((prev) => [...prev, newUserMsg])
+    handleAutoGenerate(content)
+  }, [project.id, handleAutoGenerate])
+
+  useEffect(() => {
+    const handleSendDirect = (e: any) => {
+      if (e.detail?.message) {
+        handleSendMessage(e.detail.message)
+      }
+    }
+    window.addEventListener('chat:send-message', handleSendDirect)
+    return () => window.removeEventListener('chat:send-message', handleSendDirect)
+  }, [handleSendMessage])
+
   const formattedMessages = useMemo(() => {
     return messages.map((msg) => ({
       ...msg,
@@ -537,6 +568,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
               onEnterSplit={() => setIsSplitScreen(true)}
               onExitSplit={() => setIsSplitScreen(false)}
               isTerminalOpen={isTerminalOpen}
+              onSendMessage={handleSendMessage}
               isHistoryView={activeMessageId !== null && messages.some(m => m.hasArtifact) && activeMessageId !== [...messages].reverse().find(m => m.hasArtifact)?.id}
             />
           </div>
@@ -552,7 +584,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
 
 
 
-// Old please check this code 
+// Old please check this code
 // "use client"
 // import type React from "react"
 // import { useState, useEffect, useRef, useCallback, useMemo } from "react"

@@ -13,6 +13,10 @@ const PROVIDER_CONFIGS: Record<string, { authUrl: string; client_env: string }> 
     discord: {
         authUrl: "https://discord.com/api/oauth2/authorize",
         client_env: "DISCORD_CLIENT_ID"
+    },
+    gmail: {
+        authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+        client_env: "GOOGLE_CLIENT_ID"
     }
 }
 
@@ -46,7 +50,7 @@ export async function GET(
     const redirectUri = `${currentBaseUrl}/api/mcp/callback`
     const state = Buffer.from(JSON.stringify({ userId, provider })).toString("base64")
 
-    let url = `${config.authUrl}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
+    let url = `${config.authUrl}?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&response_type=code`
 
     // Add specific scopes
     if (provider === "github") {
@@ -54,7 +58,10 @@ export async function GET(
     } else if (provider === "slack") {
         url += "&scope=chat:write,channels:read,groups:read"
     } else if (provider === "discord") {
-        url += "&scope=identify,email,guilds"
+        url += "&scope=identify%20email%20guilds"
+    } else if (provider === "gmail") {
+        url += "&scope=" + encodeURIComponent("https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels email profile")
+        url += "&access_type=offline&prompt=consent"
     }
 
     return NextResponse.redirect(url)

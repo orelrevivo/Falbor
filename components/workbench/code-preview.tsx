@@ -5,7 +5,8 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import React from "react"
 
-import { TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database } from "lucide-react"
+import { Github, GitCommit, TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database } from "lucide-react"
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
@@ -41,6 +42,7 @@ interface CodePreviewProps {
   isTerminalOpen?: boolean
   tabValue?: string
   isHistoryView?: boolean
+  onSendMessage?: (message: string) => void
 }
 interface TerminalTab {
   id: number
@@ -325,6 +327,7 @@ export function CodePreview({
   isTerminalOpen = false,
   tabValue: tabValueProp,
   isHistoryView = false,
+  onSendMessage,
 }: CodePreviewProps) {
   const [files, setFiles] = useState<
     Array<{ path: string; content: string; language: string; type?: string; isLocked?: boolean }>
@@ -343,6 +346,11 @@ export function CodePreview({
   const [terminalError, setTerminalError] = useState<string | null>(null)
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([{ id: 1, title: "Python REPL" }])
   const [activeTerminalTab, setActiveTerminalTab] = useState(1)
+  const [projectMetadata, setProjectMetadata] = useState<any>(null)
+  const [isPushing, setIsPushing] = useState(false)
+  const [gitError, setGitError] = useState<string | null>(null)
+  const [gitSuccess, setGitSuccess] = useState<string | null>(null)
+
 
   // Use prop-controlled tab value if provided, otherwise use internal state
   const [internalTabValue, setInternalTabValue] = useState(initialTab || "code")
@@ -517,6 +525,7 @@ export function CodePreview({
     [],
   )
   const filesKey = useMemo(() => effectiveFiles.map((f) => `${f.path}:${f.content.length} `).join("|"), [effectiveFiles])
+
   useEffect(() => {
     if (effectiveFiles.length === 0) {
       setProjectType(null)
@@ -528,18 +537,20 @@ export function CodePreview({
         f.language === "javascript" ||
         f.language === "typescript" ||
         f.path.match(/\.j(sx?)$/) ||
-        f.path.match(/\.ts(x?)$/),
+        f.path.match(/\.ts(x?)$/) ||
+        f.path.match(/\.html$/) ||
+        f.path.match(/\.css$/),
     )
     if (hasPy && !hasJsTs) {
       setProjectType("python")
-    } else if (hasJsTs && !hasPy) {
+    } else if (hasJsTs || effectiveFiles.length > 0) {
+      // Default to react/web if there are any files
       setProjectType("react")
-    } else if (hasPy && hasJsTs) {
-      setProjectType("python")
     } else {
       setProjectType(null)
     }
   }, [filesKey])
+
   const highlightMatch = useCallback((text: string, matches: { start: number; end: number }[]) => {
     let result = text
     matches.forEach(({ start, end }) => {
@@ -779,6 +790,22 @@ class StdoutRedirect:
     const interval = setInterval(fetchFiles, 5000)
     return () => clearInterval(interval)
   }, [fetchFiles])
+
+  // ─── Post-Generation Sync & Auto-Download ──────────────────
+  const wasGenerating = useRef(false)
+  useEffect(() => {
+    if (isCodeGenerating) {
+      wasGenerating.current = true
+    } else if (wasGenerating.current && !isCodeGenerating) {
+      // Generation just finished!
+      wasGenerating.current = false
+
+      // 1. Sync files with server immediately
+      fetchFiles()
+    }
+  }, [isCodeGenerating, fetchFiles])
+
+
   useEffect(() => {
     if (selectedFile) setEditedContent(selectedFile.content)
   }, [selectedFile])
@@ -817,6 +844,69 @@ class StdoutRedirect:
     return () => clearTimeout(timeout)
   }, [handleSearch])
   const isDirty = selectedFile ? editedContent !== selectedFile.content : false
+
+  const fetchProjectMetadata = useCallback(async () => {
+    if (!projectId) return
+    try {
+      const token = await getToken()
+      const res = await fetch(`/api/projects/${projectId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) throw new Error("Metadata fetch failed")
+      const data = await res.json()
+      setProjectMetadata(data)
+    } catch (err) {
+      console.error(err)
+    }
+  }, [projectId, getToken])
+
+  useEffect(() => {
+    fetchProjectMetadata()
+  }, [fetchProjectMetadata])
+
+  const handleGitAdopt = async () => {
+    try {
+      setGitError(null)
+      setGitSuccess(null)
+      const token = await getToken()
+      const res = await fetch(`/api/projects/${projectId}/git/adopt`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Failed to adopt repository")
+      }
+      setGitSuccess("Repository adopted! You can now commit and push changes.")
+      fetchProjectMetadata()
+    } catch (err: any) {
+      setGitError(err.message || "Failed to adopt repository. Ensure your GitHub account is connected.")
+    }
+  }
+
+  const handleGitPush = async () => {
+    setIsPushing(true)
+    setGitError(null)
+    setGitSuccess(null)
+    try {
+      const token = await getToken()
+      const res = await fetch(`/api/projects/${projectId}/git/push`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ message: "Update via Falbor AI" }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Push failed")
+      }
+      setGitSuccess("Changes pushed to GitHub successfully!")
+    } catch (err: any) {
+      setGitError(err.message)
+    } finally {
+      setIsPushing(false)
+    }
+  }
+
   useEffect(() => {
     if (!isDirty) return
     const timeout = setTimeout(() => {
@@ -915,9 +1005,9 @@ class StdoutRedirect:
               <Database className="w-4 h-4" />
             </TabsTrigger>
 
+
           </TabsList>
 
-          {/* ✅ Settings stays a button but now works */}
           <button
             className={cn(
               "ml-3 cursor-pointer",
@@ -929,7 +1019,40 @@ class StdoutRedirect:
           >
             <Settings className="w-4 h-4" />
           </button>
+
+          {isGitHubImport && (
+            <div className="ml-4 flex items-center gap-2">
+              <div className="h-4 w-[1px] bg-gray-300 mx-1" />
+              {projectMetadata?.isGitAdopted ? (
+                <button
+                  onClick={handleGitPush}
+                  disabled={isPushing}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0099ff]/10 text-[#0099ff] hover:bg-[#0099ff]/20 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {isPushing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCommit className="w-3.5 h-3.5" />}
+                  Push to GitHub
+                </button>
+              ) : (
+                <button
+                  onClick={handleGitAdopt}
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black text-white hover:bg-black/90 text-xs font-medium transition-colors"
+                >
+                  <Github className="w-3.5 h-3.5" />
+                  Adopt project to Git
+                </button>
+              )}
+              {(gitError || gitSuccess) && (
+                <div className={cn(
+                  "text-[10px] px-2 py-0.5 rounded-md",
+                  gitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                )}>
+                  {gitError || gitSuccess}
+                </div>
+              )}
+            </div>
+          )}
         </div>
+
 
         <div className="flex-1 flex flex-col border border-[#d6d6d6] rounded-sm bg-[#ffffff] relative overflow-hidden shadow-sm">
           <div className="flex-1 flex flex-col overflow-hidden">
@@ -986,6 +1109,7 @@ class StdoutRedirect:
                     </div>
                   ) : (
                     <WebContainerPreview
+                      projectId={projectId}
                       files={effectiveFiles}
                       isTerminalOpen={isTerminalOpen}
                       isCodeGenerating={isCodeGenerating}
@@ -1089,6 +1213,7 @@ class StdoutRedirect:
                   className={tabValue === "preview" ? "flex-1 m-0 p-0 overflow-hidden flex flex-col" : "hidden"}
                 >
                   <WebContainerPreview
+                    projectId={projectId}
                     files={effectiveFiles}
                     isTerminalOpen={isTerminalOpen}
                     isCodeGenerating={isCodeGenerating}
@@ -1110,7 +1235,7 @@ class StdoutRedirect:
                   value="database"
                   className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
                 >
-                  <DatabasePanel projectId={projectId} filesOverride={filesOverride} />
+                  <DatabasePanel projectId={projectId} filesOverride={filesOverride} onSendMessage={onSendMessage} />
                 </TabsContent>
               </div>
             )}

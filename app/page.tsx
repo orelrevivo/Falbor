@@ -15,6 +15,7 @@ import Example2 from "@/components/layout/Example/Example"
 import FeatureScroller from "@/components/layout/features/feature-scroller";
 import ApplicationPreview from "@/components/layout/features/feature-scroller/application-preview"
 import PricingSection from "@/components/layout/features/feature-scroller/pricing"
+import { Button } from "@/components/ui/button"
 
 interface ProjectItem {
   id: string
@@ -126,8 +127,6 @@ export default async function HomePage() {
               </div>
               <PricingSection />
               <FAQ />
-              {/* <Example /> */}
-              {/* <CompanyLogos /> */}
             </div>
           </div>
         )}

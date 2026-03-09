@@ -12,6 +12,12 @@ export const projects = pgTable("projects", {
   isPublic: boolean("is_public").default(false).notNull(),
   isGithubClone: boolean("is_github_clone").default(false).notNull(),
   githubUrl: text("github_url"),
+  githubRepoId: text("github_repo_id"),
+  githubOwner: text("github_owner"),
+  githubRepoName: text("github_repo_name"),
+  githubBranch: text("github_branch").default("main"),
+  githubLastSyncAt: timestamp("github_last_sync_at"),
+  isGitAdopted: boolean("is_git_adopted").default(false).notNull(),
   deploymentConfig: jsonb("deployment_config")
     .$type<{
       platform?: "vercel" | "netlify"
@@ -230,6 +236,24 @@ export const figmaTokens = pgTable("figma_tokens", {
   refreshToken: text("refresh_token"),
   expiresAt: timestamp("expires_at").notNull(),
 })
+
+export const projectAuthProviders = pgTable("project_auth_providers", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  provider: text("provider").notNull(), // 'email', 'google', 'twitter', 'facebook'
+  isEnabled: boolean("is_enabled").default(false).notNull(),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type ProjectAuthProvider = typeof projectAuthProviders.$inferSelect
+export type NewProjectAuthProvider = typeof projectAuthProviders.$inferInsert
 
 export const userProfiles = pgTable("user_profiles", {
   userId: text("user_id").primaryKey(),
@@ -519,11 +543,21 @@ export const userMcpConnections = pgTable("user_mcp_connections", {
   userId: text("user_id").notNull(),
   type: text("type").notNull(),
   name: text("name").notNull(),
+  icon: text("icon"), // URL or path
   accessToken: text("access_token"),
   refreshToken: text("refresh_token"),
   apiKey: text("api_key"),
   webhookSecret: text("webhook_secret"),
   metadata: jsonb("metadata").$type<Record<string, any>>().default({}),
+  isCustom: boolean("is_custom").default(false).notNull(),
+  config: jsonb("config").$type<{
+    transportType?: "STDIO" | "SSE" | "HTTP"
+    serverUrl?: string
+    envVars?: Array<{ key: string; value: string }>
+    headers?: Array<{ name: string; value: string }>
+    note?: string
+    mcpCode?: string
+  }>().default({}),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -540,6 +574,42 @@ export type NewUserSupabaseConnection = typeof userSupabaseConnections.$inferIns
 
 export type UserGithubConnection = typeof userGithubConnections.$inferSelect
 export type NewUserGithubConnection = typeof userGithubConnections.$inferInsert
+
+export const projectSecrets = pgTable("project_secrets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  value: text("value").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type ProjectSecret = typeof projectSecrets.$inferSelect
+export type NewProjectSecret = typeof projectSecrets.$inferInsert
+
+// ====================
+// PLAN MODE TABLE
+// ====================
+
+export const plans = pgTable("plans", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  questions: jsonb("questions")
+    .$type<Array<{ id: number; question: string; answer: string }>>()
+    .notNull(),
+  summary: text("summary").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type Plan = typeof plans.$inferSelect
+export type NewPlan = typeof plans.$inferInsert
 
 // ====================
 // TYPE INFERENCES

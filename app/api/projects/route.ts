@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { db } from "@/config/db"
-import { projects, messages, projectSupabase } from "@/config/schema"
+import { projects, messages, projectSupabase, projectSecrets } from "@/config/schema"
 import { eq } from "drizzle-orm"
 import { createSupabaseProject } from "@/lib/supabase/management-api"
 
@@ -71,20 +71,35 @@ export async function POST(request: Request) {
       isAutomated,
     }).returning()
 
-    // If Falbor Database is requested, save the credentials provided by the frontend
-    if (isFalborDb && supabaseUrl && anonKey) {
+    // If Database is requested (Falbor or Custom), save the credentials and sync to secrets
+    if (supabaseUrl && anonKey) {
       try {
         await db.insert(projectSupabase).values({
           projectId: project.id,
-          supabaseProjectRef: projectRef || supabaseUrl.split("//")[1].split(".")[0],
+          supabaseProjectRef: projectRef || supabaseUrl.split("//")[1]?.split(".")[0] || "unknown",
           supabaseUrl,
           anonKey,
           serviceRoleKey: serviceRoleKey || "",
-          dbPassword: dbPassword || "managed-by-falbor",
+          dbPassword: dbPassword || (isFalborDb ? "managed-by-falbor" : "custom"),
           region: "us-east-1",
         })
+
+        // Sync to secrets
+        const secretUpdates = [
+          { name: "VITE_SUPABASE_URL", value: supabaseUrl },
+          { name: "VITE_SUPABASE_ANON_KEY", value: anonKey },
+        ]
+
+        for (const secret of secretUpdates) {
+          await db.insert(projectSecrets).values({
+            projectId: project.id,
+            userId,
+            name: secret.name,
+            value: secret.value,
+          })
+        }
       } catch (provisionError) {
-        console.error("[Projects API] Supabase Record Creation Error:", provisionError)
+        console.error("[Projects API] Database Secret Sync Error:", provisionError)
       }
     }
 

@@ -333,7 +333,7 @@ export function Navbar({
     }
   }, [isLoaded, user?.id])
 
-  // Fetch deployment when publish dialog opens
+  // Fetch deployment on mount and when dropdown opens
   useEffect(() => {
     const fetchDeployment = async () => {
       try {
@@ -344,14 +344,21 @@ export function Navbar({
 
         if (res.ok) {
           const data = await res.json()
-          if (data.deployment?.deploymentUrl && data.deployment?.updatedAt && data.deployment?.subdomain) {
+          if (data.deployment?.subdomain) {
             setDeployment({
-              deploymentUrl: data.deployment.deploymentUrl,
-              updatedAt: data.deployment.updatedAt,
+              deploymentUrl: data.deployment.deploymentUrl || "",
+              updatedAt: data.deployment.updatedAt || "",
               subdomain: data.deployment.subdomain,
               customDomain: data.deployment.customDomain,
             })
             setNewSubdomain(data.deployment.subdomain)
+          } else if (data.subdomain) {
+            setDeployment({
+              deploymentUrl: "",
+              updatedAt: "",
+              subdomain: data.subdomain,
+            })
+            setNewSubdomain(data.subdomain)
           }
         }
       } catch (err) {
@@ -359,10 +366,8 @@ export function Navbar({
       }
     }
 
-    if (openDropdown === "publish") {
-      fetchDeployment()
-    }
-  }, [openDropdown, projectId, getToken])
+    fetchDeployment()
+  }, [projectId, getToken])
 
   // Fetch site meta when entering site-meta view
   useEffect(() => {
@@ -734,8 +739,7 @@ export function Navbar({
                 </AnimatePresence>
               </div>
 
-              {/* Publish Button + Dialog */}
-              <div className="relative">
+              <div className="relative group">
                 <button
                   onClick={() => setOpenDropdown(openDropdown === "publish" ? null : "publish")}
                   className={cn(
@@ -752,7 +756,7 @@ export function Navbar({
                 <AnimatePresence>
                   {openDropdown === "publish" && (
                     <>
-                      {/* <Backdrop onClick={closeDropdown} /> */}
+
                       <DropdownPanel className="w-96">
                         {/* Header */}
                         <div className="flex items-center justify-between p-4 border-b">
@@ -786,7 +790,7 @@ export function Navbar({
                           {/* ─── MAIN VIEW ──────────────────────────────── */}
                           {publishView === "main" && (
                             <div className="p-4 space-y-4">
-                              {deployment?.deploymentUrl ? (
+                              {true ? (
                                 <div className="space-y-4">
                                   <div className="flex items-center justify-between p-1 rounded-sm">
                                     <div className="flex flex-col gap-1 flex-1 min-w-0">
@@ -794,23 +798,27 @@ export function Navbar({
                                         <Tooltip>
                                           <TooltipTrigger asChild>
                                             <a
-                                              href={deployment.deploymentUrl}
+                                              href={deployment?.deploymentUrl || `https://${deployment?.subdomain || '...'}.falbor.xyz`}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="flex items-center gap-2 min-w-0 hover:underline"
+                                              className={cn(
+                                                "flex items-center gap-2 min-w-0 hover:underline",
+                                                !deployment?.deploymentUrl && "opacity-50 pointer-events-none"
+                                              )}
                                             >
                                               <Globe className="w-4 h-4 text-gray-600 flex-shrink-0" />
                                               <p className="text-sm font-medium truncate min-w-0">
-                                                {deployment.subdomain}.falbor.xyz
+                                                {deployment?.subdomain ? `${deployment.subdomain}.falbor.xyz` : "generating..."}
                                               </p>
                                             </a>
                                           </TooltipTrigger>
                                           <TooltipContent>
-                                            Open Falbor subdomain
+                                            {deployment?.deploymentUrl ? "Open Falbor subdomain" : "Site not published yet"}
                                           </TooltipContent>
                                         </Tooltip>
                                       </TooltipProvider>
-                                      {deployment.customDomain && (
+
+                                      {deployment?.customDomain && (
                                         <TooltipProvider>
                                           <Tooltip>
                                             <TooltipTrigger asChild>
@@ -832,19 +840,33 @@ export function Navbar({
                                           </Tooltip>
                                         </TooltipProvider>
                                       )}
-                                      <div className="flex items-center gap-2 mt-1 min-w-0">
-                                        <List className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                                        <p className="text-xs text-gray-500 truncate min-w-0">
-                                          Updated{" "}
-                                          {formatDistanceToNow(new Date(deployment.updatedAt), {
-                                            addSuffix: true,
-                                          })}
-                                        </p>
-                                      </div>
+
+                                      {deployment?.updatedAt && (
+                                        <div className="flex items-center gap-2 mt-1 min-w-0">
+                                          <List className="w-4 h-4 text-gray-600 flex-shrink-0" />
+                                          <p className="text-xs text-gray-500 truncate min-w-0">
+                                            Updated{" "}
+                                            {formatDistanceToNow(new Date(deployment.updatedAt), {
+                                              addSuffix: true,
+                                            })}
+                                          </p>
+                                        </div>
+                                      )}
+                                      {!deployment?.deploymentUrl && (
+                                        <div className="flex items-center gap-2 mt-1">
+                                          <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                          <p className="text-[10px] text-amber-600 font-medium">Not published yet</p>
+                                        </div>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-1">
                                       <button
-                                        onClick={handleCopyDeploymentUrl}
+                                        onClick={() => {
+                                          const url = deployment?.deploymentUrl || `https://${deployment?.subdomain}.falbor.xyz`;
+                                          navigator.clipboard.writeText(url);
+                                          setCopied(true);
+                                          setTimeout(() => setCopied(false), 2000);
+                                        }}
                                         className="p-1.5 BackgroundStyle rounded cursor-pointer"
                                         title="Copy link"
                                       >
@@ -871,15 +893,17 @@ export function Navbar({
                                       >
                                         <ImageIcon className="w-4 h-4 text-black" />
                                       </button>
-                                      <a
-                                        href={deployment.deploymentUrl}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="p-1.5 BackgroundStyle rounded cursor-pointer"
-                                        title="Open in new tab"
-                                      >
-                                        <ExternalLink className="w-4 h-4 text-black" />
-                                      </a>
+                                      {deployment?.deploymentUrl && (
+                                        <a
+                                          href={deployment.deploymentUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="p-1.5 BackgroundStyle rounded cursor-pointer"
+                                          title="Open in new tab"
+                                        >
+                                          <ExternalLink className="w-4 h-4 text-black" />
+                                        </a>
+                                      )}
                                     </div>
                                   </div>
 
@@ -915,21 +939,12 @@ export function Navbar({
                                     disabled={isPublishing}
                                     className="w-full"
                                   >
-                                    {isPublishing ? "Publishing..." : "Update Deployment"}
+                                    {isPublishing ? "Publishing..." : deployment?.deploymentUrl ? "Update Deployment" : "Publish Now"}
                                   </Button>
                                 </div>
                               ) : (
-                                <div className="space-y-4">
-                                  <div className="p-6 text-center text-sm text-gray-500 border rounded-sm">
-                                    Your site is not published yet
-                                  </div>
-                                  <Button
-                                    onClick={handlePublish}
-                                    disabled={isPublishing}
-                                    className="w-full"
-                                  >
-                                    {isPublishing ? "Publishing..." : "Publish Now"}
-                                  </Button>
+                                <div className="space-y-4 text-center">
+                                  <p className="text-sm text-gray-500 italic">Configuration error</p>
                                 </div>
                               )}
                             </div>

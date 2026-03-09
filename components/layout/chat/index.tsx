@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket } from "lucide-react"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap } from "lucide-react"
 import {
   Loader,
   X,
@@ -31,6 +31,7 @@ import {
   Terminal
 } from "lucide-react"
 import { Link1Icon } from "@radix-ui/react-icons"
+import { Switch } from "@/components/ui/switch"
 import type { Message } from "@/config/schema"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
@@ -63,6 +64,7 @@ interface ChatInputProps {
   externalIsLoading?: boolean
   onStop?: () => void
   messages?: Message[]
+  disabled?: boolean
 }
 interface BalanceData {
   subscriptionTier: string
@@ -177,15 +179,25 @@ const MODEL_OPTIONS: ModelOption[] = [
   { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-opus-4", label: "Claude Opus 4", isPremium: false, iconUrl: "/icons/claude.png" },
-  // { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
-  // { id: "llama3:8b", label: "Llama 3 8B (Ollama)", isPremium: true, iconUrl: "/icons/ollama.png" },
-  // { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
-
-  // { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
-  // { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
+  { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-opus-4", label: "Claude Opus 4", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "claude-3.5-haiku", label: "Claude 3.5 Haiku", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "gpt-5.4-pro", label: "GPT-5.4 Pro", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5.4", label: "GPT-5.4", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "grok-4.1-fast", label: "Grok 4.1 Fast", isPremium: true, iconUrl: "/icons/grok-light.png" },
+  { id: "grok-4-fast", label: "Grok 4 Fast", isPremium: true, iconUrl: "/icons/grok-light.png" },
+  { id: "grok-code-fast-1", label: "Grok Code Fast 1", isPremium: true, iconUrl: "/icons/grok-light.png" },
+  { id: "grok-4", label: "Grok 4", isPremium: true, iconUrl: "/icons/grok-light.png" },
+  { id: "grok-3-mini", label: "Grok 3 Mini", isPremium: false, iconUrl: "/icons/grok-light.png" },
+  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", isPremium: false, iconUrl: "/icons/gemini.png" },
+  { id: "qwen-3.5-35b", label: "Qwen 3.5 35B", isPremium: true, iconUrl: "/icons/qwen.png" },
+  { id: "qwen-3.5-27b", label: "Qwen 3.5 27B", isPremium: true, iconUrl: "/icons/qwen.png" },
+  { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
+  { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -364,6 +376,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isEditing, setIsEditing] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
+  const [isAutoSelected, setIsAutoSelected] = useState(false)
   const [selectedFramework, setSelectedFramework] = useState<string>("vite")
   const [showFrameworkHover, setShowFrameworkHover] = useState(false)
   const [showModelDropdown, setShowModelDropdown] = useState(false)
@@ -375,6 +388,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [showDesignModal, setShowDesignModal] = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
   const [designConfig, setDesignConfig] = useState<DesignConfig | null>(null)
+  const [isDesignActive, setIsDesignActive] = useState(false)
   const [tempConfig, setTempConfig] = useState<DesignConfig>(designPresets["Base"])
   const [showPremiumAlert, setShowPremiumAlert] = useState(false)
   const [showLoginDialog, setShowLoginDialog] = useState(false)
@@ -422,6 +436,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [showErrorPanel, setShowErrorPanel] = useState(true)
   const [isScanning, setIsScanning] = useState(false)
   const [scannerLogs, setScannerLogs] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
+  const [planMode, setPlanMode] = useState(false)
 
   const handleStop = () => {
     if (abortControllerRef.current) {
@@ -453,32 +468,39 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const parseScannerLogsFromContent = (content: string) => {
     const logs: { text: string; status: "success" | "loading" | "pending" }[] = []
 
-    const scanMatch = content.match(/<Scan>([\s\S]*?)<\/Scan>/i)
-    if (scanMatch) {
-      logs.push({ text: `Scan analysis complete: ${scanMatch[1].trim().slice(0, 80)}${scanMatch[1].length > 80 ? "..." : ""}`, status: "success" })
+    // MCP Scan
+    if (content.match(/<Scan>([\s\S]*?)<\/Scan>/i)) {
+      logs.push({ text: "Account connection context analyzed.", status: "success" })
     } else if (content.toLowerCase().includes("<scan>")) {
-      logs.push({ text: "Scanning files for issues...", status: "loading" })
+      logs.push({ text: "Scanning connection context...", status: "loading" })
     }
 
-    const searchMatch = content.match(/<InternetSearch>([\s\S]*?)<\/InternetSearch>/i)
-    if (searchMatch) {
-      logs.push({ text: `Search match found: ${searchMatch[1].trim().slice(0, 80)}`, status: "success" })
+    // Capability Discovery
+    if (content.match(/<Discover(Gmail|Discord|Messenger)Tools>([\s\S]*?)<\/Discover(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Discovered platform capabilities.", status: "success" })
+    } else if (content.match(/<Discover(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Fetching available tools...", status: "loading" })
+    }
+
+    // Execution / Retrieval
+    if (content.match(/<Test(Gmail|Discord|Messenger)Tools>([\s\S]*?)<\/Test(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Operation executed successfully.", status: "success" })
+    } else if (content.match(/<Test(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Executing tool call...", status: "loading" })
+    }
+
+    // Internet Search
+    if (content.match(/<InternetSearch>([\s\S]*?)<\/InternetSearch>/i)) {
+      logs.push({ text: "External information retrieved.", status: "success" })
     } else if (content.toLowerCase().includes("<internetsearch>")) {
-      logs.push({ text: "Searching internet for solutions...", status: "loading" })
+      logs.push({ text: "Searching knowledge base...", status: "loading" })
     }
 
-    const verifyMatch = content.match(/<VerifyingSolution>([\s\S]*?)<\/VerifyingSolution>/i)
-    if (verifyMatch) {
-      logs.push({ text: `Solution verified: ${verifyMatch[1].trim().slice(0, 80)}`, status: "success" })
-    } else if (content.toLowerCase().includes("<verifyingsolution>")) {
-      logs.push({ text: "Verifying fix accuracy...", status: "loading" })
-    }
-
-    const termMatch = content.match(/<Terminal>([\s\S]*?)<\/Terminal>/i)
-    if (termMatch) {
-      logs.push({ text: `Executing command: ${termMatch[1].trim()}`, status: "success" })
+    // Terminal Commands
+    if (content.match(/<Terminal>([\s\S]*?)<\/Terminal>/i)) {
+      logs.push({ text: "Command execution complete.", status: "success" })
     } else if (content.toLowerCase().includes("<terminal>")) {
-      logs.push({ text: "Preparing terminal command...", status: "loading" })
+      logs.push({ text: "Running system command...", status: "loading" })
     }
 
     if (logs.length > 0) {
@@ -603,6 +625,17 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     if (savedDraft && savedDraft.trim()) {
       setMessage(savedDraft)
     }
+
+    // Check for auto-prompt from MCP page
+    const autoPrompt = localStorage.getItem("falbor_auto_prompt")
+    if (autoPrompt) {
+      localStorage.removeItem("falbor_auto_prompt")
+      // Short delay to ensure component is fully ready
+      setTimeout(() => {
+        handleSubmit(undefined, autoPrompt)
+      }, 500)
+    }
+
     const savedFiles = localStorage.getItem(filesKey)
     if (savedFiles) {
       setUploadedFiles(JSON.parse(savedFiles))
@@ -724,6 +757,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setImageSize(0)
       setUploadedFiles([])
       setPastedContents([])
+      setIsDesignActive(false)
+
 
       const body: any = {
         message: pendingSubmitData.userMessage,
@@ -768,10 +803,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       }
 
       setPendingSubmitData(null)
+      const redirectPath = planMode ? `/chat/${newId}/plan` : `/chat/${newId}`
       if (typeof window !== "undefined" && !window.crossOriginIsolated) {
-        window.location.href = `/chat/${newId}`
+        window.location.href = redirectPath
       } else {
-        router.push(`/chat/${newId}`)
+        router.push(redirectPath)
       }
     } catch (err) {
       console.error("Project creation failed:", err)
@@ -1118,6 +1154,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     }
 
     setSelectedModel(modelId)
+    setIsAutoSelected(false) // Reset auto-selected when manually selecting a model
     setShowModelDropdown(false)
 
     // Persist to DB if we are in a project
@@ -1135,6 +1172,106 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         console.error("Error updating project model:", err)
       }
     }
+  }
+
+  // Auto Model: intelligently pick best model based on the current prompt content
+  const handleAutoModelSelect = async () => {
+    const prompt = message.trim().toLowerCase()
+    let pickedModel = "gemini" // default fallback
+
+    // Complexity indicators
+    const complexIndicators = [
+      "complex", "architecture", "advanced", "optimize", "refactor", 
+      "typescript", "professional", "enterprise", "scalable", "microservices",
+      "database", "authentication", "payment", "integration", "api",
+      "dashboard", "analytics", "real-time", "websocket", "collaborative",
+      "e-commerce", "marketplace", "social network", "saas", "platform",
+      "machine learning", "ai", "algorithm", "data processing", "etl",
+      "high-performance", "concurrent", "distributed", "cloud", "serverless"
+    ]
+
+    const simpleIndicators = [
+      "simple", "basic", "landing page", "portfolio", "blog", "static",
+      "minimal", "quick", "prototype", "mvp", "demo", "personal", "resume",
+      "brochure", "showcase", "gallery", "single page", "spa simple",
+      "todo", "calculator", "converter", "timer", "notes", "diary"
+    ]
+
+    const dataAnalysisIndicators = [
+      "data", "analysis", "research", "report", "compare", "visualization",
+      "chart", "graph", "statistics", "metrics", "insights", "trends",
+      "survey", "poll", "dataset", "csv", "excel", "processing"
+    ]
+
+    const creativeIndicators = [
+      "creative", "design", "beautiful", "stunning", "modern", "elegant",
+      "animated", "interactive", "3d", "visual", "aesthetic", "polished",
+      "premium", "luxury", "artistic", "unique", "custom", "branded"
+    ]
+
+    const codeHeavyIndicators = [
+      "full-stack", "backend", "frontend", "react", "vue", "angular", "svelte",
+      "nextjs", "nuxt", "express", "fastapi", "django", "rails", "laravel",
+      "graphql", "rest api", "oauth", "jwt", "stripe", "paypal",
+      "aws", "gcp", "azure", "docker", "kubernetes", "ci/cd"
+    ]
+
+    // Count matches for each category
+    const complexScore = complexIndicators.filter(word => prompt.includes(word)).length
+    const simpleScore = simpleIndicators.filter(word => prompt.includes(word)).length
+    const dataScore = dataAnalysisIndicators.filter(word => prompt.includes(word)).length
+    const creativeScore = creativeIndicators.filter(word => prompt.includes(word)).length
+    const codeScore = codeHeavyIndicators.filter(word => prompt.includes(word)).length
+
+    // Determine the best model based on scores and prompt characteristics
+    const hasSubscription = balanceData?.subscriptionTier !== "none"
+
+    if (simpleScore > 0 && complexScore === 0 && codeScore === 0) {
+      // Simple projects - use fast, efficient models
+      pickedModel = "gemini"
+    } else if (dataScore > 0 || prompt.includes("analysis") || prompt.includes("report")) {
+      // Data analysis tasks
+      pickedModel = hasSubscription ? "claude-haiku-4.5" : "glm-4.5-flash"
+    } else if (creativeScore > 0 && complexScore === 0) {
+      // Creative but simple projects
+      pickedModel = "claude-sonnet-4.6"
+    } else if (complexScore >= 2 || codeScore >= 2) {
+      // Complex projects - use best available models
+      if (hasSubscription) {
+        // Premium users get the best models for complex tasks
+        if (complexScore >= 4 || codeScore >= 3) {
+          pickedModel = "claude-opus-4.6" // Most capable for very complex tasks
+        } else {
+          pickedModel = "claude-sonnet-4.6" // Great balance for complex tasks
+        }
+      } else {
+        // Free users get capable but lighter models
+        pickedModel = "claude-sonnet-4.6"
+      }
+    } else if (complexScore === 1 || codeScore === 1) {
+      // Moderately complex
+      pickedModel = hasSubscription ? "claude-sonnet-4.6" : "gpt-5.2"
+    } else if (prompt.length > 500) {
+      // Long, detailed prompts suggest complexity
+      pickedModel = hasSubscription ? "claude-sonnet-4.6" : "gemini"
+    } else {
+      // Default for unclear cases
+      pickedModel = "gemini"
+    }
+
+    // Special cases for specific project types
+    if (prompt.includes("game") || prompt.includes("three.js") || prompt.includes("webgl")) {
+      pickedModel = hasSubscription ? "claude-opus-4.6" : "claude-sonnet-4.6"
+    } else if (prompt.includes("mobile app") || prompt.includes("react native") || prompt.includes("flutter")) {
+      pickedModel = hasSubscription ? "claude-sonnet-4.6" : "gpt-5.2"
+    } else if (prompt.includes("chatbot") || prompt.includes("ai assistant") || prompt.includes("llm")) {
+      pickedModel = hasSubscription ? "claude-opus-4.6" : "claude-sonnet-4.6"
+    }
+
+    await handleModelSelect(pickedModel)
+    setIsAutoSelected(true) // Mark as auto-selected
+    setShowModelHover(false)
+    setShowMenu(false)
   }
   const parseAndSetPendingMigrations = (content: string) => {
     const migrations: string[] = []
@@ -1213,7 +1350,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     if (credentialsSaved && databaseCredentials.supabaseUrl && databaseCredentials.anonKey) {
       userMessage += `\n\n## Database Connection\nVITE_SUPABASE_URL=${databaseCredentials.supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${databaseCredentials.anonKey}`
     }
-    if (designConfig && !message.includes("Capture from URL:")) {
+    if (isDesignActive && designConfig && !message.includes("Capture from URL:")) {
       userMessage += `\n\n## Design System: ${selectedDesign || "Custom"}\n${JSON.stringify(designConfig, null, 2)}`
     }
     if (!projectId) {
@@ -1235,6 +1372,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       }
       return
     }
+
+    // If plan mode is enabled on landing flow, create project first then redirect in createProject()
     setIsLoading(true)
     try {
       if (!isAutomated) {
@@ -1267,6 +1406,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setUploadedFiles([])
       setPastedContents([])
       setTasks([])
+      setIsDesignActive(false)
       setShowTaskPanel(true)
       if (projectId && onNewMessage) {
         const tempUser: Message = {
@@ -1578,108 +1718,124 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         >
           {mentionMenu.isOpen && (
             <div
-              className="absolute z-50 bg-white border rounded-lg shadow-xl w-64 overflow-hidden"
+              className="absolute z-50 bg-white border-2 border-zinc-100 rounded-2xl shadow-2xl w-[320px] overflow-hidden"
               style={{
-                bottom: "100%",
-                left: mentionMenu.position.left,
-                marginBottom: "10px"
+                bottom: "calc(100% + 12px)",
+                left: "8px",
               }}
             >
-              <Command className="border-none">
-                <div className="flex bg-gray-50 border-b p-1 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setMentionTab("mcps")}
-                    className={cn(
-                      "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
-                      mentionTab === "mcps" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
-                    )}
-                  >
-                    <Database className="w-3 h-3" />
-                    MCPs
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMentionTab("emails")}
-                    className={cn(
-                      "flex-1 text-[10px] font-bold p-1.5 rounded transition-all flex items-center justify-center gap-1.5",
-                      mentionTab === "emails" ? "bg-white shadow-sm text-blue-600" : "text-gray-500 hover:bg-gray-200"
-                    )}
-                  >
-                    <Mail className="w-3 h-3" />
-                    Emails
-                  </button>
-                </div>
+              <div className="flex bg-zinc-50 border-b border-zinc-100 p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMentionTab("mcps")}
+                  className={cn(
+                    "flex-1 text-[11px] font-black uppercase tracking-widest p-2 rounded-lg transition-all flex items-center justify-center gap-2",
+                    mentionTab === "mcps" ? "bg-white shadow-sm text-zinc-900" : "text-gray-500 hover:bg-gray-200"
+                  )}
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  MCPS
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMentionTab("emails")}
+                  className={cn(
+                    "flex-1 text-[11px] font-black uppercase tracking-widest p-2 rounded-lg transition-all flex items-center justify-center gap-2",
+                    mentionTab === "emails" ? "bg-white shadow-sm text-zinc-900" : "text-gray-500 hover:bg-gray-200"
+                  )}
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  Templates
+                </button>
+              </div>
 
+              <div className="p-2">
                 {mentionTab === "mcps" ? (
-                  <>
-                    <CommandInput placeholder="Search MCPs..." className="h-9" autoFocus />
-                    <CommandList className="max-h-48">
-                      <CommandEmpty>No MCPs found.</CommandEmpty>
-                      <CommandGroup heading="Connected MCPs">
-                        {mcpConnections.length === 0 ? (
-                          <div className="p-2 text-xs text-muted-foreground text-center">
-                            No connected MCPs. <Link href="/settings/mcp" className="text-indigo-600 underline">Connect one now.</Link>
-                          </div>
-                        ) : (
-                          mcpConnections
-                            .filter(c => c.name.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
-                            .map((mcp) => (
-                              <CommandItem
-                                key={mcp.id}
-                                onSelect={() => {
-                                  const before = message.slice(0, mentionMenu.startIndex)
-                                  const after = message.slice(textareaRef.current?.selectionStart || 0)
-                                  const newMessage = `${before}@${mcp.name}${after}`
-                                  setMessage(newMessage)
-                                  setSelectedMcpIds(prev => [...new Set([...prev, mcp.id])])
-                                  setMentionMenu(prev => ({ ...prev, isOpen: false }))
-                                  textareaRef.current?.focus()
-                                }}
-                                className="flex items-center gap-2 cursor-pointer"
-                              >
-                                <Database className="w-4 h-4 text-indigo-500" />
-                                <span>{mcp.name}</span>
-                                <span className="text-[10px] text-muted-foreground ml-auto">{mcp.type}</span>
-                              </CommandItem>
-                            ))
-                        )}
-                      </CommandGroup>
-                    </CommandList>
-                  </>
-                ) : (
-                  <>
-                    <CommandInput placeholder="Search Email Templates..." className="h-9" autoFocus />
-                    <CommandList className="max-h-48">
-                      <CommandEmpty>No templates found.</CommandEmpty>
-                      <CommandGroup heading="Email Templates">
-                        {EMAIL_TEMPLATES
-                          .filter(t => t.label.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
-                          .map((t) => (
-                            <CommandItem
-                              key={t.id}
-                              onSelect={() => {
+                  <div className="space-y-1">
+                    <div className="px-2 py-1.5 text-[10px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
+                      Available Connectors
+                    </div>
+                    {mcpConnections.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <p className="text-[11px] text-zinc-400 font-medium mb-3">No active MCPs found.</p>
+                        <Link href="/settings/mcp">
+                          <Button size="sm" variant="outline" className="h-7 text-[10px] font-bold px-3 border-zinc-200">
+                            Configure MCP
+                          </Button>
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="max-h-[240px] overflow-y-auto pr-1 space-y-0.5">
+                        {mcpConnections
+                          .filter(c => c.name.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
+                          .map((mcp) => (
+                            <button
+                              key={mcp.id}
+                              type="button"
+                              onClick={() => {
                                 const before = message.slice(0, mentionMenu.startIndex)
                                 const after = message.slice(textareaRef.current?.selectionStart || 0)
-                                // Descriptive tag for the AI to pick up
-                                const newMessage = `${before}@Email/${t.id}${after}`
+                                const newMessage = `${before}@${mcp.name}${after}`
                                 setMessage(newMessage)
+                                setSelectedMcpIds(prev => [...new Set([...prev, mcp.id])])
                                 setMentionMenu(prev => ({ ...prev, isOpen: false }))
                                 textareaRef.current?.focus()
                               }}
-                              className="flex items-center gap-2 cursor-pointer"
+                              className="w-full flex items-center gap-3 p-2.5 hover:bg-zinc-50 rounded-xl transition-all group text-left"
                             >
-                              <Mail className="w-4 h-4 text-blue-500" />
-                              <span>{t.label}</span>
-                            </CommandItem>
-                          ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </>
+                              <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-500 group-hover:bg-white group-hover:shadow-sm border border-transparent group-hover:border-zinc-100 transition-all">
+                                <Database className="w-4 h-4" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-[13px] font-bold text-zinc-900 truncate">@{mcp.name}</div>
+                                <div className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">{mcp.type}</div>
+                              </div>
+                              <Plus className="w-3.5 h-3.5 text-zinc-300 group-hover:text-zinc-900" />
+                            </button>
+                          ))
+                        }
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <div className="px-2 py-1.5 text-[10px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
+                      Email Blueprints
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto pr-1 space-y-0.5">
+                      {EMAIL_TEMPLATES
+                        .filter(t => t.label.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
+                        .map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => {
+                              const before = message.slice(0, mentionMenu.startIndex)
+                              const after = message.slice(textareaRef.current?.selectionStart || 0)
+                              const newMessage = `${before}@Email/${t.id}${after}`
+                              setMessage(newMessage)
+                              setMentionMenu(prev => ({ ...prev, isOpen: false }))
+                              textareaRef.current?.focus()
+                            }}
+                            className="w-full flex items-center gap-3 p-2.5 hover:bg-zinc-50 rounded-xl transition-all group text-left"
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 group-hover:bg-white group-hover:shadow-sm border border-transparent group-hover:border-blue-100 transition-all">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-bold text-zinc-900 truncate">{t.label}</div>
+                              <div className="text-[9px] font-black text-blue-400 uppercase tracking-tighter">System Template</div>
+                            </div>
+                            <Plus className="w-3.5 h-3.5 text-zinc-300 group-hover:text-zinc-900" />
+                          </button>
+                        ))}
+                    </div>
+                  </div>
                 )}
-              </Command>
+              </div>
             </div>
           )}
+
           {/* SCANNER PROGRESS PANEL */}
           {isScanning && scannerLogs.length > 0 && (
             <div className="w-full mb-3 px-1">
@@ -1897,13 +2053,30 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
             </div>
           )}
-          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0) && (
+          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0 || isDesignActive) && (
             <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
+              {isDesignActive && designConfig && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 py-1"
+                >
+                  <Palette className="w-3 h-3" />
+                  Design: {selectedDesign || "Custom"}
+                  <button
+                    onClick={() => setIsDesignActive(false)}
+                    className="ml-1 hover:text-blue-900"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+
               {selectedMcpIds.map(id => {
                 const mcp = mcpConnections.find(c => c.id === id)
                 if (!mcp) return null
                 return (
                   <Badge
+                    key={id}
                     variant="secondary"
                     className="gap-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 py-1"
                   >
@@ -2012,8 +2185,23 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                     variant="ghost"
                     size="sm"
                   >
-                    <MoreHorizontal className="w-4 h-4" />
+                    <Plus className="w-4 h-4" />
                   </Button>
+                  
+                  {/* Plan Mode Switch - show only on landing/new chat (no projectId) */}
+                  {!projectId && (
+                    <div className="flex items-center gap-2 ml-2">
+                      <Switch
+                        id="plan-mode"
+                        checked={planMode}
+                        onCheckedChange={setPlanMode}
+                        disabled={isLoading}
+                      />
+                      <Label htmlFor="plan-mode" className="text-xs text-muted-foreground cursor-pointer">
+                        PlanMode
+                      </Label>
+                    </div>
+                  )}
 
                   {showMenu && (
                     <div
@@ -2139,24 +2327,66 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                             onMouseEnter={() => setShowModelHover(true)}
                             onMouseLeave={() => setShowModelHover(false)}
                           >
-                            <img src={currentModel.iconUrl || "/placeholder.svg"} className="h-4 w-4 mr-2" alt="" />
+                            {isAutoSelected ? (
+                            <div className="w-6 h-6 mr-2 rounded BackgroundStyleButton to-purple-500 flex items-center justify-center">
+                              <Zap className="w-4 h-4 text-black" />
+                            </div>
+                            ) : (
+                              <img src={currentModel.iconUrl || "/placeholder.svg"} className="h-4 w-4 mr-2" alt="" />
+                            )}
                             <span className="flex-1 text-left">AI Model</span>
-                            <span className="ml-auto text-muted-foreground text-[10px]">{currentModel.label}</span>
+                            <span className="ml-auto text-muted-foreground text-[10px]">
+                              {isAutoSelected ? "Auto Select" : currentModel.label}
+                            </span>
 
                             {showModelHover && (
                               <div
-                                className="absolute z-50 w-[260px]
-                              bg-white
-                              focus:bg-accent focus:text-accent-foreground
-                              items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
-                              outline-hidden select-none border shadow-xs"
-                                style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
-                                onMouseEnter={() => setShowModelHover(true)}
-                                onMouseLeave={() => setShowModelHover(false)}
+                               className="absolute z-50 w-[260px]
+                               bg-white
+                               focus:bg-accent focus:text-accent-foreground
+                               items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
+                               outline-hidden select-none border shadow-xs"
+                               style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
+                               onMouseEnter={() => setShowModelHover(true)}
+                               onMouseLeave={() => setShowModelHover(false)}
                               >
-                                <div className="px-2.5 py-1 text-xs font-semibold text-muted-foreground">Claude Agent</div>
-                                <div className="space-y-0.5">
-                                  {MODEL_OPTIONS.slice(0, 6).map((model) => (
+                                {/* <div className="flex items-center justify-between px-2.5 py-1">
+                                  <span className="text-xs font-semibold text-muted-foreground">AI Models</span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleAutoModelSelect()
+                                    }}
+                                    className="flex items-center gap-1 text-[10px] font-bold text-[#0099FF] hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-all"
+                                    title="Auto-select best model for your prompt"
+                                  >
+                                    <Zap className="w-2.5 h-2.5" />
+                                    Auto
+                                  </button>
+                                </div> */}
+                                   <div className="max-h-[500px] overflow-y-auto space-y-0.5">
+                                  {/* Auto Select Option - First in list */}
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleAutoModelSelect()
+                                    }}
+                                    className="flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative hover:bg-[#f3f3f3]"
+                                    title="Auto-select best model for your prompt"
+                                  >
+                                    <div className="ml-[-3px] w-6 h-6 rounded BackgroundStyleButton to-purple-500 flex items-center justify-center">
+                                      <Zap className="w-4 h-4 text-black" />
+                                    </div>
+                                    <span className="flex-1">Auto Select</span>
+                                    {isAutoSelected ? (
+                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
+                                    ) : (
+                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">SMART</span>
+                                    )}
+                                  </div>
+                                  
+                                  {MODEL_OPTIONS.slice(0, 23).map((model) => (
                                     <div
                                       key={model.id}
                                       onClick={(e) => {
@@ -2181,7 +2411,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                           <Lock className="w-2.5 h-2.5" /> Pro Plus
                                         </span>
                                       )}
-                                      {selectedModel === model.id && (
+                                      {selectedModel === model.id && !isAutoSelected && (
                                         <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
                                       )}
                                       {model.isPremium && hasSubscription && (
@@ -2381,8 +2611,10 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               onClick={() => {
                                 setSelectedDesign(system.name)
                                 setDesignConfig(designPresets[system.name])
+                                setIsDesignActive(true)
                                 setShowMenu(false)
                               }}
+
                               className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
                             >
                               <div className={`h-4 w-4 rounded mr-2 ${system.previewColor}`} />
@@ -2393,8 +2625,10 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                             onClick={() => {
                               setSelectedDesign("Custom")
                               setShowDesignModal(true)
+                              setIsDesignActive(true)
                               setShowMenu(false)
                             }}
+
                             className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
                           >
                             <Plus className="h-4 w-4 mr-2" />

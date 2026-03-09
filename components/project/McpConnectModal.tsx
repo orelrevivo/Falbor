@@ -21,6 +21,7 @@ interface McpConnectModalProps {
 
 export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supportsOAuth, onSuccess }: McpConnectModalProps) {
     const [apiKey, setApiKey] = useState("")
+    const [botToken, setBotToken] = useState("")
     const [isConnecting, setIsConnecting] = useState(false)
     const [step, setStep] = useState<"input" | "verifying" | "success">("input")
     const [verifyProgress, setVerifyProgress] = useState(0)
@@ -50,6 +51,7 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
                 type: mcpType,
                 name: mcpName,
                 apiKey: apiKey.trim(),
+                metadata: mcpName.toLowerCase() === 'discord' ? { botToken: botToken.trim() } : undefined
             })
 
             if (result.success) {
@@ -93,9 +95,9 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
                             className="p-6"
                         >
                             <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2 text-xl font-black">
-                                    <div className="p-1.5 bg-zinc-900 rounded-lg">
-                                        <Cpu className="w-5 h-5 text-white" />
+                                <DialogTitle className="flex items-center gap-2 text-xl">
+                                    <div className="p-1.5 bg-[#0099ff]/20 rounded-md">
+                                        <Cpu className="w-5 h-5 text-[#0099ff]" />
                                     </div>
                                     Connect {mcpName}
                                 </DialogTitle>
@@ -115,7 +117,6 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
                                             placeholder={`sk_live_...`}
                                             value={apiKey}
                                             onChange={(e) => setApiKey(e.target.value)}
-                                            className="font-mono text-sm h-12 border-zinc-200 focus:ring-zinc-900 pr-10 bg-zinc-50/50"
                                             onKeyDown={(e) => e.key === "Enter" && handleConnect()}
                                         />
                                         <Lock className="absolute right-3 top-3.5 w-4 h-4 text-zinc-300" />
@@ -124,9 +125,9 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
 
                                 {supportsOAuth && (
                                     <div className="relative py-2">
-                                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t border-zinc-100" />
-                                        <div className="relative flex justify-center text-[10px] font-bold uppercase tracking-widest text-zinc-300">
-                                            <span className="bg-white px-2">OR</span>
+                                        <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 border-t" />
+                                        <div className="relative flex justify-center text-[12px] text-gray-700">
+                                            <span className="bg-white px-2">Or</span>
                                         </div>
                                     </div>
                                 )}
@@ -134,7 +135,7 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
                                 {supportsOAuth ? (
                                     <Button
                                         onClick={handleOAuthConnect}
-                                        className="w-full h-12 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-sm shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 group"
+                                        className="w-full h-12 rounded-sm bg-[#0099ff]/20 hover:bg-[#0099ff]/20 text-[#0099ff] text-sm flex items-center justify-center gap-2 group"
                                     >
                                         <Globe className="w-4 h-4 group-hover:rotate-12 transition-transform" />
                                         Confirm {mcpName} Account
@@ -149,6 +150,27 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
                                     </Button>
                                 )}
 
+                                {mcpName.toLowerCase() === 'discord' && (
+                                    <div className="space-y-2 mt-4 pb-4 border-b border-zinc-100 italic">
+                                        <Label htmlFor="bot-token" className="text-[10px] font-black uppercase tracking-[0.2em] text-zinc-400">
+                                            Optional: Discord Bot Token (For Sending Messages)
+                                        </Label>
+                                        <div className="relative">
+                                            <Input
+                                                id="bot-token"
+                                                type="password"
+                                                placeholder="MT..."
+                                                value={botToken}
+                                                onChange={(e) => setBotToken(e.target.value)}
+                                            />
+                                            <ShieldCheck className="absolute right-3 top-3 w-4 h-4 text-zinc-300" />
+                                        </div>
+                                        <p className="text-[10px] text-zinc-400 mt-1">
+                                            Discord OAuth tokens cannot send messages. Add a bot token to enable messaging.
+                                        </p>
+                                    </div>
+                                )}
+
                                 {supportsOAuth && apiKey.trim() && (
                                     <Button
                                         variant="outline"
@@ -160,17 +182,12 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
                                     </Button>
                                 )}
 
-                                <div className="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-100/50">
-                                    <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
-                                    <p className="text-[11px] text-emerald-800 font-medium leading-tight">
+                                <div className="flex items-center gap-3 p-3 rounded-sm bg-[#e7e5df]/60">
+                                    <ShieldCheck className="w-5 h-5 text-gray-700 shrink-0" />
+                                    <p className="text-[11px] text-gray-700 font-medium leading-tight">
                                         Your credentials are encrypted end-to-end and never exposed to the browser.
                                     </p>
                                 </div>
-                                <p className="text-center">
-                                    <a href="#" className="text-[10px] text-zinc-400 hover:text-zinc-600 font-bold uppercase tracking-tighter transition-colors">
-                                        Where do I find my API key?
-                                    </a>
-                                </p>
                             </div>
                         </motion.div>
                     )}

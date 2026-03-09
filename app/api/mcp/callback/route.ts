@@ -4,7 +4,8 @@ import { saveMcpConnection } from "@/app/actions/mcp"
 const TOKEN_ENDPOINTS: Record<string, string> = {
     github: "https://github.com/login/oauth/access_token",
     slack: "https://slack.com/api/oauth.v2.access",
-    discord: "https://discord.com/api/oauth2/token"
+    discord: "https://discord.com/api/oauth2/token",
+    gmail: "https://oauth2.googleapis.com/token"
 }
 
 export async function GET(request: Request) {
@@ -43,8 +44,8 @@ export async function GET(request: Request) {
         const endpoint = TOKEN_ENDPOINTS[provider]
         if (!endpoint) throw new Error(`Unsupported provider: ${provider}`)
 
-        const clientIdEnv = `${provider.toUpperCase()}_CLIENT_ID`
-        const clientSecretEnv = `${provider.toUpperCase()}_CLIENT_SECRET`
+        const clientIdEnv = provider === "gmail" ? "GOOGLE_CLIENT_ID" : `${provider.toUpperCase()}_CLIENT_ID`
+        const clientSecretEnv = provider === "gmail" ? "GOOGLE_CLIENT_SECRET" : `${provider.toUpperCase()}_CLIENT_SECRET`
 
         const clientId = process.env[clientIdEnv]
         const clientSecret = process.env[clientSecretEnv]
@@ -103,7 +104,7 @@ export async function GET(request: Request) {
             github: "code",
             slack: "communication",
             discord: "communication",
-            google: "search"
+            gmail: "email"
         }
 
         // Save the connection

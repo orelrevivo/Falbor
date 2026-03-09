@@ -336,8 +336,8 @@ export default function SidebarProjects({
               </Link>
               <Link href="/projects">
                 <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                  <Folder className="h-4 w-4" />
-                  <span className="font-medium text-sm">Projects</span>
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="font-medium text-sm">Chats</span>
                 </Button>
               </Link>
               <Link href="/templates">

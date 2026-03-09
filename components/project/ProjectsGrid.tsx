@@ -1,10 +1,6 @@
-import Link from "next/link"
-import { Card, CardContent } from "@/components/ui/card"
 import { neon } from "@neondatabase/serverless"
 import { currentUser } from "@clerk/nextjs/server"
-import { Users, Clock, ExternalLink, MoreVertical } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { ChatsTableClient } from "./ChatsTableClient"
 
 interface Project {
     id: string
@@ -72,8 +68,8 @@ export async function ProjectsGrid({ userId }: { userId: string }) {
     if (allProjects.length === 0) {
         return (
             <div className="text-center text-zinc-500 py-20 border-2 border-dashed rounded-xl border-zinc-200">
-                <p className="text-lg font-medium">No projects yet</p>
-                <p className="text-sm">Start by creating your first project through the dashboard.</p>
+                <p className="text-lg font-medium">No chats yet</p>
+                <p className="text-sm">Start by creating your first automated project.</p>
             </div>
         )
     }
@@ -86,58 +82,6 @@ export async function ProjectsGrid({ userId }: { userId: string }) {
     }
 
     return (
-        <div className="grid gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {allProjects.map((project) => (
-                <ProjectCard key={project.id} project={project} user={user} />
-            ))}
-        </div>
-    )
-}
-
-function ProjectCard({ project, user }: { project: Project; user: User }) {
-    const formattedDate = new Date(project.updated_at).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-    })
-
-    return (
-        <Link href={`/chat/${project.id}`} className="group block">
-            <Card className="overflow-hidden border-none hover:border-1 shadow-none bg-white relative">
-                <CardContent className="p-5 space-y-4">
-                    <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1">
-                            <h3 className="font-bold text-zinc-900 leading-none group-hover:text-black transition-colors">
-                                {project.title}
-                            </h3>
-                            <div className="flex items-center gap-1.5 text-zinc-500">
-                                <Clock className="w-3 h-3" />
-                                <span className="text-[11px] font-medium">{formattedDate}</span>
-                            </div>
-                        </div>
-                        <div className="h-8 w-8 bg-zinc-100 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <ExternalLink className="w-4 h-4 text-zinc-600" />
-                        </div>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2">
-                        <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6 border border-white">
-                                <AvatarImage src={user.imageUrl} />
-                                <AvatarFallback className="text-[10px]">{user.firstName?.[0] || 'U'}</AvatarFallback>
-                            </Avatar>
-                            <span className="text-xs text-zinc-600 font-medium">{user.firstName || "User"}</span>
-                        </div>
-
-                        {project.collaborator_count && project.collaborator_count > 0 && (
-                            <div className="flex items-center gap-1 text-zinc-400">
-                                <Users className="w-3 h-3" />
-                                <span className="text-[10px] font-bold">+{project.collaborator_count}</span>
-                            </div>
-                        )}
-                    </div>
-                </CardContent>
-            </Card>
-        </Link>
+        <ChatsTableClient initialProjects={allProjects} user={user} />
     )
 }

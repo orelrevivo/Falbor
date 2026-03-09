@@ -1,22 +1,46 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAuth } from '@clerk/nextjs/server';
-import { Octokit } from '@octokit/core';
-import { db } from '@/config/db';
-import { eq } from 'drizzle-orm';
-import { userGithubConnections } from "@/config/schema";
+import { auth } from "@clerk/nextjs/server"
+import { NextResponse } from "next/server"
+import { db } from "@/config/db"
+import { userGithubConnections } from "@/config/schema"
+import { eq, and } from "drizzle-orm"
+import { Octokit } from "@octokit/core"
 
-export async function GET(req: NextRequest) {
-  const { userId } = getAuth(req);
-  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function GET(request: Request) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
 
-  const [connection] = await db.select().from(userGithubConnections).where(eq(userGithubConnections.userId, userId));
-  if (!connection) return NextResponse.json({ error: 'No GitHub connection' }, { status: 404 });
-
-  const octokit = new Octokit({ auth: connection.accessToken });
   try {
-    const { data: repos } = await octokit.request('GET /user/repos', { type: 'owner' });
-    return NextResponse.json({ repos });
+    const [conn] = await db
+      .select()
+      .from(userGithubConnections)
+      .where(and(eq(userGithubConnections.userId, userId), eq(userGithubConnections.isActive, true)))
+
+    if (!conn || !conn.accessToken) {
+      return NextResponse.json({ error: "GitHub account not connected" }, { status: 401 })
+    }
+
+    const octokit = new Octokit({ auth: conn.accessToken })
+    let userReposResponse = await octokit.request("GET /user/repos", {
+      sort: "updated",
+      direction: "desc",
+      per_page: 50 // fetch latest 50
+    })
+
+    const repos = userReposResponse.data.map((repo: any) => ({
+      name: repo.name,
+      fullName: repo.full_name,
+      description: repo.description,
+      owner: repo.owner.login,
+      url: repo.html_url,
+      private: repo.private,
+      updatedAt: repo.updated_at
+    }))
+
+    return NextResponse.json({ repos })
   } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch repos' }, { status: 500 });
+    console.error("[GIT_REPOS_GET]", error)
+    return NextResponse.json({ error: "Failed to fetch repositories" }, { status: 500 })
   }
 }

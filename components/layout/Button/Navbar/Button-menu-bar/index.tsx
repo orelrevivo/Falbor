@@ -314,12 +314,13 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
   };
 
   const modelOptions: Record<ModelType, ModelOption> = {
-    gemini: { label: "Gemini 2.0", icon: "/icons/gemini.png", color: "text-blue-400" },
-    claude: { label: "Claude Sonnet 4.5", icon: "/icons/claude.png", color: "text-purple-400" },
-    gpt: { label: "GPT-5", icon: "/icons/openai.png", color: "text-green-400" },
-    deepseek: { label: "Deepseek R3", icon: "/icons/deepseek.png", color: "text-teal-400" },
-    gptoss: { label: "GPT-OSS 20B", icon: "/icons/openai.png", color: "text-green-400" },
+    gemini: { label: "Gemini 3.1 Pro", icon: "/icons/gemini.png", color: "text-blue-400" },
+    claude: { label: "Claude Sonnet 4.6", icon: "/icons/claude.png", color: "text-purple-400" },
+    gpt: { label: "Claude Opus 4.6", icon: "/icons/claude.png", color: "text-purple-500" },
+    deepseek: { label: "Claude Haiku 4.5", icon: "/icons/claude.png", color: "text-purple-300" },
+    gptoss: { label: "GLM 4.7 Flash", icon: "/icons/zAI.png", color: "text-teal-400" },
   };
+
 
   const parseTime = (utcTime24: string) => {
     if (!utcTime24) {

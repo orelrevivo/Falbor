@@ -30,6 +30,8 @@ import {
   File,
   History as HistoryIcon,
   Terminal as TerminalIcon,
+  Mail,
+  ShieldAlert,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
@@ -128,6 +130,16 @@ function parseAIResponse(content: string) {
     internalThought: /<InternalThought>([\s\S]*?)<\/InternalThought>/gi,
     customAction: /<CustomAction name="([^"]+)">([\s\S]*?)<\/CustomAction>/gi,
     tasks: /<Tasks>([\s\S]*?)<\/Tasks>/gi,
+    discoverGmailTools: /<DiscoverGmailTools>([\s\S]*?)<\/DiscoverGmailTools>/gi,
+    testGmailTools: /<TestGmailTools>([\s\S]*?)<\/TestGmailTools>/gi,
+    compileGmailFindings: /<CompileGmailFindings>([\s\S]*?)<\/CompileGmailFindings>/gi,
+    discoverDiscordTools: /<DiscoverDiscordTools>([\s\S]*?)<\/DiscoverDiscordTools>/gi,
+    testDiscordTools: /<TestDiscordTools>([\s\S]*?)<\/TestDiscordTools>/gi,
+    compileDiscordFindings: /<CompileDiscordFindings>([\s\S]*?)<\/CompileDiscordFindings>/gi,
+    discoverMessengerTools: /<DiscoverMessengerTools>([\s\S]*?)<\/DiscoverMessengerTools>/gi,
+    testMessengerTools: /<TestMessengerTools>([\s\S]*?)<\/TestMessengerTools>/gi,
+    compileMessengerFindings: /<CompileMessengerFindings>([\s\S]*?)<\/CompileMessengerFindings>/gi,
+    scan: /<Scan>([\s\S]*?)<\/Scan>/gi,
   }
 
   // Tags that should NEVER bleed into the visible text content
@@ -135,7 +147,11 @@ function parseAIResponse(content: string) {
     "InternalFinishCheck", "AIOnly", "Thinking", "Commentary", "UserMessage",
     "Planning", "Search", "FileChecks", "Files", "Testing", "FileSearch",
     "ReviewedWork", "FinalReasoning", "FinalResponsive", "MobileReview",
-    "DeepConclusion", "InternalThought", "Tasks",
+    "InternalThought", "Tasks",
+    "DiscoverGmailTools", "TestGmailTools", "CompileGmailFindings",
+    "DiscoverDiscordTools", "TestDiscordTools", "CompileDiscordFindings",
+    "DiscoverMessengerTools", "TestMessengerTools", "CompileMessengerFindings",
+    "Scan",
   ]
 
   let processedContent = content
@@ -475,6 +491,70 @@ function parseUserContent(content: string): { parts: UserPart[]; mainText: strin
   }
 
   return { parts, mainText }
+}
+
+const renderToolContent = (type: string, content: any) => {
+  if (typeof content !== "string") return content
+
+  // Detect if content is JSON (common for tool outputs)
+  if (content.trim().startsWith("{") || content.trim().startsWith("[")) {
+    try {
+      const data = JSON.parse(content.trim())
+
+      // Custom rendering for Discord/Messenger messages
+      if (data.messages && Array.isArray(data.messages)) {
+        return (
+          <div className="space-y-3 my-2">
+            {data.messages.map((msg: any, idx: number) => (
+              <div
+                key={idx}
+                className="flex flex-col gap-1 bg-white p-3 rounded-xl border border-black/5 shadow-sm transform transition-all hover:scale-[1.01]"
+              >
+                <div className="flex items-center gap-2 mb-1 pb-1 border-b border-black/5">
+                  <div className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center">
+                    <HistoryIcon className="w-3 h-3 text-indigo-600" />
+                  </div>
+                  <span className="font-bold text-xs text-indigo-950">{msg.author?.username || "Unknown User"}</span>
+                  <span className="text-[10px] text-black/40 ml-auto">
+                    {msg.timestamp ? new Date(msg.timestamp).toLocaleString() : ""}
+                  </span>
+                </div>
+                <div className="text-[13px] text-black/80 font-medium leading-relaxed">{msg.content}</div>
+                {msg.channel_id && (
+                  <div className="mt-2 pt-1 border-t border-black/5 flex items-center gap-1.5">
+                    <Badge
+                      variant="secondary"
+                      className="text-[9px] py-0 px-1.5 h-4 bg-gray-50 text-gray-500 font-normal"
+                    >
+                      Channel: {msg.channel_id}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      }
+
+      // General JSON formatting for scans/other tool outputs
+      return (
+        <div className="grid grid-cols-1 gap-2 mt-2">
+          {Object.entries(data).map(([key, value], i) => (
+            <div key={i} className="flex flex-col gap-1 b bg-white/50 p-2 rounded border border-black/5">
+              <span className="text-[10px] font-bold text-black/40 uppercase tracking-tight">{key}</span>
+              <div className="text-xs text-black/80 break-words">
+                {typeof value === "object" ? JSON.stringify(value) : String(value)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )
+    } catch (e) {
+      // Not valid JSON, continue to raw content
+    }
+  }
+
+  return content
 }
 
 export function MessageList({
@@ -1312,29 +1392,49 @@ function AIMessageContent({
   const getTitle = (type: string, content: any) => {
     switch (type) {
       case "thinking":
-        return "Thinking"
+        return "Thinking Process"
       case "commentary":
-        return "Commentary"
+        return "AI Commentary"
       case "userMessage":
-        return "Read"
+        return "Understanding Requirements"
       case "planning":
-        return "Planning"
+        return "Implementation Plan"
       case "search":
-        return "Search Results"
+        return "Knowledge Discovery"
       case "fileChecks":
-        return `File Checks ${content.length}`
+        return `Code Validation (${content.length})`
       case "files":
-        return `Files ${content.length}`
+        return `Generated Assets (${content.length})`
       case "importCard":
-        return "Importing GitHub Repository"
+        return "GitHub Repo Integration"
       case "testing":
-        return "Live Testing"
+        return "Runtime Validation"
+      case "discoverGmailTools":
+        return "MCP: Discover Gmail Capabilities"
+      case "testGmailTools":
+        return "MCP: Executing Gmail Integration"
+      case "compileGmailFindings":
+        return "MCP: Gmail Security Intelligence"
+      case "discoverDiscordTools":
+        return "MCP: Discover Discord Capabilities"
+      case "testDiscordTools":
+        return "MCP: Executing Discord Integration"
+      case "compileDiscordFindings":
+        return "MCP: Discord Intelligence"
+      case "discoverMessengerTools":
+        return "MCP: Discover Messenger Capabilities"
+      case "testMessengerTools":
+        return "MCP: Executing Messenger Integration"
+      case "compileMessengerFindings":
+        return "MCP: Messenger Intelligence"
       case "reviewedWork":
-        return "Work Summary"
+        return "Mission Summary"
+      case "scan":
+        return "Context Scan"
       case "finalReasoning":
-        return "Design Analysis"
+        return "Architectural Decisions"
       case "finalResponsive":
-        return "Responsive Review"
+        return "Multi-Device Optimization"
       default:
         return type.charAt(0).toUpperCase() + type.slice(1)
     }
@@ -1359,6 +1459,33 @@ function AIMessageContent({
         return Globe
       case "testing":
         return Globe
+      case "discoverGmailTools":
+        return List
+      case "testGmailTools":
+        return TerminalIcon
+      case "compileGmailFindings":
+        return CheckCircle2
+      case "discoverDiscordTools":
+      case "discoverMessengerTools":
+        return List
+      case "testDiscordTools":
+      case "testMessengerTools":
+        return TerminalIcon
+      case "compileDiscordFindings":
+      case "compileMessengerFindings":
+        return ShieldAlert
+      case "fileSearch":
+        return ScanSearch
+      case "reviewedWork":
+        return ClipboardCheck
+      case "testDiscordTools":
+      case "testMessengerTools":
+        return TerminalIcon
+      case "compileDiscordFindings":
+      case "compileMessengerFindings":
+        return ShieldAlert
+      case "scan":
+        return ScanSearch
       case "fileSearch":
         return ScanSearch
       case "reviewedWork":
@@ -1381,9 +1508,52 @@ function AIMessageContent({
       case "userMessage":
       case "planning":
       case "search":
+      case "discoverGmailTools":
+      case "testGmailTools":
+      case "compileGmailFindings":
+      case "discoverDiscordTools":
+      case "testDiscordTools":
+      case "compileDiscordFindings":
+      case "discoverMessengerTools":
+      case "testMessengerTools":
+      case "compileMessengerFindings":
+      case "reviewedWork":
+      case "finalReasoning":
+      case "finalResponsive":
         return (
-          <div className="p-1">
-            <span className="text-[14px] text-[#2e2e2e]">{content}</span>
+          <div className="p-3">
+            <div className="text-sm text-black/70 leading-relaxed whitespace-pre-wrap">
+              {renderToolContent(type, content)}
+            </div>
+            {/* Historical Version Button - show at end of summary */}
+            {type === "reviewedWork" && message.versionName && (
+              <div className="mt-4 pt-4 border-t border-black/5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onActivateVersion?.(message.id)}
+                  className={cn(
+                    "h-8 px-3 gap-2 bg-white border hover:bg-gray-50 text-gray-900 text-xs",
+                    activeMessageId === message.id ? "border-blue-500 shadow-sm" : ""
+                  )}
+                >
+                  <HistoryIcon className="w-3.5 h-3.5" />
+                  <span>{message.versionName}</span>
+                </Button>
+              </div>
+            )}
+          </div>
+        )
+      case "scan":
+        return (
+          <div className="p-3 bg-blue-50/50 rounded-lg border border-blue-100 mb-2">
+            <div className="flex items-center gap-2 mb-2">
+              <ScanSearch className="w-4 h-4 text-blue-600 animate-pulse" />
+              <span className="text-xs font-semibold text-blue-900 uppercase tracking-wider">Context Scan</span>
+            </div>
+            <div className="text-[13px] text-blue-800 leading-relaxed font-mono whitespace-pre-wrap">
+              {renderToolContent(type, content)}
+            </div>
           </div>
         )
       case "fileChecks":
@@ -1470,69 +1640,50 @@ function AIMessageContent({
             <div className="text-[13px] text-gray-700 whitespace-pre-wrap">{content.results}</div>
           </div>
         )
-      case "reviewedWork":
-      case "finalReasoning":
-      case "finalResponsive":
-        return (
-          <div className="">
-            <div className="flex items-center gap-2 text-gray-700 mb-2">
-              <span>{getTitle(type, content)}</span>
-            </div>
-            <div className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap">
-              {content}
-            </div>
-            {/* Historical Version Button - show at end of summary */}
-            {type === "reviewedWork" && message.versionName && (
-              <div className="mt-4 pt-4 border-t border-gray-100">
-                <div
-                  className={cn(
-                    "inline-flex rounded-md transition-all duration-200",
-                    activeMessageId === message.id && "bg-blue-100 p-1"
-                  )}
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onActivateVersion?.(message.id)}
-                    className={cn(
-                      "h-9 px-4 gap-2 dransition-all duration-200 bg-white border hover:bg-white text-gray-900",
-                      activeMessageId === message.id
-                        ? "border-blue-500 shadow-sm"
-                        : ""
-                    )}
-                  >
-                    <HistoryIcon className="w-4 h-4" />
-                    <span>{message.versionName}</span>
-                  </Button>
-                </div>
-              </div>
-            )}
-          </div>
-        )
       case "mobileReview":
       case "deepConclusion":
       case "internalThought":
         return null
-      case "customAction":
+      case "customAction": {
+        const isGmail = content.name === "Open in Gmail";
+        const isScanProvider = content.name === "Scan Provider";
+        const actionText = isGmail ? "Open in Gmail" : isScanProvider ? "Scan Provider" : "Run in Terminal";
+        const Icon = isGmail ? Mail : isScanProvider ? Search : TerminalIcon;
+        const buttonColor = isGmail ? "bg-red-600 hover:bg-red-700" : isScanProvider ? "bg-blue-600 hover:bg-blue-700" : "bg-black hover:bg-black/90";
+
         return (
           <div className="mt-2 mb-4">
             <Button
               size="sm"
-              className="bg-black hover:bg-black/90 text-white rounded-lg flex items-center gap-2 px-4 shadow-md transition-all hover:scale-[1.02]"
+              className={cn(
+                "text-white rounded-lg flex items-center gap-2 px-4 shadow-md transition-all hover:scale-[1.02]",
+                buttonColor
+              )}
               onClick={() => {
-                const cmd = typeof content === 'object' ? content.content : content;
-                window.dispatchEvent(new CustomEvent('terminal-run-command', { detail: { command: cmd } }));
+                const val = typeof content === 'object' ? content.content : content;
+                if (isGmail) {
+                  window.open(val, '_blank');
+                } else if (isScanProvider) {
+                  window.dispatchEvent(new CustomEvent('chat:send-message', { detail: { message: val } }));
+                } else {
+                  window.dispatchEvent(new CustomEvent('terminal-run-command', { detail: { command: val } }));
+                }
               }}
             >
-              <TerminalIcon className="w-4 h-4 text-blue-400" />
-              <span className="font-semibold text-xs tracking-wide uppercase">Run in Terminal</span>
-              <div className="h-3 w-[1px] bg-white/20 mx-1" />
-              <code className="text-[10px] text-gray-400 font-mono">
-                {typeof content === 'object' ? content.content : content}
-              </code>
+              <Icon className={cn("w-4 h-4", isGmail ? "text-white" : isScanProvider ? "text-white" : "text-blue-400")} />
+              <span className="font-semibold text-xs tracking-wide uppercase">{actionText}</span>
+              {!isGmail && !isScanProvider && (
+                <>
+                  <div className="h-3 w-[1px] bg-white/20 mx-1" />
+                  <code className="text-[10px] text-gray-400 font-mono">
+                    {typeof content === 'object' ? content.content : content}
+                  </code>
+                </>
+              )}
             </Button>
           </div>
         )
+      }
       case "codeBlock": {
         // Show a file pill button — clicking opens code view.
         // A ⋯ menu appears on hover, which opens a ui square (dropdown) with "View Changes".
@@ -1694,7 +1845,8 @@ function AIMessageContent({
             const collapsibleTypes = [
               "thinking", "commentary", "userMessage", "planning", "search",
               "fileChecks", "importCard", "testing", "fileSearch", "customAction",
-              "finalReasoning", "finalResponsive", "tasks"
+              "finalReasoning", "finalResponsive", "tasks",
+              "discoverGmailTools", "testGmailTools", "compileGmailFindings"
             ];
 
             if (isStreaming) {
