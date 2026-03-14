@@ -5,7 +5,9 @@ import { projects, messages as messagesTable, files, artifacts, userCustomKnowle
 import { eq, asc } from "drizzle-orm"
 import { getSystemPrompt } from "@/lib/common/prompts/prompt"
 import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
-import { discordActions, gmailActions } from "@/lib/mcp/actions"
+import { SECURITY_SYSTEM_PROMPT } from "@/lib/common/prompts/security-prompt"
+import { discordActions, gmailActions, githubActions, linkedinActions, twitterActions, slackActions, spotifyActions } from "@/lib/mcp/actions"
+import { getUserSkillsForAIContext } from "@/app/actions/skills"
 import { runMigration } from "@/lib/supabase/management-api"
 
 const GREETING_KEYWORDS = ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"]
@@ -61,6 +63,7 @@ const OPENROUTER_MODELS = {
 async function dispatchMcpTool(name: string, args: any, userId: string): Promise<any> {
   console.log(`[MCP] Dispatching tool: ${name}`, args)
   switch (name) {
+    // Discord
     case "discord_send_message":
       return await discordActions.sendMessage(userId, args.channelId, args.content)
     case "discord_get_messages":
@@ -73,6 +76,8 @@ async function dispatchMcpTool(name: string, args: any, userId: string): Promise
       return await discordActions.createDM(userId, args.recipientId)
     case "discord_delete_message":
       return await discordActions.deleteMessage(userId, args.channelId, args.messageId)
+
+    // Gmail
     case "gmail_list_messages":
       return await gmailActions.listMessages(userId, args.q, args.maxResults)
     case "gmail_get_message":
@@ -81,6 +86,63 @@ async function dispatchMcpTool(name: string, args: any, userId: string): Promise
       return await gmailActions.sendMessage(userId, args.to, args.subject, args.body)
     case "gmail_delete_message":
       return await gmailActions.deleteMessage(userId, args.id)
+
+    // GitHub
+    case "github_get_user":
+      return await githubActions.getUser(userId)
+    case "github_list_repos":
+      return await githubActions.listRepos(userId, args.type, args.sort)
+    case "github_get_repo":
+      return await githubActions.getRepo(userId, args.owner, args.repo)
+    case "github_create_repo":
+      return await githubActions.createRepo(userId, args.name, args.description, args.isPrivate)
+    case "github_get_repo_contents":
+      return await githubActions.getRepoContents(userId, args.owner, args.repo, args.path)
+    case "github_create_issue":
+      return await githubActions.createIssue(userId, args.owner, args.repo, args.title, args.body)
+
+    // LinkedIn
+    case "linkedin_get_profile":
+      return await linkedinActions.getProfile(userId)
+    case "linkedin_share_post":
+      return await linkedinActions.sharePost(userId, args.text, args.visibility)
+
+    // Twitter/X
+    case "twitter_get_me":
+      return await twitterActions.getMe(userId)
+    case "twitter_get_user_tweets":
+      return await twitterActions.getUserTweets(userId, args.twitterUserId, args.maxResults)
+    case "twitter_create_tweet":
+      return await twitterActions.createTweet(userId, args.text)
+    case "twitter_delete_tweet":
+      return await twitterActions.deleteTweet(userId, args.tweetId)
+
+    // Slack
+    case "slack_get_user_info":
+      return await slackActions.getUserInfo(userId)
+    case "slack_list_channels":
+      return await slackActions.listChannels(userId, args.types)
+    case "slack_post_message":
+      return await slackActions.postMessage(userId, args.channel, args.text, args.threadTs)
+    case "slack_get_channel_history":
+      return await slackActions.getChannelHistory(userId, args.channel, args.limit)
+
+    // Spotify
+    case "spotify_get_current_user":
+      return await spotifyActions.getCurrentUser(userId)
+    case "spotify_get_currently_playing":
+      return await spotifyActions.getCurrentlyPlaying(userId)
+    case "spotify_get_user_playlists":
+      return await spotifyActions.getUserPlaylists(userId, args.limit)
+    case "spotify_create_playlist":
+      return await spotifyActions.createPlaylist(userId, args.name, args.description, args.isPublic)
+    case "spotify_search_tracks":
+      return await spotifyActions.searchTracks(userId, args.query, args.limit)
+    case "spotify_add_tracks_to_playlist":
+      return await spotifyActions.addTracksToPlaylist(userId, args.playlistId, args.trackUris)
+    case "spotify_play_track":
+      return await spotifyActions.playTrack(userId, args.trackUri, args.deviceId)
+
     default:
       console.error(`[MCP] Tool NOT found: ${name}`)
       return { success: false, error: `Tool ${name} not found.` }
@@ -127,6 +189,8 @@ export async function POST(request: Request) {
     supabaseUrl,
     anonKey,
     selectedMcps = [],
+    securityMode = false,
+    targetProjectId = null,
   } = body
 
   if (!message) {
@@ -183,21 +247,24 @@ export async function POST(request: Request) {
     return new Response(JSON.stringify({ error: "Database error" }), { status: 500 })
   }
 
+  let userMessageId: string | undefined
   const lastMsg = history[history.length - 1]
   if (history.length === 0 || !(lastMsg?.role === "user" && lastMsg.content === message)) {
     try {
-      await db.insert(messagesTable).values({
+      const [inserted] = await db.insert(messagesTable).values({
         projectId,
         role: "user",
         content: message,
         isAutomated,
-      })
-      history.push({ role: "user", content: message })
+      }).returning({ id: messagesTable.id })
+      userMessageId = inserted.id
+      history.push({ role: "user", content: message, id: userMessageId })
     } catch (e) {
       console.error("[API/Chat] User insert error:", e)
       return new Response(JSON.stringify({ error: "Failed to save message" }), { status: 500 })
     }
   } else {
+    userMessageId = lastMsg.id
     console.log("[API/Chat] Skipping duplicate user message insert")
   }
 
@@ -214,6 +281,9 @@ export async function POST(request: Request) {
     anonKey,
     selectedMcps,
     project,
+    userMessageId,
+    securityMode,
+    targetProjectId,
   )
 
   return new Response(responseStream, {
@@ -258,6 +328,9 @@ async function handleModelRequest(
   anonKey?: string,
   selectedMcps: any[] = [],
   project?: any,
+  userMessageId?: string,
+  securityMode = false,
+  targetProjectId?: string | null,
 ) {
 
   const messageType = detectMessageType(message)
@@ -273,10 +346,11 @@ async function handleModelRequest(
 
   // Always fetch Supabase credentials so the AI always knows the DB is connected
   try {
+    const contextId = targetProjectId || projectId
     const [fetchedSupabaseConfig] = await db
       .select()
       .from(projectSupabase)
-      .where(eq(projectSupabase.projectId, projectId))
+      .where(eq(projectSupabase.projectId, contextId))
 
     if (fetchedSupabaseConfig && fetchedSupabaseConfig.anonKey && fetchedSupabaseConfig.anonKey !== "pending") {
       supabaseConfig = fetchedSupabaseConfig
@@ -290,10 +364,11 @@ async function handleModelRequest(
 
   // Fetch Project Secrets (Environment Variables)
   try {
+    const contextId = targetProjectId || projectId
     const fetchedSecrets = await db
       .select()
       .from(projectSecrets)
-      .where(eq(projectSecrets.projectId, projectId))
+      .where(eq(projectSecrets.projectId, contextId))
 
     if (fetchedSecrets.length > 0) {
       console.log(`[Chat] Injecting ${fetchedSecrets.length} secrets for project ${projectId}`)
@@ -317,7 +392,11 @@ async function handleModelRequest(
     }
   } : undefined
 
-  let systemPrompt = discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext)
+  let systemPrompt = securityMode
+    ? SECURITY_SYSTEM_PROMPT
+    : (discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext))
+
+  const contextId = targetProjectId || projectId
 
   // GitHub Project Awareness
   if (project.isGithubClone && project.githubUrl) {
@@ -334,7 +413,7 @@ This project is connected to a GitHub repository: ${project.githubUrl}
 3. **COMMIT ACCESS**: ${project.isGitAdopted ? "You have permission to propose commits that the user can push back to GitHub." : "This repo is currently read-only. Suggest changes the user can manually apply or adopt."}`
 
     try {
-      const projectFiles = await db.select().from(files).where(eq(files.projectId, projectId))
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, contextId))
       if (projectFiles.length > 0) {
         const filePaths = projectFiles.map((f: any) => f.path)
         gitContext += `\n\n### Repository Structure:\n${filePaths.join("\n")}`
@@ -359,6 +438,37 @@ This project is connected to a GitHub repository: ${project.githubUrl}
     }
 
     effectiveMessage += gitContext
+  }
+
+  // Super Security Agent Context Injection
+  if (securityMode && contextId) {
+    try {
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, contextId))
+      const domain = project.deploymentConfig?.deploymentUrl || "Not deployed yet"
+      
+      // Basic framework detection from files
+      let framework = "Unknown"
+      if (projectFiles.some(f => f.path.includes("next.config"))) framework = "Next.js"
+      else if (projectFiles.some(f => f.path.includes("vite.config"))) framework = "Vite/React"
+      else if (projectFiles.some(f => f.path.includes("package.json"))) framework = "Node.js/NPM"
+
+      let securityContext = `\n\n## SECURITY PROJECT CONTEXT
+You are auditing the following project:
+- **Project Name**: ${project.title}
+- **Domain**: ${domain}
+- **Framework**: ${framework}
+- **File Structure**:
+${projectFiles.map(f => `- ${f.path}`).slice(0, 100).join("\n")}${projectFiles.length > 100 ? "\n- ... (and more)" : ""}
+
+### Security Directives:
+1. **Analyze Files**: If the user asks for a scan, analyze the contents of the files above for common vulnerabilities (secrets, injection, missing headers).
+2. **Context-Aware Fixes**: When proposing fixes, use the specific paths and framework context provided above.
+3. **Badge Generation**: If you complete a comprehensive audit and the user is satisfied, include a "Security Score" (0-100) and list of "Findings" in your response. This will trigger the trust badge generation.`
+
+      systemPrompt += securityContext
+    } catch (err) {
+      console.error("[Security] Failed to attach project context", err)
+    }
   }
 
 
@@ -392,6 +502,24 @@ When editing an email template, focus ONLY on the template content.
   // Add custom knowledge at the end
   const customKnowledgePrompt = await getCustomKnowledge(userId)
   systemPrompt += customKnowledgePrompt
+
+  // Inject enabled skills context
+  try {
+    const userSkills = await getUserSkillsForAIContext(userId)
+    if (userSkills.length > 0) {
+      let skillsPrompt = "\n\n## ENABLED SKILLS ###\nYou have access to the following skills that extend your capabilities. When a user mentions a skill or asks for something related to a skill's domain, automatically use that skill's instructions and capabilities:\n\n"
+      userSkills.forEach(skill => {
+        skillsPrompt += `\n--- ${skill.name} (@${skill.slug}) ---\n${skill.instructions}\n`
+        if (skill.modelConfig) {
+          skillsPrompt += `Configuration: ${JSON.stringify(skill.modelConfig)}\n`
+        }
+      })
+      skillsPrompt += "\n### END ENABLED SKILLS ###\n"
+      systemPrompt += skillsPrompt
+    }
+  } catch (err) {
+    console.error("Failed to fetch user skills for AI context:", err)
+  }
 
   // Inject selected MCP context
   if (selectedMcps.length > 0) {
@@ -438,9 +566,10 @@ When editing an email template, focus ONLY on the template content.
       discussMode,
       isAutomated,
       isCodeRequest,
-      messageType,
+      messageType as any,
       systemPrompt,
-      (text: string) => executeActionTags(text, userId)
+      (text: string) => executeActionTags(text, userId),
+      userMessageId
     )
   } else if (ZAI_MODELS[selectedModel as keyof typeof ZAI_MODELS]) {
     return handleZaiRequest(
@@ -452,9 +581,10 @@ When editing an email template, focus ONLY on the template content.
       isAutomated,
       isCodeRequest,
       selectedModel,
-      messageType,
+      messageType as any,
       systemPrompt,
-      (text: string) => executeActionTags(text, userId)
+      (text: string) => executeActionTags(text, userId),
+      userMessageId
     )
   } else {
     return handleOpenRouterRequest(
@@ -466,9 +596,10 @@ When editing an email template, focus ONLY on the template content.
       isAutomated,
       isCodeRequest,
       selectedModel,
-      messageType,
+      messageType as any,
       systemPrompt,
-      (text: string) => executeActionTags(text, userId)
+      (text: string) => executeActionTags(text, userId),
+      userMessageId
     )
   }
 }
@@ -485,6 +616,7 @@ async function handleGeminiRequest(
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
 ) {
   const googleKey = process.env.GOOGLE_API_KEY
 
@@ -507,6 +639,7 @@ async function handleGeminiRequest(
   const geminiTools = [
     {
       functionDeclarations: [
+        // Discord
         {
           name: "discord_send_message",
           description: "Sends a message to a Discord channel or user ID. Use this for REAL actions.",
@@ -570,6 +703,8 @@ async function handleGeminiRequest(
             required: ["channelId", "messageId"]
           }
         },
+
+        // Gmail
         {
           name: "gmail_send_message",
           description: "Sends an email from the user's account.",
@@ -615,6 +750,249 @@ async function handleGeminiRequest(
             },
             required: ["id"]
           }
+        },
+
+        // GitHub
+        {
+          name: "github_get_user",
+          description: "Gets the authenticated GitHub user's profile information.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "github_list_repos",
+          description: "Lists repositories for the authenticated user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              type: { type: "STRING", description: "Type of repos: all, owner, member (default: owner)" },
+              sort: { type: "STRING", description: "Sort by: created, updated, pushed, full_name (default: updated)" }
+            }
+          }
+        },
+        {
+          name: "github_get_repo",
+          description: "Gets detailed information about a specific repository.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              owner: { type: "STRING", description: "Repository owner username." },
+              repo: { type: "STRING", description: "Repository name." }
+            },
+            required: ["owner", "repo"]
+          }
+        },
+        {
+          name: "github_create_repo",
+          description: "Creates a new repository for the authenticated user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: "Repository name." },
+              description: { type: "STRING", description: "Repository description." },
+              isPrivate: { type: "BOOLEAN", description: "Whether the repo should be private." }
+            },
+            required: ["name"]
+          }
+        },
+        {
+          name: "github_get_repo_contents",
+          description: "Gets contents of a repository directory or file.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              owner: { type: "STRING", description: "Repository owner." },
+              repo: { type: "STRING", description: "Repository name." },
+              path: { type: "STRING", description: "Path to directory or file (default: root)." }
+            },
+            required: ["owner", "repo"]
+          }
+        },
+        {
+          name: "github_create_issue",
+          description: "Creates a new issue in a repository.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              owner: { type: "STRING", description: "Repository owner." },
+              repo: { type: "STRING", description: "Repository name." },
+              title: { type: "STRING", description: "Issue title." },
+              body: { type: "STRING", description: "Issue body/description." }
+            },
+            required: ["owner", "repo", "title"]
+          }
+        },
+
+        // LinkedIn
+        {
+          name: "linkedin_get_profile",
+          description: "Gets the authenticated LinkedIn user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "linkedin_share_post",
+          description: "Shares a post on LinkedIn.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              text: { type: "STRING", description: "Post content text." },
+              visibility: { type: "STRING", description: "Visibility: PUBLIC or CONNECTIONS (default: PUBLIC)." }
+            },
+            required: ["text"]
+          }
+        },
+
+        // Twitter/X
+        {
+          name: "twitter_get_me",
+          description: "Gets the authenticated Twitter user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "twitter_get_user_tweets",
+          description: "Gets tweets from a specific user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              twitterUserId: { type: "STRING", description: "Twitter user ID." },
+              maxResults: { type: "NUMBER", description: "Max tweets to retrieve (default: 10)." }
+            },
+            required: ["twitterUserId"]
+          }
+        },
+        {
+          name: "twitter_create_tweet",
+          description: "Creates a new tweet.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              text: { type: "STRING", description: "Tweet content (max 280 chars)." }
+            },
+            required: ["text"]
+          }
+        },
+        {
+          name: "twitter_delete_tweet",
+          description: "Deletes a tweet.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              tweetId: { type: "STRING", description: "ID of the tweet to delete." }
+            },
+            required: ["tweetId"]
+          }
+        },
+
+        // Slack
+        {
+          name: "slack_get_user_info",
+          description: "Gets the authenticated Slack user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "slack_list_channels",
+          description: "Lists channels in the Slack workspace.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              types: { type: "STRING", description: "Channel types: public_channel, private_channel (default: both)." }
+            }
+          }
+        },
+        {
+          name: "slack_post_message",
+          description: "Posts a message to a Slack channel.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channel: { type: "STRING", description: "Channel ID or name." },
+              text: { type: "STRING", description: "Message text." },
+              threadTs: { type: "STRING", description: "Thread timestamp to reply in thread (optional)." }
+            },
+            required: ["channel", "text"]
+          }
+        },
+        {
+          name: "slack_get_channel_history",
+          description: "Gets message history from a channel.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channel: { type: "STRING", description: "Channel ID." },
+              limit: { type: "NUMBER", description: "Number of messages (default: 20)." }
+            },
+            required: ["channel"]
+          }
+        },
+
+        // Spotify
+        {
+          name: "spotify_get_current_user",
+          description: "Gets the authenticated Spotify user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "spotify_get_currently_playing",
+          description: "Gets the currently playing track.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "spotify_get_user_playlists",
+          description: "Gets the user's playlists.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              limit: { type: "NUMBER", description: "Max playlists to retrieve (default: 20)." }
+            }
+          }
+        },
+        {
+          name: "spotify_create_playlist",
+          description: "Creates a new playlist for the user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: "Playlist name." },
+              description: { type: "STRING", description: "Playlist description." },
+              isPublic: { type: "BOOLEAN", description: "Whether the playlist is public (default: false)." }
+            },
+            required: ["name"]
+          }
+        },
+        {
+          name: "spotify_search_tracks",
+          description: "Searches for tracks on Spotify.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: { type: "STRING", description: "Search query." },
+              limit: { type: "NUMBER", description: "Max results (default: 10)." }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "spotify_add_tracks_to_playlist",
+          description: "Adds tracks to a playlist.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              playlistId: { type: "STRING", description: "Playlist ID." },
+              trackUris: { type: "ARRAY", description: "Array of Spotify track URIs to add." }
+            },
+            required: ["playlistId", "trackUris"]
+          }
+        },
+        {
+          name: "spotify_play_track",
+          description: "Plays a track on the user's active device.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              trackUri: { type: "STRING", description: "Spotify track URI." },
+              deviceId: { type: "STRING", description: "Device ID to play on (optional)." }
+            },
+            required: ["trackUri"]
+          }
         }
       ]
     }
@@ -646,8 +1024,8 @@ async function handleGeminiRequest(
     return new ReadableStream({
       async start(controller) {
         try {
-          // Immediate heartbeat to trigger UI thinking state
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: "" })}\n\n`))
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: "", userMessageId })}\n\n`))
 
           let userPrompt = message
 
@@ -844,6 +1222,7 @@ async function handleOpenRouterRequest(
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
 ) {
   const openRouterKey = process.env.OPENROUTER_API_KEY
 
@@ -888,8 +1267,8 @@ async function handleOpenRouterRequest(
     return new ReadableStream({
       async start(controller) {
         try {
-          // Immediate heartbeat to trigger UI thinking state
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " " })}\n\n`))
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
 
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
@@ -1109,6 +1488,7 @@ async function handleZaiRequest(
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
 ) {
   const zaiKey = process.env.ZAI_API_KEY
 
@@ -1153,8 +1533,8 @@ async function handleZaiRequest(
     return new ReadableStream({
       async start(controller) {
         try {
-          // Immediate heartbeat to trigger UI thinking state
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " " })}\n\n`))
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
 
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
@@ -1418,6 +1798,7 @@ async function saveAssistantMessage(
   isAutomated = false,
   tokensUsed: number | null = null,
   cost: number | null = null,
+  userMessageId?: string,
 ) {
   try {
     console.log("[Save] Extracting code blocks from response...")
@@ -1440,6 +1821,8 @@ async function saveAssistantMessage(
           hasArtifact,
           versionName,
           searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          tokensUsed,
+          cost,
         })
         .where(eq(messagesTable.id, existingMessageId))
         .returning()
@@ -1520,7 +1903,17 @@ async function saveAssistantMessage(
 
     console.log("[Save] Sending done signal to client")
     controller.enqueue(
-      encoder.encode(`data: ${JSON.stringify({ done: true, messageId: newMessage.id, content: cleanContent, hasArtifact, projectId, tokensUsed, cost, versionName: newMessage.versionName })}\n\n`),
+      encoder.encode(`data: ${JSON.stringify({ 
+        done: true, 
+        messageId: newMessage.id, 
+        userMessageId,
+        content: cleanContent, 
+        hasArtifact, 
+        projectId, 
+        tokensUsed, 
+        cost, 
+        versionName: newMessage.versionName 
+      })}\n\n`),
     )
   } catch (e) {
     console.error("[Save] Assistant error:", e)
@@ -1546,6 +1939,7 @@ async function saveAssistantMessageWithParallelGeneration(
   isAutomated = false,
   tokensUsed: number | null = null,
   cost: number | null = null,
+  userMessageId?: string,
 ) {
   try {
     console.log("[ParallelGen] Extracting code blocks from response...")
@@ -1570,6 +1964,8 @@ async function saveAssistantMessageWithParallelGeneration(
           hasArtifact,
           versionName,
           searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          tokensUsed,
+          cost,
         })
         .where(eq(messagesTable.id, existingMessageId))
         .returning()
@@ -1655,7 +2051,17 @@ async function saveAssistantMessageWithParallelGeneration(
 
     console.log("[ParallelGen] Sending done signal to client")
     controller.enqueue(
-      encoder.encode(`data: ${JSON.stringify({ done: true, messageId: newMessage.id, content: cleanContent, hasArtifact, projectId, tokensUsed, cost, versionName: newMessage.versionName })}\n\n`),
+      encoder.encode(`data: ${JSON.stringify({ 
+        done: true, 
+        messageId: newMessage.id, 
+        userMessageId,
+        content: cleanContent, 
+        hasArtifact, 
+        projectId, 
+        tokensUsed, 
+        cost, 
+        versionName: newMessage.versionName 
+      })}\n\n`),
     )
   } catch (e) {
     console.error("[ParallelGen] Error:", e)

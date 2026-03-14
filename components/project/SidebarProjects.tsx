@@ -25,8 +25,24 @@ import {
   ChevronDown,
   Circle,
   UserCircle,
-  ParkingCircleIcon
+  ParkingCircleIcon,
+  Sparkles,
+  CreditCard,
+  BarChart3,
+  Globe,
+  Code2,
+  Database,
+  ArrowLeft,
+  Mail,
+  HardDrive,
+  Cpu,
+  ShieldCheck,
+  Shield,
+  Key,
+  CheckSquare,
+  Github
 } from 'lucide-react';
+import { useWorkbench } from '@/lib/workbench-context';
 import { cn } from '@/lib/utils';
 import { useUser, useClerk } from '@clerk/nextjs';
 import { Button } from '../ui/button';
@@ -45,6 +61,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { GithubCloneDialog } from '../models/github-clone';
 import { toast } from 'sonner';
+import { Badge } from '../ui/badge';
 
 interface ProjectItem {
   id: string;
@@ -86,6 +103,8 @@ export default function SidebarProjects({
   const [githubDialogOpen, setGithubDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -94,30 +113,47 @@ export default function SidebarProjects({
     }
   }, [initialProjects]);
 
-  // Hover logic to open/close sidebar
+  // Fetch projects if not provided
   useEffect(() => {
-    const threshold = 20; // px from left edge to trigger open
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // Open if mouse is near left edge
-      if (e.clientX < threshold) {
-        setOpen(true);
-      }
-      // Close if mouse moves far right of the menu
-      else if (menuRef.current) {
-        const rect = menuRef.current.getBoundingClientRect();
-        // Add a buffer zone so it doesn't close immediately when leaving the menu
-        if (e.clientX > rect.right + 50) {
-          setOpen(false);
+    if (!initialProjects || initialProjects.length === 0) {
+      const fetchProjects = async () => {
+        try {
+          const res = await fetch('/api/projects');
+          if (res.ok) {
+            const data = await res.json();
+            const mapped = data.projects.map((p: any) => ({
+              ...p,
+              updated_at: p.updatedAt || p.updated_at || new Date().toISOString(),
+              is_owner: p.userId === userId
+            }));
+            setProjects(mapped);
+          }
+        } catch (err) {
+          console.error("Sidebar failed to fetch projects:", err);
         }
-      }
-    };
+      };
+      fetchProjects();
+    }
+  }, [userId, initialProjects]);
 
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+  // Hover logic to open/close sidebar is handled by onMouseEnter/onMouseLeave on the container.
+  // We keep the container width dynamic based on effectiveHovered.
 
-  // Filtered projects
+
+  const {
+    activeTab,
+    setActiveTab,
+    databaseTab,
+    setDatabaseTab,
+    settingsSection,
+    setSettingsSection
+  } = useWorkbench();
+
+  const pathname = usePathname();
+  const isSettingsPage = pathname?.startsWith('/settings');
+  const isChatPage = pathname?.startsWith('/chat/');
+  const effectiveHovered = isChatPage ? true : (isSettingsPage ? true : (isHovered || searchOpen || isActionMenuOpen));
+
   const favoriteProjects = projects.filter(p => p.is_favorite);
   const recentProjects = projects.filter(p => !p.is_favorite);
 
@@ -128,19 +164,15 @@ export default function SidebarProjects({
   const handleToggleFavorite = async (projectId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    // Optimistic update
     setProjects(prev => prev.map(p =>
       p.id === projectId ? { ...p, is_favorite: !p.is_favorite } : p
     ));
-
     try {
       const res = await fetch(`/api/projects/${projectId}/favorite`, { method: 'POST' });
       if (!res.ok) throw new Error("Failed to toggle favorite");
     } catch (err) {
       console.error(err);
       toast.error("Failed to update favorite status");
-      // Revert
       setProjects(prev => prev.map(p =>
         p.id === projectId ? { ...p, is_favorite: !p.is_favorite } : p
       ));
@@ -150,12 +182,8 @@ export default function SidebarProjects({
   const handleDeleteProject = async (projectId: string, e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
     if (!confirm("Are you sure you want to delete this project?")) return;
-
-    // Optimistic update
     setProjects(prev => prev.filter(p => p.id !== projectId));
-
     try {
       const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error("Failed to delete project");
@@ -164,7 +192,6 @@ export default function SidebarProjects({
     } catch (err) {
       console.error(err);
       toast.error("Failed to delete project");
-      // Revert (need to fetch original data ideally, but usually refresh handles it)
       router.refresh();
     }
   };
@@ -177,49 +204,30 @@ export default function SidebarProjects({
   };
 
   const ProjectItemRow = ({ project }: { project: ProjectItem }) => (
-    <div
-      className="group flex items-center gap-2 px-1 rounded-sm BackgroundStyle relative"
-    >
+    <div className="group flex items-center gap-2 px-1 rounded-sm BackgroundStyle relative">
       <Link href={`/chat/${project.id}`} className="flex items-center gap-3 flex-1 min-w-0 py-0.5">
         <div className={cn(
-          "flex-shrink-0 h-8 w-8 rounded-lg flex items-center justify-center transition-colors",
-          project.is_owner
-            ? "text-gray-900 dark:bg-blue-900/20 dark:text-blue-400"
-            : "text-gray-900 dark:bg-amber-900/20 dark:text-amber-400"
+          "flex-shrink-0 h-6 w-6 rounded-md flex items-center justify-center transition-colors",
+          project.is_owner ? "text-gray-900" : "text-gray-900"
         )}>
           {project.is_github_clone && project.github_url ? (
-            <GitBranch className="h-4 w-4" />
+            <GitBranch className="h-3.5 w-3.5" />
           ) : project.is_owner ? (
-            <Circle className="h-4 w-4" />
-            //  <GitBranch className="h-4 w-4" /> // Reverted per request: "for regular projects... it actually shows a circle made of ui"
-            // Wait, the request said: "icon to only appear for projects that actually have a url with Git... and actually for regular projects... It actually shows a circle made of ui."
-            // I'll interpret "circle made of ui" as a simple circle icon or similar.
+            <Circle className="h-3 w-3" />
           ) : (
-            <Users className="h-4 w-4" />
+            <Users className="h-3.5 w-3.5" />
           )}
         </div>
-
         <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200 truncate group-hover:text-zinc-900 dark:group-hover:text-white transition-colors">
+          <span className="text-[12px] font-medium text-zinc-700 truncate group-hover:text-zinc-900 transition-colors">
             {project.title || 'Untitled Project'}
           </span>
-          <div className="flex items-center gap-2 text-[10px] text-zinc-400 group-hover:text-zinc-500">
-            {/* Date removed per original code, kept logic same */}
-            {!project.is_owner && (
-              <>
-                <span>•</span>
-                <span>Shared</span>
-              </>
-            )}
-          </div>
         </div>
       </Link>
-
-      {/* Action Menu (Three dots) */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="cursor-pointer h-6 w-6 p-0 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 top-1/2 -translate-y-1/2">
-            <MoreHorizontal className="h-4 w-4 text-zinc-500" />
+          <Button variant="ghost" className="cursor-pointer h-5 w-5 p-0 hover:bg-zinc-200 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 top-1/2 -translate-y-1/2">
+            <MoreHorizontal className="h-3 w-3 text-zinc-500" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-52">
@@ -243,269 +251,353 @@ export default function SidebarProjects({
     </div>
   );
 
-  // Check if we are in settings
-  const pathname = usePathname();
-  const isSettingsPage = pathname?.startsWith('/settings');
-
   return (
     <>
       <div
         ref={menuRef}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
         className={cn(
-          'fixed top-0 left-0 h-screen w-[300px] z-[999999] flex flex-col',
+          'fixed top-[-10px] left-0 h-screen transition-all duration-300 ease-in-out z-[100] flex flex-col bg-[#FAF9F5]',
+          (isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[280px]' : 'w-[64px]'),
           className
         )}
       >
-        {/* Header Section */}
-        <div className="ml-3 mt-15 pb-2 space-y-1 pr-3">
+        {isChatPage ? (
+          <div className="flex flex-col h-full">
+            {/* Chat Mode Sidebar Header */}
+            <div className="ml-2 mt-15 pb-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
+              <Link href="/" className='flex flex-col gap-1'>
+                <Button className={cn(
+                  "py-2 bg-transparent text-zinc-700 border border-[#0099ff] bg-white BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                )}>
+                  <ArrowLeft className="h-4 w-4 shrink-0" />
+                  <span className="font-medium text-[13px]">Back</span>
+                </Button>
+              </Link>
 
-          {!isSettingsPage ? (
-            <>
-              {/* Split New Chat Button */}
-              <div className="flex items-center w-full mb-3 shadow-xs rounded-sm border bg-white z-50">
-                <Link href="/" className="flex-1">
-                  <Button variant="ghost" className="w-full justify-start rounded-r-none hover:bg-gray-50 h-9">
-                    <Plus className="h-4 w-4 mr-2" />
-                    <span className="font-medium text-sm">New Chat</span>
+              <Button
+                onClick={() => setActiveTab("preview")}
+                className={cn(
+                  "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                  activeTab === "preview" ? "BackgroundStyleButton text-black" : "",
+                  "w-full px-3.5"
+                )}
+              >
+                <Globe className="h-4 w-4 shrink-0" />
+                <span className="font-medium text-[13px]">Preview</span>
+              </Button>
+
+              <Button
+                onClick={() => setActiveTab("code")}
+                className={cn(
+                  "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                  activeTab === "code" ? "BackgroundStyleButton text-black" : "",
+                  "w-full px-3.5"
+                )}
+              >
+                <Code2 className="h-4 w-4 shrink-0" />
+                <span className="font-medium text-[13px]">Code</span>
+              </Button>
+
+              <div className="pt-2 mt-2 border-t border-zinc-200 flex flex-col gap-1">
+                {[
+                  { id: "tables", icon: Database, label: "Tables" },
+                  { id: "users", icon: Users, label: "Users" },
+                  { id: "feedback", icon: MessageSquare, label: "Feedback", isNew: true },
+                  { id: "emails", icon: Mail, label: "Emails" },
+                  { id: "storage", icon: HardDrive, label: "Storage" },
+                  { id: "functions", icon: Cpu, label: "Functions" },
+                ].map((item) => (
+                  <Button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab("database");
+                      setDatabaseTab(item.id as any);
+                    }}
+                    className={cn(
+                      "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                      activeTab === "database" && databaseTab === item.id
+                        ? "BackgroundStyleButton text-black"
+                        : ""
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      <item.icon className="h-4 w-4 shrink-0" />
+                      <span className="font-medium text-[13px]">{item.label}</span>
+                    </div>
+
+                    {item.isNew && (
+                      <Badge className="text-[10px] px-1.5 py-0 h-4 rounded-sm">
+                        New
+                      </Badge>
+                    )}
                   </Button>
-                </Link>
-                <div className="h-5 w-[1px] bg-gray-200"></div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="px-2 rounded-l-none hover:bg-gray-50 h-9">
-                      <ChevronDown className="h-4 w-4 text-gray-500" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-56" side="bottom">
-                    <DropdownMenuItem onClick={() => router.push('/templates')}>
-                      <BookTemplate className="mr-2 h-4 w-4" />
-                      Start from a template
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => setGithubDialogOpen(true)}>
-                      <GitBranch className="mr-2 h-4 w-4" />
-                      Import from GitHub
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                ))}
               </div>
 
-              {/* Search Button (Above Home) */}
-              <Popover open={searchOpen} onOpenChange={setSearchOpen}>
-                <PopoverTrigger asChild>
-                  <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                    <Search className="h-4 w-4" />
-                    <span className="font-medium text-sm">Search</span>
+              <div className="pt-2 mt-2 border-t border-zinc-200 flex flex-col gap-1">
+                {[
+                  { id: "project-settings", label: "General", icon: Settings },
+                  { id: "analytics", label: "Analytics", icon: BarChart3 },
+                  { id: "security", label: "Security", icon: Shield },
+                  { id: "secrets", label: "Secrets", icon: Key },
+                  { id: "automations", label: "Automations", icon: CheckSquare },
+                  { id: "github", label: "GitHub", icon: Github },
+                ].map((item) => (
+                  <Button
+                    key={item.id}
+                    onClick={() => {
+                      setActiveTab("settings");
+                      setSettingsSection(item.id as any);
+                    }}
+                    className={cn(
+                      "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                      activeTab === "settings" && settingsSection === item.id ? "BackgroundStyleButton text-black" : "",
+                      "w-full px-3.5"
+                    )}
+                  >
+                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span className="font-medium text-[13px]">{item.label}</span>
                   </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[260px] p-0" align="start" side="bottom">
-                  <div className="p-2 border-b">
-                    <Input
-                      placeholder="Search projects..."
-                      className="h-8"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : isSettingsPage ? (
+          <div className="flex flex-col h-full">
+            {/* Settings Mode Sidebar Header */}
+            <div className="ml-2 mt-15 pb-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
+              <Link href="/" className='flex flex-col gap-1'>
+                <Button className={cn(
+                  "py-2 bg-transparent text-zinc-700 border border-[#0099ff] bg-white BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                )}>
+                  <ArrowLeft className="h-4 w-4 shrink-0" />
+                  <span className="font-medium text-[13px]">Back</span>
+                </Button>
+              </Link>
+
+              <div className="flex flex-col gap-1">
+                {[
+                  { id: "/settings/account", label: "Account", icon: UserCircle },
+                  { id: "/settings/billing", label: "Billing", icon: CreditCard },
+                  { id: "/settings/usage", label: "Usage", icon: BarChart3 },
+                  { id: "/settings/mcp", label: "MCP", icon: Cpu },
+                  { id: "/settings/skills", label: "Skills", icon: Sparkles },
+                ].map((item) => (
+                  <Link href={item.id} key={item.id}>
+                    <Button
+                      className={cn(
+                        "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        pathname === item.id ? "BackgroundStyleButton text-black" : "hover:text-zinc-900"
+                      )}
+                    >
+                      <item.icon className={cn("h-4 w-4 shrink-0", pathname === item.id ? "text-black" : "text-zinc-500")} />
+                      {effectiveHovered && <span className="font-medium text-[13px]">{item.label}</span>}
+                    </Button>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            {/* Footer with user profile */}
+            {user && (
+              <div className="mb-3 ml-3 pr-3">
+                <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 transition-colors cursor-pointer group">
+                  {user.imageUrl ? <img src={user.imageUrl} alt="User" className="h-8 w-8 rounded-full object-cover shadow-sm" /> : <div className="h-8 w-8 rounded-full bg-zinc-500 flex items-center justify-center text-white text-xs font-bold">{user.firstName?.slice(0, 1)}</div>}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-zinc-900 truncate">{user.fullName || "User"}</p>
+                    <p className="text-[10px] text-zinc-500 truncate">{user.primaryEmailAddress?.emailAddress}</p>
                   </div>
-                  <div className="max-h-[300px] overflow-y-auto p-1">
-                    {filteredProjects.length === 0 ? (
-                      <div className="p-4 text-center text-xs text-zinc-500">
-                        {searchQuery ? "No projects found" : "Type to search..."}
-                      </div>
-                    ) : (
-                      filteredProjects.map(project => (
-                        <Link
-                          key={project.id}
-                          href={`/chat/${project.id}`}
-                          onClick={() => setSearchOpen(false)}
-                          className="flex items-center gap-2 p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-sm text-sm"
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col h-full">
+            {/* Header Section */}
+            <div className="ml-3 mt-15 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
+              <div className={cn(
+                "flex items-center mb-4 shadow-xs rounded-lg border border-[#dddcd8] bg-white z-50 overflow-hidden",
+                effectiveHovered ? "w-full" : "w-10 mx-auto"
+              )}>
+                <Link href="/" className="flex-1">
+                  <Button variant="ghost" className="w-full justify-start rounded-r-none hover:bg-gray-50 h-10 p-0 flex items-center justify-center">
+                    <Plus className={cn("h-4 w-4", effectiveHovered && "ml-3 mr-3")} />
+                    {effectiveHovered && <span className="font-semibold text-[13px]">New Chat</span>}
+                  </Button>
+                </Link>
+                {effectiveHovered && (
+                  <>
+                    <div className="h-6 w-[1px] bg-gray-200"></div>
+                    <DropdownMenu open={isActionMenuOpen} onOpenChange={setIsActionMenuOpen}>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className={cn(
+                            "px-2.5 rounded-l-none hover:bg-gray-50 h-10 transition-transform duration-200",
+                            isActionMenuOpen && "bg-gray-100 rotate-180"
+                          )}
                         >
-                          <FileText className="h-3 w-3 text-zinc-500" />
-                          <span className="truncate">{project.title}</span>
-                        </Link>
-                      ))
+                          <ChevronDown className="h-4 w-4 text-gray-500" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-56 ml-15" side="bottom" sideOffset={8}>
+                        <DropdownMenuItem onClick={() => {
+                          setIsActionMenuOpen(false);
+                          router.push('/templates');
+                        }}>
+                          <BookTemplate className="mr-2 h-4 w-4" />
+                          Start from a template
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          setIsActionMenuOpen(false);
+                          setGithubDialogOpen(true);
+                        }}>
+                          <GitBranch className="mr-2 h-4 w-4" />
+                          Import from GitHub
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </>
+                )}
+              </div>
+
+              {/* Search Section - Integrated Inline */}
+              <div className="space-y-1">
+                {!searchOpen ? (
+                  <Button
+                    onClick={() => setSearchOpen(true)}
+                    className={cn(
+                      "py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-all",
+                      effectiveHovered ? "w-full px-3.5" : "w-10 h-10 mx-auto justify-center"
+                    )}
+                  >
+                    <Search className="h-4 w-4 shrink-0" />
+                    {effectiveHovered && <span className="font-medium text-[13px]">Search</span>}
+                  </Button>
+                ) : (
+                  <div className="space-y-2 p-1 bg-white/50 rounded-lg border border-zinc-100 mb-2">
+                    <div className="relative flex items-center">
+                      <Search className="absolute left-2.5 h-3.5 w-3.5 text-zinc-400" />
+                      <Input
+                        autoFocus
+                        placeholder="Search projects..."
+                        className="h-9 pl-8 pr-8 text-[13px] border-none bg-transparent focus-visible:ring-0 shadow-none"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setSearchOpen(false);
+                        }}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-1 h-6 w-6 hover:bg-zinc-200"
+                        onClick={() => {
+                          setSearchOpen(false);
+                          setSearchQuery("");
+                        }}
+                      >
+                        <ChevronRight className="h-3 w-3 rotate-90" />
+                      </Button>
+                    </div>
+
+                    {searchQuery && (
+                      <div className="max-h-[200px] overflow-y-auto px-1 pb-1 animate-in fade-in slide-in-from-top-1">
+                        {filteredProjects.length === 0 ? (
+                          <div className="py-3 text-center text-[11px] text-zinc-500 italic">No matches found</div>
+                        ) : (
+                          filteredProjects.map(project => (
+                            <Link
+                              key={project.id}
+                              href={`/chat/${project.id}`}
+                              onClick={() => {
+                                setSearchOpen(false);
+                                setSearchQuery("");
+                              }}
+                              className="flex items-center gap-2 p-2 hover:bg-zinc-100 rounded-md text-[12px] text-zinc-600 transition-colors"
+                            >
+                              <FileText className="h-3.5 w-3.5 text-zinc-400" />
+                              <span className="truncate">{project.title}</span>
+                            </Link>
+                          ))
+                        )}
+                      </div>
                     )}
                   </div>
-                </PopoverContent>
-              </Popover>
+                )}
+              </div>
 
               <Link href="/">
-                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                  <Home className="h-4 w-4" />
-                  <span className="font-medium text-sm">Home</span>
+                <Button className={cn("py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors", effectiveHovered ? "w-full px-3.5" : "w-10 h-10 mx-auto justify-center")}>
+                  <Home className="h-4 w-4 shrink-0" />
+                  {effectiveHovered && <span className="font-medium text-[13px]">Home</span>}
                 </Button>
               </Link>
               <Link href="/projects">
-                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                  <MessageSquare className="h-4 w-4" />
-                  <span className="font-medium text-sm">Chats</span>
+                <Button className={cn("py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors", effectiveHovered ? "w-full px-3.5" : "w-10 h-10 mx-auto justify-center")}>
+                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  {effectiveHovered && <span className="font-medium text-[13px]">Chats</span>}
                 </Button>
               </Link>
-              <Link href="/templates">
-                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                  <BookTemplate className="h-4 w-4" />
-                  <span className="font-medium text-sm">Templates</span>
-                </Button>
-              </Link>
-              <Link href="/pricing">
-                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                  <ParkingCircleIcon className="h-4 w-4" />
-                  <span className="font-medium text-sm">Pricing</span>
-                </Button>
-              </Link>
-              <Link href="/settings">
-                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                  <Settings2 className="h-4 w-4" />
-                  <span className="font-medium text-sm">Settings</span>
-                </Button>
-              </Link>
-              {user && (
-                <Link href={`/profile/${user.id}`}>
-                  <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start">
-                    <div className="ml-1 flex items-center gap-2">
-                      {user?.imageUrl ? (
-                        <img
-                          src={user.imageUrl}
-                          alt={user.fullName || "User"}
-                          className="lex items-center gap-2 justify-start h-4 w-4 rounded-full object-cover shadow-sm"
-                        />
-                      ) : (
-                        <div className="h-4 w-4 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                          {user?.firstName?.slice(0, 1) || userId.slice(0, 1).toUpperCase()}
-                        </div>
-                      )}
-                      <span className="font-medium text-sm">Profile</span>
-                    </div>
-                  </Button>
-                </Link>
+
+              {effectiveHovered && (
+                <div className="pt-2 space-y-1">
+                  <Link href="/templates">
+                    <Button className="w-full py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors px-3.5">
+                      <BookTemplate className="h-4 w-4 shrink-0" />
+                      <span className="font-medium text-[13px]">Templates</span>
+                    </Button>
+                  </Link>
+                  <Link href="/pricing">
+                    <Button className="w-full py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors px-3.5">
+                      <CreditCard className="h-4 w-4 shrink-0" />
+                      <span className="font-medium text-[13px]">Pricing</span>
+                    </Button>
+                  </Link>
+                  <Link href="/settings">
+                    <Button className="w-full py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors px-3.5">
+                      <Settings className="h-4 w-4 shrink-0" />
+                      <span className="font-medium text-[13px]">Settings</span>
+                    </Button>
+                  </Link>
+                </div>
               )}
-            </>
-          ) : (
-            <>
-              {/* Settings Mode Buttons */}
-              <Link href="/">
-                <Button className="py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start mb-1">
-                  <ChevronRight className="h-4 w-4 rotate-180" />
-                  <span className="font-medium text-sm">Back to Home</span>
-                </Button>
-              </Link>
 
-              <Link href="/settings">
-                <Button className={cn(
-                  "py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start mb-1",
-                  pathname === '/settings' || pathname === '/settings/account' ? "BackgroundStyleButton" : ""
-                )}>
-                  <Users className="h-4 w-4" />
-                  <span className="font-medium text-sm">Account</span>
-                </Button>
-              </Link>
-
-              <Link href="/settings/mcp">
-                <Button className={cn(
-                  "py-1.5 w-full bg-transparent text-black BackgroundStyle rounded-sm flex items-center gap-2 justify-start",
-                  pathname === '/settings/mcp' ? "BackgroundStyleButton" : ""
-                )}>
-                  <Settings2 className="h-4 w-4" />
-                  <span className="font-medium text-sm">MCP</span>
-                </Button>
-              </Link>
-            </>
-          )}
-        </div>
-
-        {/* Projects List - Only show if NOT in settings */}
-        {!isSettingsPage && (
-          <div className="ml-3 flex-1 overflow-y-auto space-y-2 scrollbar-thin scrollbar-thumb-zinc-200 dark:scrollbar-thumb-zinc-800 pr-3 mt-2">
-
-            {/* Favorites Section */}
-            <div className="space-y-1">
-              <div
-                className="flex items-center justify-between px-2 py-1 text-xs font-semibold text-zinc-500 cursor-pointer hover:text-zinc-800"
-                onClick={() => setFavoritesOpen(!favoritesOpen)}
-              >
-                <span>Favorites</span>
-                <ChevronDown className={cn("h-3 w-3 transition-transform", !favoritesOpen && "-rotate-90")} />
-              </div>
-
-              {favoritesOpen && (
-                favoriteProjects.length === 0 ? (
-                  <div className="px-4 py-2 border-2 border-dashed border-zinc-200 rounded-md mx-2">
-                    <p className="text-xs text-center text-zinc-400">
-                      Favorite chats and projects that you use often.
-                    </p>
+              {/* Projects List Under Main Buttons */}
+              {effectiveHovered && (
+                <div className="mt-4 space-y-4">
+                  {favoriteProjects.length > 0 && (
+                    <div>
+                      <div className="px-2 py-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Favorites</div>
+                      {favoriteProjects.map(project => <ProjectItemRow key={project.id} project={project} />)}
+                    </div>
+                  )}
+                  <div>
+                    <div className="px-2 py-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Recent Projects</div>
+                    {recentProjects.map(project => <ProjectItemRow key={project.id} project={project} />)}
                   </div>
-                ) : (
-                  <div className="space-y-0.5">
-                    {favoriteProjects.map(project => (
-                      <ProjectItemRow key={project.id} project={project} />
-                    ))}
-                  </div>
-                )
+                </div>
               )}
             </div>
 
-            {/* Recents Section */}
-            <div className="space-y-1">
-              <div
-                className="flex items-center justify-between px-2 py-1 text-xs font-semibold text-zinc-500 cursor-pointer hover:text-zinc-800"
-                onClick={() => setRecentsOpen(!recentsOpen)}
-              >
-                <span>Recents</span>
-                <ChevronDown className={cn("h-3 w-3 transition-transform", !recentsOpen && "-rotate-90")} />
-              </div>
-
-              {recentsOpen && (
-                recentProjects.length === 0 && favoriteProjects.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-40 text-center px-4">
-                    <div className="h-10 w-10 rounded-full bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center mb-3">
-                      <FileText className="h-5 w-5 text-zinc-400" />
-                    </div>
-                    <p className="text-sm text-zinc-500 font-medium">No projects yet</p>
-                    <p className="text-xs text-zinc-400 mt-1">Start a new chat to begin</p>
+            {/* Footer */}
+            {effectiveHovered && user && (
+              <div className="mb-3 ml-3 pr-3">
+                <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 transition-colors cursor-pointer group">
+                  {user.imageUrl ? <img src={user.imageUrl} alt="User" className="h-8 w-8 rounded-full object-cover shadow-sm" /> : <div className="h-8 w-8 rounded-full bg-zinc-500 flex items-center justify-center text-white text-xs font-bold">{user.firstName?.slice(0, 1)}</div>}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-semibold text-zinc-900 truncate">{user.fullName || "User"}</p>
+                    <p className="text-[10px] text-zinc-500 truncate">{user.primaryEmailAddress?.emailAddress}</p>
                   </div>
-                ) : (
-                  <div className="space-y-0.5">
-                    {recentProjects.map(project => (
-                      <ProjectItemRow key={project.id} project={project} />
-                    ))}
-                  </div>
-                )
-              )}
-            </div>
-
-          </div>
-        )}
-
-        {/* Footer - Always show */}
-        <div className="mb-3 ml-3 pr-3">
-          <div
-            onClick={() => openUserProfile()}
-            className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle cursor-pointer group"
-          >
-            {user?.imageUrl ? (
-              <img
-                src={user.imageUrl}
-                alt={user.fullName || "User"}
-                className="h-8 w-8 rounded-full object-cover shadow-sm"
-              />
-            ) : (
-              <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-white text-xs font-bold shadow-sm">
-                {user?.firstName?.slice(0, 1) || userId.slice(0, 1).toUpperCase()}
+                </div>
               </div>
             )}
-
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                {user?.fullName || "User Account"}
-              </p>
-              <p className="text-[10px]">
-                {user?.primaryEmailAddress?.emailAddress || userId}
-              </p>
-            </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Github Clone Dialog - Controlled by Sidebar */}
       <GithubCloneDialog open={githubDialogOpen} onOpenChange={setGithubDialogOpen} />
     </>
   );

@@ -9,13 +9,14 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { Settings, LogOut, Zap } from "lucide-react"
-import Link from "next/link"
+import { Settings, LogOut, Zap, DollarSign } from "lucide-react"
 import { CreditsSection } from "./CreditsSection"
 import { AutomationDialog } from "@/components/models/AutomationDialog"
 import { israelTimeToUTC, utcToIsraelTime } from "@/lib/common/timezone/timezone-utils"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { Button } from "../ui/button"
+import Link from "next/link"
 
 interface AutomationSettings {
     selectedModel: string
@@ -32,7 +33,12 @@ type ModelOption = {
     soon?: string
 }
 
-type ModelType = "gemini" | "claude-sonnet-4.6" | "claude-opus-4.6" | "claude-haiku-4.5" | "glm-4.7-flash"
+type ModelType =
+    | "gemini"
+    | "claude-sonnet-4.6"
+    | "claude-opus-4.6"
+    | "claude-haiku-4.5"
+    | "glm-4.7-flash"
 
 const modelOptions: Record<ModelType, ModelOption> = {
     gemini: { label: "Gemini 3.1 Pro", icon: "/icons/gemini.png", color: "text-blue-400" },
@@ -51,7 +57,6 @@ export function UserProfileMenu() {
     const [subscriptionTier, setSubscriptionTier] = useState<string>("none")
     const [secondsUntilRegen, setSecondsUntilRegen] = useState<number>(0)
 
-    // Automation dialog state
     const [automationOpen, setAutomationOpen] = useState(false)
     const [automationSettings, setAutomationSettings] = useState<AutomationSettings | null>(null)
     const [automationLoading, setAutomationLoading] = useState(false)
@@ -64,6 +69,7 @@ export function UserProfileMenu() {
                 const res = await fetch("/api/user/credits")
                 if (res.ok) {
                     const data = await res.json()
+
                     setBalance(data.balance || 0)
                     setBalancePerMonth(data.balancePerMonth || 500)
                     setSubscriptionTier(data.subscriptionTier || "none")
@@ -92,6 +98,7 @@ export function UserProfileMenu() {
 
     const formatTime = (seconds: number) => {
         if (seconds <= 0) return "Now"
+
         const mins = Math.ceil(seconds / 60)
         const hours = Math.floor(mins / 60)
         const remainingMins = mins % 60
@@ -99,6 +106,7 @@ export function UserProfileMenu() {
         if (hours > 0) {
             return `${hours}h ${remainingMins}m`
         }
+
         return `${mins}m`
     }
 
@@ -106,26 +114,41 @@ export function UserProfileMenu() {
         if (!utcTime24) {
             return { hour: 14, minute: 0, second: 0, timezone: "UTC+2 (IST)" }
         }
+
         const parts = utcTime24.split(":")
-        return utcToIsraelTime(parts[0] || "11", parts[1] || "00", parts[2] || "00")
+
+        return utcToIsraelTime(
+            parts[0] || "11",
+            parts[1] || "00",
+            parts[2] || "00"
+        )
     }
 
     const currentParsed = automationSettings
         ? parseTime(automationSettings.dailyTime)
         : { hour: 14, minute: 0, second: 0, timezone: "UTC+2 (IST)" }
 
-    const updateTime = (key: "hour" | "minute" | "second", val: number | string) => {
+    const updateTime = (
+        key: "hour" | "minute" | "second",
+        val: number | string
+    ) => {
         if (!automationSettings) return
+
         const newUtcTime = israelTimeToUTC(
             key === "hour" ? Number(val) : currentParsed.hour,
             key === "minute" ? Number(val) : currentParsed.minute,
-            key === "second" ? Number(val) : currentParsed.second,
+            key === "second" ? Number(val) : currentParsed.second
         )
-        setAutomationSettings((prev) => prev ? { ...prev, dailyTime: newUtcTime } : prev)
+
+        setAutomationSettings(prev =>
+            prev ? { ...prev, dailyTime: newUtcTime } : prev
+        )
     }
 
-    const handleUpdateSettings = (updater: (prev: AutomationSettings) => AutomationSettings) => {
-        setAutomationSettings((prev) => {
+    const handleUpdateSettings = (
+        updater: (prev: AutomationSettings) => AutomationSettings
+    ) => {
+        setAutomationSettings(prev => {
             if (!prev) return prev
             return updater(prev)
         })
@@ -133,16 +156,19 @@ export function UserProfileMenu() {
 
     const handleSave = async () => {
         if (!automationSettings) return
+
         setAutomationLoading(true)
+
         try {
             const res = await fetch("/api/automation", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(automationSettings),
             })
+
             if (res.ok) {
                 setAutomationSettings(await res.json())
-                toast.success(`Automation settings saved and scheduled.`)
+                toast.success("Automation settings saved and scheduled.")
             }
         } catch (err) {
             console.error("Save failed:", err)
@@ -155,6 +181,7 @@ export function UserProfileMenu() {
     const handleTestNow = async () => {
         if (!user?.id) return
         if (!automationSettings?.isActive) return alert("Please activate automation first!")
+
         if (confirm("Simulate daily run now? This will deduct credits and create a new project.")) {
             try {
                 const res = await fetch(`/api/cron/daily?test=true`, {
@@ -162,6 +189,7 @@ export function UserProfileMenu() {
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ userId: user.id }),
                 })
+
                 if (res.ok) {
                     alert("Test run triggered! Check your /projects page in 10 seconds.")
                 } else {
@@ -174,19 +202,32 @@ export function UserProfileMenu() {
         }
     }
 
+    const progressValue = Math.min((balance / balancePerMonth) * 100, 100)
+
     if (!isLoaded || !user) {
         return (
             <div className="h-8 w-8 rounded-full bg-gray-200 animate-pulse" />
         )
     }
 
-    const progressValue = Math.min((balance / balancePerMonth) * 100, 100)
-
     return (
-        <>
+        <div className="flex items-center gap-2">
+            {/* Upgrade plan Button */}
+            <Button asChild className="h-7 px-4 cursor-pointer rounded-sm bg-white hover:bg-gray-50 text-black border border-gray-200 shadow-xs text-[12px] font-medium transition-all">
+                <Link href="/pricing">
+                    Upgrade plan
+                </Link>
+            </Button>
+
+            {/* Credits Button */}
+            <Button className="h-7 px-4 cursor-pointer rounded-sm bg-white hover:bg-gray-50 text-black border border-gray-200 shadow-xs text-[12px] font-medium transition-all flex items-center gap-2">
+                <DollarSign className="w-3 h-3 text-green-600" />
+                <span>{(balance / 100).toFixed(2)}</span>
+            </Button>
+
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <button className="relative h-8 w-8 cursor-pointer rounded-full overflow-hidden ring-1 ring-transparent hover:ring-gray-200 transition-all">
+                    <button className="relative h-7 w-7 cursor-pointer rounded-full overflow-hidden ring-1 ring-gray-200 hover:ring-gray-300 transition-all shadow-sm">
                         <Avatar className="h-full w-full">
                             <AvatarImage src={user.imageUrl} />
                             <AvatarFallback className="text-xs">
@@ -197,7 +238,7 @@ export function UserProfileMenu() {
                 </DropdownMenuTrigger>
 
                 <DropdownMenuContent
-                    className="w-60 p-1 mr-3 bg-white border border-gray-200 shadow-xs rounded-lg mt-[-20px]"
+                    className="w-60 p-1 mr-3 bg-white border border-gray-200 shadow-xs rounded-lg"
                     align="end"
                     forceMount
                 >
@@ -214,6 +255,7 @@ export function UserProfileMenu() {
                             <p className="text-xs font-semibold text-gray-900 leading-none">
                                 {user.fullName || user.username}
                             </p>
+
                             <p className="text-[11px] text-gray-500 truncate max-w-[150px]">
                                 {user.primaryEmailAddress?.emailAddress}
                             </p>
@@ -232,23 +274,26 @@ export function UserProfileMenu() {
 
                     <div className="h-px my-0.5" />
 
-                    {/* Automation Button */}
+                    {/* Automation */}
                     <DropdownMenuItem
                         onClick={() => setAutomationOpen(true)}
                         className="gap-2 px-3 py-2 rounded-md cursor-pointer"
                     >
                         <Zap className="w-3.5 h-3.5 text-blue-500" />
                         <span className="text-xs text-gray-700 flex-1">AI Automation</span>
-                        <Badge className="bg-[#e4e4e4] text-black/60 text-[9px] px-1.5 py-0 h-4">Beta</Badge>
+                        <Badge className="bg-[#e4e4e4] text-black/60 text-[9px] px-1.5 py-0 h-4">
+                            Beta
+                        </Badge>
                     </DropdownMenuItem>
 
-                    {/* Actions */}
                     <DropdownMenuItem
                         onClick={() => clerk.openUserProfile()}
                         className="gap-2 px-3 py-2 rounded-md cursor-pointer"
                     >
                         <Settings className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-xs text-gray-700">Account Settings</span>
+                        <span className="text-xs text-gray-700">
+                            Account Settings
+                        </span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
@@ -256,6 +301,7 @@ export function UserProfileMenu() {
                         className="gap-2 px-3 py-2 rounded-md cursor-pointer hover:bg-red-50 group"
                     >
                         <LogOut className="w-3.5 h-3.5 text-gray-500 group-hover:text-red-500" />
+
                         <span className="text-xs text-gray-700 group-hover:text-red-600">
                             Sign Out
                         </span>
@@ -263,7 +309,6 @@ export function UserProfileMenu() {
                 </DropdownMenuContent>
             </DropdownMenu>
 
-            {/* Automation Dialog */}
             <AutomationDialog
                 open={automationOpen}
                 onOpenChange={setAutomationOpen}
@@ -276,6 +321,6 @@ export function UserProfileMenu() {
                 currentParsed={currentParsed}
                 onUpdateTime={updateTime}
             />
-        </>
+        </div>
     )
 }

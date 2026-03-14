@@ -33,6 +33,7 @@ export const projects = pgTable("projects", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   isAutomated: boolean("is_automated").default(false).notNull(),
+  publishedUrl: text("published_url"),
 })
 
 export const projectTasks = pgTable("project_tasks", {
@@ -161,7 +162,7 @@ export const giftEvents = pgTable("gift_events", {
 
 export const userCredits = pgTable("user_credits", {
   userId: text("user_id").primaryKey(),
-  balance: integer("balance").notNull().default(500), // in cents ($5.00)
+  balance: integer("balance").notNull().default(150), // in cents ($1.50)
   lastRegenTime: timestamp("last_regen_time").defaultNow().notNull(),
   lastClaimedGiftId: uuid("last_claimed_gift_id").references(() => giftEvents.id),
   lastMonthlyClaim: timestamp("last_monthly_claim"),
@@ -170,6 +171,8 @@ export const userCredits = pgTable("user_credits", {
   balancePerMonth: integer("balance_per_month").default(0).notNull(), // in cents
   paypalSubscriptionId: text("paypal_subscription_id"),
   stripeCustomerId: text("stripe_customer_id"),
+  dailyMessageCount: integer("daily_message_count").default(0).notNull(),
+  lastDailyMessageReset: timestamp("last_daily_message_reset"),
 })
 
 export const userModelConfigs = pgTable("user_model_configs", {
@@ -229,6 +232,15 @@ export const domainOrders = pgTable("domain_orders", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
 
+export const billingHistory = pgTable("billing_history", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  amount: integer("amount").notNull(), // cents
+  planName: text("plan_name").notNull(),
+  status: text("status").notNull(), // completed, pending, etc.
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
 export const figmaTokens = pgTable("figma_tokens", {
   id: serial("id").primaryKey(),
   userId: text("user_id").notNull().unique(),
@@ -266,6 +278,8 @@ export const userProfiles = pgTable("user_profiles", {
   twitterUrl: text("twitter_url"),
   location: text("location"),
   isPrivate: boolean("is_private").default(false).notNull(),
+  notificationSoundEnabled: boolean("notification_sound_enabled").default(true).notNull(),
+  notificationVolume: integer("notification_volume").default(100).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
@@ -587,6 +601,21 @@ export const projectSecrets = pgTable("project_secrets", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
 
+export const projectFeedback = pgTable("project_feedback", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id"), // The user who sent feedback (if logged in on the generated site)
+  email: text("email").notNull(),
+  message: text("message").notNull(),
+  status: text("status").default("pending").notNull(), // pending | replied
+  reply: text("reply"),
+  repliedAt: timestamp("replied_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
 export type ProjectSecret = typeof projectSecrets.$inferSelect
 export type NewProjectSecret = typeof projectSecrets.$inferInsert
 
@@ -672,5 +701,120 @@ export type NewProjectLog = typeof projectLogs.$inferInsert
 export type FigmaToken = typeof figmaTokens.$inferSelect
 export type NewFigmaToken = typeof figmaTokens.$inferInsert
 
+export type ProjectFeedback = typeof projectFeedback.$inferSelect
+export type NewProjectFeedback = typeof projectFeedback.$inferInsert
+
 export type UserProfile = typeof userProfiles.$inferSelect
 export type NewUserProfile = typeof userProfiles.$inferInsert
+
+// ====================
+// SKILLS SYSTEM TABLES
+// ====================
+
+export const skills = pgTable("skills", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  slug: text("slug").notNull().unique(), // e.g., "video-generator", "excel-generator"
+  name: text("name").notNull(), // Display name
+  description: text("description").notNull(),
+  icon: text("icon").default("Sparkles").notNull(), // Lucide icon name
+  category: text("category").default("general").notNull(), // e.g., "content", "analysis", "productivity"
+  instructions: text("instructions").notNull(), // Detailed instructions for AI on how to use this skill
+  modelConfig: jsonb("model_config").$type<{
+    modelName?: string // e.g., "nano-banana"
+    apiEndpoint?: string // e.g., "https://api.jamili.ai/v1"
+    apiKeyEnvVar?: string // e.g., "JAMILI_API_KEY"
+    additionalParams?: Record<string, any>
+  } | null>().default(null),
+  isSystem: boolean("is_system").default(true).notNull(), // true for built-in skills
+  isActive: boolean("is_active").default(true).notNull(), // system-wide activation
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const userSkills = pgTable("user_skills", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  skillId: uuid("skill_id")
+    .notNull()
+    .references(() => skills.id, { onDelete: "cascade" }),
+  isEnabled: boolean("is_enabled").default(true).notNull(),
+  customConfig: jsonb("custom_config").$type<Record<string, any> | null>().default(null), // User-specific overrides
+  enabledAt: timestamp("enabled_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  uniqueUserSkill: sql`UNIQUE(${table.userId}, ${table.skillId})`,
+}))
+
+export type Skill = typeof skills.$inferSelect
+export type NewSkill = typeof skills.$inferInsert
+export type UserSkill = typeof userSkills.$inferSelect
+export type NewUserSkill = typeof userSkills.$inferInsert
+
+export type BillingHistory = typeof billingHistory.$inferSelect
+export type NewBillingHistory = typeof billingHistory.$inferInsert
+
+// ====================
+// SECURITY AGENT TABLES
+// ====================
+
+export const securitySessions = pgTable("security_sessions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  messages: jsonb("messages").$type<any[]>().default(sql`'[]'::jsonb`).notNull(),
+  scanResults: jsonb("scan_results").$type<any>().default(null),
+  selectedModel: text("selected_model").default("glm-4.7-flash").notNull(),
+  consoleLogs: jsonb("console_logs").$type<any[]>().default(sql`'[]'::jsonb`).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const securityMonitors = pgTable("security_monitors", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  projectId: uuid("project_id")
+    .references(() => projects.id, { onDelete: "cascade" }),
+  publishedUrl: text("published_url"),
+  lastCheckedAt: timestamp("last_checked_at"),
+  sslExpiryDate: timestamp("ssl_expiry_date"),
+  sslValid: boolean("ssl_valid").default(true),
+  uptimeStatus: text("uptime_status"), // "up", "down", "slow"
+  threatFlags: jsonb("threat_flags").$type<string[]>().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type SecuritySession = typeof securitySessions.$inferSelect
+export type NewSecuritySession = typeof securitySessions.$inferInsert
+
+export type SecurityMonitor = typeof securityMonitors.$inferSelect
+export type NewSecurityMonitor = typeof securityMonitors.$inferInsert
+
+// ====================
+// ANALYTICS TABLES
+// ====================
+
+export const projectAnalyticsEvents = pgTable("project_analytics_events", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  sessionId: text("session_id").notNull(),
+  visitorId: text("visitor_id"),
+  type: text("type").notNull().default("pageview"), // "pageview" | "session_start" | "session_end"
+  page: text("page"),
+  referrer: text("referrer"),
+  country: text("country"),
+  city: text("city"),
+  browser: text("browser"),
+  os: text("os"),
+  device: text("device"), // "desktop" | "mobile" | "tablet"
+  duration: integer("duration"), // seconds spent on page
+  isNewVisitor: boolean("is_new_visitor").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
+export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert

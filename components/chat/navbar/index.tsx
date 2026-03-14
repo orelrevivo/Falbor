@@ -20,6 +20,8 @@ import {
   RefreshCw,
   TerminalIcon,
   AppWindow,
+  ChevronDown,
+  Download,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -168,9 +170,10 @@ interface NavbarProps {
   onToggleTerminal?: () => void
   isSplitScreen?: boolean
   onEnterSplit?: () => void
+  projectName?: string
 }
 
-type OpenDropdown = "profile" | "publish" | "share" | null
+type OpenDropdown = "profile" | "publish" | "share" | "project" | null
 type PublishView =
   | "main"
   | "edit-domain"
@@ -251,6 +254,7 @@ export function Navbar({
   onToggleTerminal,
   isSplitScreen,
   onEnterSplit,
+  projectName,
 }: NavbarProps) {
   const { user, isLoaded } = useUser()
   const clerk = useClerk()
@@ -657,58 +661,79 @@ export function Navbar({
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <nav className="z-[9999] fixed w-[50%] right-0">
-      <div className="container mx-auto flex h-14 items-center justify-between px-4">
+    <nav className="z-[9999] w-full">
+      <div className="flex h-10 items-center justify-end mt-[-7px]">
 
         {/* Tab buttons are rendered inside CodePreview to stay within the same Tabs context */}
 
-        <div className="flex items-center gap-2 absolute right-7">
+        <div className="flex items-center gap-2 w-full">
           {user ? (
             <>
-              {/* Download */}
-              <button
-                onClick={handleDownload}
-                className={cn(
-                  "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
-                  "text-black hover:text-black/80 BackgroundStyle"
-                )}
-                style={{ border: "1px solid #d6d4ce" }}
-                title="Download project as ZIP"
-              >
-                Download
-              </button>
-
-              {/* Split Screen */}
-              {onEnterSplit && !isSplitScreen && (
-                <button
-                  onClick={onEnterSplit}
-                  className={cn(
-                    "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
-                    "text-black hover:text-black/80 BackgroundStyle"
-                  )}
-                  style={{ border: "1px solid #d6d4ce" }}
-                  title="Split screen"
+              {/* Project Dropdown */}
+              <div className="relative">
+                <Button
+                  onClick={() => setOpenDropdown(openDropdown === "project" ? null : "project")}
+                  variant="link"
+                  size="sm"
+                  className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
                 >
-                  <AppWindow className="w-4 h-4" />
-                  Split screen
-                </button>
-              )}
+                  <span className="font-medium max-w-[150px] truncate">
+                    {projectName || "Untitled Project"}
+                  </span>
+                  <ChevronDown className={cn("w-4 h-4 ", openDropdown === "project" && "")} />
+                </Button>
 
-              {/* Terminal */}
-              {onToggleTerminal && (
-                <button
-                  onClick={onToggleTerminal}
-                  className={cn(
-                    "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
-                    isTerminalOpen ? "bg-[#d6d4ce] text-black" : "text-black hover:text-black/80 BackgroundStyle"
+                <AnimatePresence>
+                  {openDropdown === "project" && (
+                    <DropdownPanel className="w-56 overflow-hidden">
+                      <div className="p-1.5 flex flex-col gap-1">
+                        {/* Download */}
+                        <button
+                          onClick={() => {
+                            handleDownload()
+                            closeDropdown()
+                          }}
+                          className="flex items-center gap-2 px-3 py-2 text-sm text-black hover:bg-[#f5f5f5] rounded transition-colors w-full text-left"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download
+                        </button>
+
+                        {/* Split Screen */}
+                        {onEnterSplit && !isSplitScreen && (
+                          <button
+                            onClick={() => {
+                              onEnterSplit()
+                              closeDropdown()
+                            }}
+                            className="flex items-center gap-2 px-3 py-2 text-sm text-black hover:bg-[#f5f5f5] rounded transition-colors w-full text-left"
+                          >
+                            <AppWindow className="w-4 h-4" />
+                            Split screen
+                          </button>
+                        )}
+
+                        {/* Terminal */}
+                        {onToggleTerminal && (
+                          <button
+                            onClick={() => {
+                              onToggleTerminal()
+                              closeDropdown()
+                            }}
+                            className={cn(
+                              "flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors w-full text-left",
+                              isTerminalOpen ? "bg-[#d6d4ce] text-black" : "text-black hover:bg-[#f5f5f5]"
+                            )}
+                          >
+                            <TerminalIcon className="w-4 h-4" />
+                            Terminal
+                          </button>
+                        )}
+                      </div>
+                    </DropdownPanel>
                   )}
-                  style={{ border: "1px solid #d6d4ce" }}
-                  title="Toggle Terminal"
-                >
-                  <TerminalIcon className="w-4 h-4" />
-                  Terminal
-                </button>
-              )}
+                </AnimatePresence>
+              </div>
 
               {/* Share */}
               <div className="relative">

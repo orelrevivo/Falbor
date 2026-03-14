@@ -25,7 +25,6 @@ import {
   Square,
   CheckCircle2,
   StopCircle,
-  Mail,
   Bug,
   Scan,
   Terminal
@@ -42,9 +41,11 @@ import { motion, AnimatePresence } from "framer-motion"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
+import { GoogleDriveModal } from "@/components/models/google-drive-modal"
 import { getMcpConnections } from "@/app/actions/mcp"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { SkillSelector } from "@/components/chat/SkillSelector"
 interface ChatInputProps {
   isAuthenticated: boolean
   projectId?: string
@@ -65,11 +66,17 @@ interface ChatInputProps {
   onStop?: () => void
   messages?: Message[]
   disabled?: boolean
+  initialMessage?: string
+  editingMessage?: { id: string; content: string } | null
+  onCancelEdit?: () => void
+  onSaveEdit?: (id: string, content: string) => void
 }
 interface BalanceData {
   subscriptionTier: string
   balance?: number
   secondsUntilNextRegen?: number
+  dailyMessageCount?: number
+  secondsUntilDailyReset?: number
 }
 export interface ChatInputRef {
   insertPrompt: (prompt: string) => void
@@ -165,6 +172,8 @@ const designPresets: Record<string, DesignConfig> = {
   },
 }
 
+
+
 const EMAIL_TEMPLATES = [
   { id: "confirmation", label: "Confirm Sign Up" },
   { id: "invite", label: "Invite User" },
@@ -173,7 +182,6 @@ const EMAIL_TEMPLATES = [
   { id: "recovery", label: "Reset Password" },
   { id: "reauthentication", label: "Reauthentication" },
 ]
-
 const MODEL_OPTIONS: ModelOption[] = [
   { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
   { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
@@ -338,10 +346,14 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     externalIsLoading = false,
     onStop,
     messages = [],
+    initialMessage,
+    editingMessage,
+    onCancelEdit,
+    onSaveEdit,
   },
   ref,
 ) {
-  const [message, setMessage] = useState("")
+  const [message, setMessage] = useState(initialMessage || "")
   const [isLoading, setIsLoading] = useState(false)
 
   const effectiveIsLoading = isLoading || externalIsLoading
@@ -384,7 +396,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [menuMode, setMenuMode] = useState<"main" | "design">("main")
   const [showDatabaseHover, setShowDatabaseHover] = useState(false)
   const [showModelHover, setShowModelHover] = useState(false)
-  const [isFalborDb, setIsFalborDb] = useState(true)
+  const [isFalborDb, setIsFalborDb] = useState(false)
   const [showDesignModal, setShowDesignModal] = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
   const [designConfig, setDesignConfig] = useState<DesignConfig | null>(null)
@@ -419,14 +431,9 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [tempAccessToken, setTempAccessToken] = useState<string>("")
   const [isFetchingApiKeys, setIsFetchingApiKeys] = useState(false)
   const [mcpConnections, setMcpConnections] = useState<any[]>([])
-  const [mentionMenu, setMentionMenu] = useState<{ isOpen: boolean; filter: string; position: { top: number; left: number }; startIndex: number }>({
-    isOpen: false,
-    filter: "",
-    position: { top: 0, left: 0 },
-    startIndex: -1
-  })
+
   const [selectedMcpIds, setSelectedMcpIds] = useState<string[]>([])
-  const [mentionTab, setMentionTab] = useState<"mcps" | "emails">("mcps")
+
   const [isLoadingConnection, setIsLoadingConnection] = useState(true)
   const [showTaskPanel, setShowTaskPanel] = useState(true)
   const [tasks, setTasks] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
@@ -437,6 +444,10 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isScanning, setIsScanning] = useState(false)
   const [scannerLogs, setScannerLogs] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
   const [planMode, setPlanMode] = useState(false)
+  const [showSkillSelector, setShowSkillSelector] = useState(false)
+  const [dailyResetTimer, setDailyResetTimer] = useState<number>(0)
+  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1)
+  const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false)
 
   const handleStop = () => {
     if (abortControllerRef.current) {
@@ -645,6 +656,14 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setPastedContents(JSON.parse(savedPasted))
     }
   }, [draftKey, filesKey, pastedKey])
+
+  useEffect(() => {
+    if (editingMessage) {
+      setMessage(editingMessage.content)
+      textareaRef.current?.focus()
+    }
+  }, [editingMessage])
+
   useEffect(() => {
     const savedDesign = localStorage.getItem(designKey)
     if (savedDesign) {
@@ -934,11 +953,30 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         }
         return prev - 1
       })
+      setDailyResetTimer((prev) => {
+        if (prev > 0) return prev - 1
+        return 0
+      })
     }, 1000)
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
   }, [user?.id, isLoaded])
+
+  useEffect(() => {
+    if (balanceData?.secondsUntilDailyReset) {
+      setDailyResetTimer(balanceData.secondsUntilDailyReset)
+    }
+  }, [balanceData])
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const isDailyLimitReached = balanceData?.subscriptionTier === 'none' && (balanceData?.dailyMessageCount || 0) >= 5 && dailyResetTimer > 0
   const refetchBalance = async () => {
     if (!user?.id) return
     await fetchBalance()
@@ -1181,7 +1219,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
     // Complexity indicators
     const complexIndicators = [
-      "complex", "architecture", "advanced", "optimize", "refactor", 
+      "complex", "architecture", "advanced", "optimize", "refactor",
       "typescript", "professional", "enterprise", "scalable", "microservices",
       "database", "authentication", "payment", "integration", "api",
       "dashboard", "analytics", "real-time", "websocket", "collaborative",
@@ -1309,19 +1347,18 @@ Please perform a deep ONLINE SCAN to resolve this issue:
   }
   const handleSubmit = async (e?: React.FormEvent, textOverride?: string) => {
     e?.preventDefault()
-    if (isLoading) {
-      abortControllerRef.current?.abort()
-      abortControllerRef.current = null
-      setIsLoading(false)
+    if (isLoading || isListening) return
+
+    if (editingMessage && onSaveEdit) {
+      onSaveEdit(editingMessage.id, message)
       return
     }
-    if (isListening) {
-      stopVoiceInput()
-      return
-    }
+
     const submitText = textOverride || message
-    if (!submitText.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !designConfig && !selectedImage)
+    const hasAttachments = uploadedFiles.length > 0 || pastedContents.length > 0 || !!selectedImage || (isDesignActive && designConfig)
+    if (!submitText.trim() && !hasAttachments)
       return
+
     if (!isAuthenticated) {
       setShowLoginDialog(true)
       return
@@ -1364,12 +1401,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         selectedFramework,
       })
 
-      // Skip confirmation if database is already connected or using Falbor DB
-      if (credentialsSaved || isFalborDb) {
-        await createProject(isFalborDb)
-      } else {
-        setShowConfirmation(true)
-      }
+      // Automatically send message without asking about database
+      await createProject(isFalborDb)
       return
     }
 
@@ -1504,7 +1537,16 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                     }
                     if (data.done) {
                       console.log("[ChatInput] Received done signal, message ID:", data.messageId)
-                      // Use server content as fallback if streaming didn't capture anything
+
+                      // 1. Sync user message ID if server provided one
+                      if (data.userMessageId) {
+                        onNewMessage({
+                          ...tempUser,
+                          id: data.userMessageId
+                        })
+                      }
+
+                      // 2. Finalize assistant message
                       const finalContent = accumulated.trim() ? accumulated : (data.content || accumulated)
                       onNewMessage({
                         id: data.messageId || `final-${Date.now()}`,
@@ -1576,6 +1618,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault()
       handleSubmit(e)
+    }
+    if (e.key === "Escape" && showSkillSelector) {
+      setShowSkillSelector(false)
     }
   }
   const handleDismissError = () => {
@@ -1683,10 +1728,10 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           </Button>
         </div>
       )}
-      <div className={`bg-[#dbd9d9b2] p-[5px] rounded-[12px]`}>
+      <div className={hasSubscription ? "bg-[#dbd9d9b2] p-[5px] rounded-[12px]" : ""}>
         <form
           onSubmit={handleSubmit}
-          className={`relative p-1 shadow-sm rounded-lg`}
+          className={`relative p-1 rounded-lg`}
           style={{
             backgroundColor: "#ffffff",
             border: "1px solid #8373732c",
@@ -1716,124 +1761,27 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             backgroundClip: "padding-box, border-box, border-box",
           }}
         >
-          {mentionMenu.isOpen && (
-            <div
-              className="absolute z-50 bg-white border-2 border-zinc-100 rounded-2xl shadow-2xl w-[320px] overflow-hidden"
-              style={{
-                bottom: "calc(100% + 12px)",
-                left: "8px",
+          {showSkillSelector && (
+            <SkillSelector
+              isOpen={showSkillSelector}
+              onClose={() => setShowSkillSelector(false)}
+              showMcp={true}
+              onSelect={(type, value, fullData) => {
+                const before = message.slice(0, mentionStartIndex)
+                const after = message.slice(textareaRef.current?.selectionStart || 0)
+                let newValue = ""
+                if (type === 'skill') {
+                  newValue = value
+                } else if (type === 'mcp') {
+                  newValue = `@${value}`
+                } else if (type === 'template') {
+                  newValue = `@${value}`
+                }
+                setMessage(before + newValue + after)
+                setShowSkillSelector(false)
+                textareaRef.current?.focus()
               }}
-            >
-              <div className="flex bg-zinc-50 border-b border-zinc-100 p-1 gap-1">
-                <button
-                  type="button"
-                  onClick={() => setMentionTab("mcps")}
-                  className={cn(
-                    "flex-1 text-[11px] font-black uppercase tracking-widest p-2 rounded-lg transition-all flex items-center justify-center gap-2",
-                    mentionTab === "mcps" ? "bg-white shadow-sm text-zinc-900" : "text-gray-500 hover:bg-gray-200"
-                  )}
-                >
-                  <Database className="w-3.5 h-3.5" />
-                  MCPS
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setMentionTab("emails")}
-                  className={cn(
-                    "flex-1 text-[11px] font-black uppercase tracking-widest p-2 rounded-lg transition-all flex items-center justify-center gap-2",
-                    mentionTab === "emails" ? "bg-white shadow-sm text-zinc-900" : "text-gray-500 hover:bg-gray-200"
-                  )}
-                >
-                  <Mail className="w-3.5 h-3.5" />
-                  Templates
-                </button>
-              </div>
-
-              <div className="p-2">
-                {mentionTab === "mcps" ? (
-                  <div className="space-y-1">
-                    <div className="px-2 py-1.5 text-[10px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
-                      Available Connectors
-                    </div>
-                    {mcpConnections.length === 0 ? (
-                      <div className="p-6 text-center">
-                        <p className="text-[11px] text-zinc-400 font-medium mb-3">No active MCPs found.</p>
-                        <Link href="/settings/mcp">
-                          <Button size="sm" variant="outline" className="h-7 text-[10px] font-bold px-3 border-zinc-200">
-                            Configure MCP
-                          </Button>
-                        </Link>
-                      </div>
-                    ) : (
-                      <div className="max-h-[240px] overflow-y-auto pr-1 space-y-0.5">
-                        {mcpConnections
-                          .filter(c => c.name.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
-                          .map((mcp) => (
-                            <button
-                              key={mcp.id}
-                              type="button"
-                              onClick={() => {
-                                const before = message.slice(0, mentionMenu.startIndex)
-                                const after = message.slice(textareaRef.current?.selectionStart || 0)
-                                const newMessage = `${before}@${mcp.name}${after}`
-                                setMessage(newMessage)
-                                setSelectedMcpIds(prev => [...new Set([...prev, mcp.id])])
-                                setMentionMenu(prev => ({ ...prev, isOpen: false }))
-                                textareaRef.current?.focus()
-                              }}
-                              className="w-full flex items-center gap-3 p-2.5 hover:bg-zinc-50 rounded-xl transition-all group text-left"
-                            >
-                              <div className="w-8 h-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-500 group-hover:bg-white group-hover:shadow-sm border border-transparent group-hover:border-zinc-100 transition-all">
-                                <Database className="w-4 h-4" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="text-[13px] font-bold text-zinc-900 truncate">@{mcp.name}</div>
-                                <div className="text-[9px] font-black text-zinc-400 uppercase tracking-tighter">{mcp.type}</div>
-                              </div>
-                              <Plus className="w-3.5 h-3.5 text-zinc-300 group-hover:text-zinc-900" />
-                            </button>
-                          ))
-                        }
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <div className="px-2 py-1.5 text-[10px] font-black text-zinc-400 uppercase tracking-widest border-b border-zinc-50 mb-1">
-                      Email Blueprints
-                    </div>
-                    <div className="max-h-[240px] overflow-y-auto pr-1 space-y-0.5">
-                      {EMAIL_TEMPLATES
-                        .filter(t => t.label.toLowerCase().includes(mentionMenu.filter.toLowerCase()))
-                        .map((t) => (
-                          <button
-                            key={t.id}
-                            type="button"
-                            onClick={() => {
-                              const before = message.slice(0, mentionMenu.startIndex)
-                              const after = message.slice(textareaRef.current?.selectionStart || 0)
-                              const newMessage = `${before}@Email/${t.id}${after}`
-                              setMessage(newMessage)
-                              setMentionMenu(prev => ({ ...prev, isOpen: false }))
-                              textareaRef.current?.focus()
-                            }}
-                            className="w-full flex items-center gap-3 p-2.5 hover:bg-zinc-50 rounded-xl transition-all group text-left"
-                          >
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center text-blue-500 group-hover:bg-white group-hover:shadow-sm border border-transparent group-hover:border-blue-100 transition-all">
-                              <Mail className="w-4 h-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-bold text-zinc-900 truncate">{t.label}</div>
-                              <div className="text-[9px] font-black text-blue-400 uppercase tracking-tighter">System Template</div>
-                            </div>
-                            <Plus className="w-3.5 h-3.5 text-zinc-300 group-hover:text-zinc-900" />
-                          </button>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
+            />
           )}
 
           {/* SCANNER PROGRESS PANEL */}
@@ -1984,12 +1932,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                     </Badge>
                   )}
 
-                  {effectiveIsLoading && tasks.length === 0 && (
+                  {/* {effectiveIsLoading && tasks.length === 0 && (
                     <Badge>
-                      <Loader2 className="w-3 h-3 animate-spin mr-1" />
+                      <div className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />
                       Generating...
                     </Badge>
-                  )}
+                  )} */}
 
                 </div>
               </Button>
@@ -2007,14 +1955,14 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   <div className="rounded-b-md bg-white p-2 space-y-1 max-h-32 overflow-y-auto">
 
                     {/* Loading state */}
-                    {tasks.length === 0 && effectiveIsLoading && (
+                    {/* {tasks.length === 0 && effectiveIsLoading && (
                       <div className="flex items-center gap-3 p-2 rounded-md border bg-gray-50 border-gray-100">
                         <Loader2 className="w-4 h-4 animate-spin text-blue-400 flex-shrink-0" />
                         <span className="text-sm text-gray-500">
                           Analyzing your request and planning tasks...
                         </span>
                       </div>
-                    )}
+                    )} */}
 
                     {/* Tasks */}
                     {tasks.map((task, idx) => (
@@ -2119,28 +2067,19 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               localStorage.setItem(draftKey, newMessage)
 
               // @ Mention Logic
-              const lastChar = newMessage[cursorPosition - 1]
               const textBeforeCursor = newMessage.slice(0, cursorPosition)
               const atIndex = textBeforeCursor.lastIndexOf("@")
 
               if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
-                const filter = textBeforeCursor.slice(atIndex + 1)
-                if (!filter.includes(" ")) {
-                  // Calculate position for menu (simplified - usually needs a hidden div measurement)
-                  const rect = textareaRef.current?.getBoundingClientRect()
-                  if (rect) {
-                    setMentionMenu({
-                      isOpen: true,
-                      filter,
-                      position: { top: -160, left: 10 }, // Relative to absolute container
-                      startIndex: atIndex
-                    })
-                  }
+                const afterAt = textBeforeCursor.slice(atIndex + 1)
+                if (!afterAt.includes(" ")) {
+                  setMentionStartIndex(atIndex)
+                  setShowSkillSelector(true)
                 } else {
-                  setMentionMenu(prev => ({ ...prev, isOpen: false }))
+                  setShowSkillSelector(false)
                 }
               } else {
-                setMentionMenu(prev => ({ ...prev, isOpen: false }))
+                setShowSkillSelector(false)
               }
 
               if (newMessage.trim().length > 0) {
@@ -2161,14 +2100,29 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                 setIsActive(false)
               }
             }}
-            placeholder={isDiscussMode ? "Discuss anything..." : placeholder}
+            placeholder={
+              isDailyLimitReached
+                ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
+                : isDiscussMode ? "Discuss anything..." : placeholder
+            }
             className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground
              px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light
              disabled:cursor-not-allowed disabled:opacity-50"
             style={{ scrollbarWidth: "thin" }}
-            disabled={isLoading}
+            disabled={isLoading || isDailyLimitReached}
           />
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
+            {editingMessage && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onCancelEdit}
+                className="absolute top-1/2 left-7.5 transform -translate-y-1/2 h-7 px-3 text-xs text-black BackgroundStyleButton ml-2"
+              >
+                Cancel
+              </Button>
+            )}
             {isListening ? (
               <div className="flex-1 relative h-10 mr-2 p-[-14px]">
                 <canvas ref={canvasRef} className="absolute inset-0 w-full h-full bg-gray-100 rounded" />
@@ -2187,20 +2141,30 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   >
                     <Plus className="w-4 h-4" />
                   </Button>
-                  
+
                   {/* Plan Mode Switch - show only on landing/new chat (no projectId) */}
                   {!projectId && (
-                    <div className="flex items-center gap-2 ml-2">
-                      <Switch
-                        id="plan-mode"
-                        checked={planMode}
-                        onCheckedChange={setPlanMode}
-                        disabled={isLoading}
-                      />
-                      <Label htmlFor="plan-mode" className="text-xs text-muted-foreground cursor-pointer">
-                        PlanMode
-                      </Label>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex items-center gap-2 ml-2">
+                          <Switch
+                            id="plan-mode"
+                            checked={planMode}
+                            // onCheckedChange={setPlanMode}
+                            disabled={isLoading}
+                          />
+                          <Label
+                            htmlFor="plan-mode"
+                            className="text-xs text-muted-foreground cursor-pointer"
+                          >
+                            PlanMode
+                          </Label>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Plan mode is coming soon</p>
+                      </TooltipContent>
+                    </Tooltip>
                   )}
 
                   {showMenu && (
@@ -2229,6 +2193,16 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                           >
                             <Link1Icon className="h-4 w-4 mr-2" />
                             Attach images & files
+                          </div>
+                          <div
+                            onClick={() => {
+                              setShowGoogleDriveModal(true)
+                              setShowMenu(false)
+                            }}
+                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                          >
+                            <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="h-4 w-4 mr-2" alt="" />
+                            Add from Google Drive
                           </div>
                           <div
                             onClick={() => {
@@ -2328,9 +2302,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                             onMouseLeave={() => setShowModelHover(false)}
                           >
                             {isAutoSelected ? (
-                            <div className="w-6 h-6 mr-2 rounded BackgroundStyleButton to-purple-500 flex items-center justify-center">
-                              <Zap className="w-4 h-4 text-black" />
-                            </div>
+                              <div className="w-6 h-6 mr-2 rounded BackgroundStyleButton to-purple-500 flex items-center justify-center">
+                                <Zap className="w-4 h-4 text-black" />
+                              </div>
                             ) : (
                               <img src={currentModel.iconUrl || "/placeholder.svg"} className="h-4 w-4 mr-2" alt="" />
                             )}
@@ -2341,14 +2315,14 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
                             {showModelHover && (
                               <div
-                               className="absolute z-50 w-[260px]
+                                className="absolute z-50 w-[260px]
                                bg-white
                                focus:bg-accent focus:text-accent-foreground
                                items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
                                outline-hidden select-none border shadow-xs"
-                               style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
-                               onMouseEnter={() => setShowModelHover(true)}
-                               onMouseLeave={() => setShowModelHover(false)}
+                                style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
+                                onMouseEnter={() => setShowModelHover(true)}
+                                onMouseLeave={() => setShowModelHover(false)}
                               >
                                 {/* <div className="flex items-center justify-between px-2.5 py-1">
                                   <span className="text-xs font-semibold text-muted-foreground">AI Models</span>
@@ -2365,7 +2339,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                     Auto
                                   </button>
                                 </div> */}
-                                   <div className="max-h-[500px] overflow-y-auto space-y-0.5">
+                                <div className="max-h-[500px] overflow-y-auto space-y-0.5">
                                   {/* Auto Select Option - First in list */}
                                   <div
                                     onClick={(e) => {
@@ -2385,7 +2359,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                       <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">SMART</span>
                                     )}
                                   </div>
-                                  
+
                                   {MODEL_OPTIONS.slice(0, 23).map((model) => (
                                     <div
                                       key={model.id}
@@ -2677,36 +2651,68 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                 </Button>
               )}
               <Button
-                type={isListening ? "button" : effectiveIsLoading ? "button" : "submit"}
-                onClick={isListening ? stopVoiceInput : effectiveIsLoading ? handleStop : undefined}
-                size={isProvisioning ? "default" : "icon"}
+                type={isListening || effectiveIsLoading ? "button" : "submit"}
+                onClick={isListening ? stopVoiceInput : undefined}
+                size={isProvisioning || editingMessage ? "default" : "icon"}
                 className={cn(
-                  "h-7 p-1.5 rounded-md mr-1",
-                  isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-red-500 hover:bg-red-600" : "bg-black"),
-                  isProvisioning ? "w-auto px-4 gap-2" : "w-7"
-                )}
-                disabled={
+                  "h-7 p-1.5 rounded-md mr-1 transition-colors",
+                  isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-white hover:bg-black/5 border border-black/20"),
+                  (isProvisioning || editingMessage) ? "w-7" : "w-7",
                   (!effectiveIsLoading && !isListening &&
                     ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
-                      !isAuthenticated))
-                }
+                      !isAuthenticated)) ? "cursor-not-allowed" : "cursor-pointer"
+                )}
               >
-                {isProvisioning ? (
-                  <>
-                    <Loader className="w-4 h-4 animate-spin text-white" />
-                    <span className="text-[10px] text-white font-bold uppercase tracking-wider">Provisioning DB...</span>
-                  </>
-                ) : effectiveIsLoading ? (
-                  <StopCircle className="w-5 h-5 text-white" />
+                {effectiveIsLoading || isProvisioning ? (
+                  <div className="w-3 h-3 border-2 border-[#0099ff] border-t-[#0099ff]/30 rounded-full animate-spin" />
                 ) : isListening ? (
                   <Circle className="w-4 h-4 text-white" />
+                ) : editingMessage ? (
+                  <ArrowUp className="w-6 h-6 text-black" />
                 ) : (
-                  <ArrowUp className="w-5 h-5 text-white" />
+                  <ArrowUp className="w-6 h-6 text-black" />
                 )}
               </Button>
             </div>
           </div>
         </form >
+
+        {/* Upgrade Banner & Daily Limit Indicator */}
+        {balanceData?.subscriptionTier === 'none' && (
+          <div className="mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] bg-[#dbd9d9b2]/80 flex items-center justify-between">
+            <div className="flex flex-col gap-0.5 ml-2">
+              <p className="text-[13px] text-zinc-600 font-medium">
+                {isDailyLimitReached
+                  ? `Credits renew in ${formatTime(dailyResetTimer)}`
+                  : `You have`} {5 - (balanceData.dailyMessageCount || 0)} messages left for today.
+              </p>
+              {!isDailyLimitReached && (
+                <div className="flex items-center gap-1.5">
+                  {/* <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "w-3 h-1 rounded-full",
+                          i <= (balanceData.dailyMessageCount || 0) ? "bg-zinc-400" : "bg-zinc-200"
+                        )}
+                      />
+                    ))}
+                  </div> */}
+                </div>
+              )}
+            </div>
+            <Link href="/pricing">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-[12px] bg-[#0099ff]/20 text-[#0099ff] mr-1 flex items-center gap-1.5"
+              >
+                Upgrade Plan
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
       <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
         <DialogContent>
@@ -2798,6 +2804,22 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         onDisconnect={handleDisconnectDatabase}
         onConnect={handleSupabaseOAuthConnect}
         isAuthenticated={isAuthenticated}
+      />
+      <GoogleDriveModal
+        isOpen={showGoogleDriveModal}
+        onClose={() => setShowGoogleDriveModal(false)}
+        onSelect={(files: any[]) => {
+          const newFiles = files.map((f: any) => ({
+            id: f.id,
+            name: f.name,
+            type: f.mimeType,
+            size: f.sizeBytes || 0,
+            content: `[File imported from Google Drive: ${f.name}]`,
+            uploadStatus: "complete" as const,
+            preview: f.iconUrl || f.thumbnailUrl
+          }))
+          setUploadedFiles(prev => [...prev, ...newFiles])
+        }}
       />
       <Dialog open={showTokenModal} onOpenChange={setShowTokenModal}>
         <DialogContent className="sm:max-w-md">
@@ -2932,6 +2954,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           </div>
         </DialogContent>
       </Dialog>
+
+
     </div >
   )
 })

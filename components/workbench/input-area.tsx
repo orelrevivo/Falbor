@@ -8,9 +8,10 @@ import { IdeasPanel } from "@/components/models/ideas-panel"
 
 interface InputAreaProps {
   isAuthenticated: boolean
+  initialMessage?: string
 }
 
-export function InputArea({ isAuthenticated }: InputAreaProps) {
+export function InputArea({ isAuthenticated, initialMessage }: InputAreaProps) {
   const [showIdeas, setShowIdeas] = useState(false)
   const chatInputRef = useRef<ChatInputRef | null>(null)
 
@@ -27,6 +28,7 @@ export function InputArea({ isAuthenticated }: InputAreaProps) {
           isAuthenticated={isAuthenticated}
           connected={showIdeas}
           onCloseIdeas={() => setShowIdeas(false)}
+          initialMessage={initialMessage}
         />
       </div>
 

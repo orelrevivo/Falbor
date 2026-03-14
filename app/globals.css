@@ -120,8 +120,9 @@
     @apply border-border outline-ring/50;
   }
 
+  html,
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-hidden h-full;
   }
 }
 
@@ -162,4 +163,13 @@
 
 .BackgroundStyleButton {
   background-color: #e7e5df;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }

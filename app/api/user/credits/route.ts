@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/config/db'
-import { eq, sum, gt, desc, sql } from 'drizzle-orm'
-import { userCredits, giftEvents } from '@/config/schema'
+import { eq, sum, gt, desc, sql, count } from 'drizzle-orm'
+import { userCredits, giftEvents, billingHistory, messages, projects } from '@/config/schema'
 import { NextRequest, NextResponse } from 'next/server'
 
 export const dynamic = 'force-dynamic'
@@ -93,7 +93,7 @@ async function applyRegeneration(userId: string) {
   if (!record) {
     await db.insert(userCredits).values({
       userId,
-      balance: 500, // $5.00
+      balance: 150, // $1.50
       lastRegenTime: new Date(),
       lastClaimedGiftId: null,
       lastMonthlyClaim: null,
@@ -160,7 +160,7 @@ async function applyRegeneration(userId: string) {
     }
   } else {
     // Free user logic
-    const pendingMonthly = isMonthPassed(record.lastMonthlyClaim) ? 500 : 0
+    const pendingMonthly = isMonthPassed(record.lastMonthlyClaim) ? 150 : 0
     const lastClaim = record.lastMonthlyClaim || record.lastRegenTime
     const lastDate = new Date(lastClaim)
     const nextMonth = new Date(lastDate.getFullYear(), lastDate.getMonth() + 1, lastDate.getDate())
@@ -170,12 +170,34 @@ async function applyRegeneration(userId: string) {
     const timeLeftMs = nextMonth.getTime() - nowMs
     const secondsUntilNextRegen = Math.max(0, Math.ceil(timeLeftMs / 1000))
 
+    // Daily Message Limit Logic (5 messages then 9 hour wait)
+    let dailyMessageCount = record.dailyMessageCount || 0
+    let secondsUntilDailyReset = 0
+
+    if (dailyMessageCount >= 5 && record.lastDailyMessageReset) {
+      const resetTime = new Date(record.lastDailyMessageReset).getTime()
+      const nineHoursMs = 9 * 60 * 60 * 1000
+      const elapsed = nowMs - resetTime
+      
+      if (elapsed >= nineHoursMs) {
+        // Reset count
+        dailyMessageCount = 0
+        await db.update(userCredits)
+          .set({ dailyMessageCount: 0, lastDailyMessageReset: null })
+          .where(eq(userCredits.userId, userId))
+      } else {
+        secondsUntilDailyReset = Math.ceil((nineHoursMs - elapsed) / 1000)
+      }
+    }
+
     return {
       balance: record.balance,
       lastRegenTime: record.lastRegenTime,
       secondsUntilNextRegen,
-      record,
-      pendingMonthly
+      record: { ...record, dailyMessageCount }, // update local record with potentially reset count
+      pendingMonthly,
+      dailyMessageCount,
+      secondsUntilDailyReset
     }
   }
 }
@@ -219,6 +241,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const { searchParams } = new URL(request.url)
+    const type = searchParams.get('type')
+
+    if (type === 'billing') {
+      const history = await db.select()
+        .from(billingHistory)
+        .where(eq(billingHistory.userId, userId))
+        .orderBy(desc(billingHistory.createdAt))
+
+      return NextResponse.json(history)
+    }
+
+    if (type === 'usage') {
+      const usage = await db.select({
+        projectId: messages.projectId,
+        projectTitle: projects.title,
+        createdAt: projects.createdAt,
+        totalCost: sum(messages.cost),
+        messageCount: count(messages.id),
+      })
+        .from(messages)
+        .innerJoin(projects, eq(messages.projectId, projects.id))
+        .where(eq(projects.userId, userId))
+        .groupBy(messages.projectId, projects.title, projects.createdAt)
+        .orderBy(desc(projects.createdAt))
+
+      return NextResponse.json(usage)
+    }
+
     const data = await applyRegeneration(userId)
     const pendingGift = data.record.subscriptionTier === 'none' ? await calculatePendingGift(data.record) : 0
 
@@ -228,6 +279,8 @@ export async function GET(request: NextRequest) {
       pendingMonthly: data.pendingMonthly,
       secondsUntilNextRegen: data.secondsUntilNextRegen,
       subscriptionTier: data.record.subscriptionTier,
+      dailyMessageCount: (data as any).dailyMessageCount ?? 0,
+      secondsUntilDailyReset: (data as any).secondsUntilDailyReset ?? 0,
     })
   } catch (error: any) {
     console.error("[API/Credits] GET error:", error)
@@ -278,7 +331,7 @@ export async function POST(request: NextRequest) {
       if (!isMonthPassed(record.lastMonthlyClaim)) {
         return NextResponse.json({ error: 'Not yet available' }, { status: 400 })
       }
-      const newBal = record.balance + 500
+      const newBal = record.balance + 150
       await db.update(userCredits).set({
         balance: newBal,
         lastMonthlyClaim: new Date()
@@ -293,11 +346,21 @@ export async function POST(request: NextRequest) {
 
       let updates: any = { balance: record.balance + added };
       if (body.tier && record.subscriptionTier === 'none') {
-        updates.subscriptionTier = body.tier;
+        const tierLower = body.tier.toLowerCase();
+        updates.subscriptionTier = tierLower;
         const balanceMap: Record<string, number> = { standard: 2000, pro: 5000, teams: 10000 };
-        updates.balancePerMonth = balanceMap[body.tier] || 0;
+        updates.balancePerMonth = balanceMap[tierLower] || 0;
       }
       await db.update(userCredits).set(updates).where(eq(userCredits.userId, userId));
+
+      // Record in billing history
+      await db.insert(billingHistory).values({
+        userId,
+        amount: added,
+        planName: body.tier || "Credit Add-on",
+        status: "completed",
+      });
+
       return NextResponse.json({ success: true, newBalance: record.balance + added });
     }
 
@@ -305,7 +368,21 @@ export async function POST(request: NextRequest) {
     const cost = body?.cost || 5
     if (record.balance < cost) return NextResponse.json({ error: 'Insufficient balance' }, { status: 402 })
 
-    await db.update(userCredits).set({ balance: record.balance - cost }).where(eq(userCredits.userId, userId))
+    // Increment daily message count for free users
+    if (record.subscriptionTier === 'none') {
+      const dailyCount = (record.dailyMessageCount || 0) + 1
+      const isNowZero = dailyCount >= 5
+      await db.update(userCredits)
+        .set({ 
+          balance: record.balance - cost,
+          dailyMessageCount: dailyCount,
+          lastDailyMessageReset: isNowZero ? new Date() : record.lastDailyMessageReset
+        })
+        .where(eq(userCredits.userId, userId))
+    } else {
+      await db.update(userCredits).set({ balance: record.balance - cost }).where(eq(userCredits.userId, userId))
+    }
+    
     return NextResponse.json({ success: true, remainingBalance: record.balance - cost })
 
   } catch (error: any) {

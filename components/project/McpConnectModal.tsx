@@ -27,7 +27,11 @@ export function McpConnectModal({ open, onOpenChange, mcpType, mcpName, supports
     const [verifyProgress, setVerifyProgress] = useState(0)
 
     const handleOAuthConnect = () => {
-        window.location.href = `/api/mcp/auth/${mcpName.toLowerCase()}`
+        if (mcpName.toLowerCase() === 'github') {
+            window.location.href = `/api/mcp/auth/github`
+        } else {
+            window.location.href = `/api/mcp/auth/${mcpName.toLowerCase()}`
+        }
     }
 
     const handleConnect = async () => {

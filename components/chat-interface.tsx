@@ -1,14 +1,19 @@
 "use client"
 import type React from "react"
-import { useState, useEffect, useRef, useCallback, useMemo } from "react"
+import { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from "react"
 import { MessageList } from "@/components/message/message-list"
 import { ChatInput } from "@/components/layout/chat"
 import { CodePreview } from "@/components/workbench/code-preview"
-import type { Project, Message as SchemaMessage } from "@/config/schema"
+import type { Project, Message as SchemaMessage, UserProfile } from "@/config/schema"
 import { Navbar } from "./chat/navbar"
 import { useAuth } from "@clerk/nextjs"
 import { usePathname, useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
+import { createPortal } from "react-dom"
+import { cn } from "@/lib/utils"
+import { motion, AnimatePresence } from "framer-motion"
+import { truncateChatHistory } from "@/app/actions/chat"
+import { useWorkbench } from "@/lib/workbench-context"
 
 interface StrictMessage extends Omit<SchemaMessage, "role"> {
   role: "user" | "assistant"
@@ -17,6 +22,7 @@ interface ChatInterfaceProps {
   project: Project
   initialMessages: SchemaMessage[]
   initialUserMessage?: string
+  userProfile?: UserProfile | null
 }
 function isCodeGenerationRequest(content: string): boolean {
   const lowerContent = content.toLowerCase()
@@ -29,7 +35,7 @@ function isCodeGenerationRequest(content: string): boolean {
   return codeKeywords.some((keyword) => lowerContent.includes(keyword))
 }
 
-export function ChatInterface({ project, initialMessages, initialUserMessage }: ChatInterfaceProps) {
+export function ChatInterface({ project, initialMessages, initialUserMessage, userProfile }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<StrictMessage[]>([])
   const [windowWidth, setWindowWidth] = useState(0)
   const [isResizingState, setIsResizingState] = useState(false)
@@ -38,11 +44,12 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   const [extractedFiles, setExtractedFiles] = useState<Array<{ path: string; content: string; language: string }>>([])
   const [previewError, setPreviewError] = useState<{ message: string; file?: string; line?: string } | null>(null)
   const [isPreviewOpen, setIsPreviewOpen] = useState(false)
-  const [workbenchTab, setWorkbenchTab] = useState<string>("preview")
+  const { activeTab: workbenchTab, setActiveTab: setWorkbenchTab } = useWorkbench()
   const [hasProjectFiles, setHasProjectFiles] = useState(false)
   const [activeMessageId, setActiveMessageId] = useState<string | null>(project.activeMessageId || null)
   const [isSplitScreen, setIsSplitScreen] = useState(false)
   const [isTerminalOpen, setIsTerminalOpen] = useState(false)
+  const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null)
 
   // Guard refs — prevent duplicate triggers across re-renders
   const hasAutoTriggered = useRef(false)
@@ -50,16 +57,30 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const [leftWidth, setLeftWidth] = useState(500)
+  const [leftWidth, setLeftWidth] = useState(450)
   const isResizing = useRef(false)
   const startX = useRef(0)
   const startWidth = useRef(0)
   const abortControllerRef = useRef<AbortController | null>(null)
   const { getToken } = useAuth()
   const router = useRouter()
-
   const pathname = usePathname()
   const searchParams = useSearchParams()
+
+  // Sync server notification settings to localStorage on mount
+  useEffect(() => {
+    if (userProfile) {
+      localStorage.setItem("falbor_bell_notification", userProfile.notificationSoundEnabled.toString())
+      localStorage.setItem("falbor_bell_volume", userProfile.notificationVolume.toString())
+    }
+  }, [userProfile])
+
+  useLayoutEffect(() => {
+    document.documentElement.style.setProperty('--chat-width', `${leftWidth}px`);
+    return () => {
+      document.documentElement.style.removeProperty('--chat-width');
+    };
+  }, [leftWidth]);
 
   // ─── Stop auto-generate ───────────────────────────────────────────────────
   const handleStopAutoGenerate = useCallback(() => {
@@ -202,16 +223,34 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
             }
             if (data.done) {
               const finalId = data.messageId || `final-${Date.now()}`
-              // Use server content as fallback if streaming didn't capture anything
-              // (can happen for very fast greeting responses)
               const finalContent = accumulated.trim() ? accumulated : (data.content || accumulated)
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempId
-                    ? { ...m, id: finalId, content: finalContent, hasArtifact: data.hasArtifact ?? false }
-                    : m
-                )
-              )
+
+              setMessages((prev) => {
+                const updated = [...prev]
+                const assistantIdx = updated.findIndex((m) => m.id === tempId)
+                if (assistantIdx !== -1) {
+                  // 1. Update assistant message
+                  updated[assistantIdx] = {
+                    ...updated[assistantIdx],
+                    id: finalId,
+                    content: finalContent,
+                    hasArtifact: data.hasArtifact ?? false
+                  }
+
+                  // 2. Sync user message ID if server provided one (prevents duplication on edit/refresh)
+                  if (data.userMessageId) {
+                    // Look backwards from the assistant for the triggering user message
+                    for (let j = assistantIdx - 1; j >= 0; j--) {
+                      if (updated[j].role === "user") {
+                        updated[j] = { ...updated[j], id: data.userMessageId }
+                        break
+                      }
+                    }
+                  }
+                }
+                return updated
+              })
+
               if (data.hasArtifact) {
                 setHasProjectFiles(true)
                 setIsPreviewOpen(true)
@@ -231,6 +270,18 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
       setIsStreaming(false)
       setIsCodeGenerating(false)
       abortControllerRef.current = null
+      // Play notification sound if enabled
+      try {
+        const bellEnabled = localStorage.getItem("falbor_bell_notification")
+        if (bellEnabled === "true") {
+          const audio = new Audio('/bell.mp3')
+          const savedVolume = localStorage.getItem("falbor_bell_volume")
+          if (savedVolume !== null) {
+            audio.volume = parseInt(savedVolume, 10) / 100
+          }
+          audio.play().catch(() => { })
+        }
+      } catch { }
       // Remove ?prompt param silently — no re-render, no page refresh
       if (searchParams.has("prompt")) {
         const params = new URLSearchParams(searchParams.toString())
@@ -310,12 +361,15 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
   // ─── Handle new messages from ChatInput ──────────────────────────────────
   const handleNewMessage = useCallback((message: SchemaMessage | null) => {
     if (!message || !message.id || (message.role !== "user" && message.role !== "assistant")) return
-    
+
     const safeMessage: StrictMessage = {
       ...message,
       role: message.role as "user" | "assistant",
     }
     if (safeMessage.role === "user") {
+      // Mark auto-trigger as done — ChatInput is handling its own streaming,
+      // so the auto-trigger effect should NOT fire a second stream.
+      hasAutoTriggered.current = true
       const isCaptureUrl = safeMessage.content.toLowerCase().includes("capture from url:")
       if (isCaptureUrl || isCodeGenerationRequest(safeMessage.content)) {
         setIsPreviewOpen(true)
@@ -329,21 +383,31 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
     }
     setMessages((prev) => {
       const validPrev = prev.filter((m) => m && m.id)
-      if (safeMessage.id.startsWith("temp-")) {
-        const existingIndex = validPrev.findIndex((m) => m.id === safeMessage.id)
-        if (existingIndex !== -1) {
+
+      // 1. If the incoming message already exists by ID, just update it.
+      const existingIdx = validPrev.findIndex((m) => m.id === safeMessage.id)
+      if (existingIdx !== -1) {
+        const newMessages = [...validPrev]
+        newMessages[existingIdx] = safeMessage
+        return newMessages
+      }
+
+      // 2. ID Swapping: If it's a permanent ID but replaces a temp one (same role/content)
+      if (!safeMessage.id.startsWith("temp-")) {
+        const tempIdx = validPrev.findIndex(
+          (m) => m.id.startsWith("temp-") && m.role === safeMessage.role && m.content === safeMessage.content
+        )
+        if (tempIdx !== -1) {
           const newMessages = [...validPrev]
-          newMessages[existingIndex] = safeMessage
+          newMessages[tempIdx] = safeMessage
           return newMessages
         }
-        return [...validPrev, safeMessage]
       }
-      const filteredPrev = validPrev.filter((m) => !m.id.startsWith("temp-assistant-"))
-      const exists = filteredPrev.some((m) => m.id === safeMessage.id)
-      if (exists) {
-        return filteredPrev.map((m) => (m.id === safeMessage.id ? safeMessage : m))
-      }
-      return [...filteredPrev, safeMessage]
+
+      // 3. Fallback: Append or insert
+      // For temp-assistant-, we might want to clean up others if needed, 
+      // but usually the index check above handles it.
+      return [...validPrev, safeMessage]
     })
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 0)
   }, [project.id])
@@ -491,46 +555,118 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
     }))
   }, [messages])
 
+  // ─── Edit message handler ─────────────────────────────────────────────────
+  const handleEditMessage = useCallback(async (messageId: string, newContent: string) => {
+    setEditingMessage(null)
+
+    // Call server action to truncate DB history and update message
+    const res = await truncateChatHistory(messageId, newContent)
+    if (!res.success) {
+      console.error("[handleEditMessage] Failed to truncate history:", res.error)
+      // We still update local state to keep UI snappy, or we could show an error toast
+    }
+
+    // Find the message and update its content in local state
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId)
+      if (idx === -1) return prev
+      // Remove all messages after this one (including any AI responses)
+      const updated = prev.slice(0, idx)
+      updated.push({ ...prev[idx], content: newContent })
+      return updated
+    })
+    // Ensure we don't trigger auto-reply multiple times
+    hasAutoTriggered.current = true
+    // Re-generate AI response with the new content
+    handleAutoGenerate(newContent)
+  }, [handleAutoGenerate])
+
+  // ─── Regenerate AI response handler ───────────────────────────────────────
+  const handleRegenerateMessage = useCallback((messageId: string) => {
+    hasAutoTriggered.current = true
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === messageId)
+      if (idx === -1) return prev
+      // Find the user message that preceded this AI message
+      let userMsgIdx = idx - 1
+      while (userMsgIdx >= 0 && prev[userMsgIdx].role !== "user") {
+        userMsgIdx--
+      }
+      if (userMsgIdx < 0) return prev
+      // Remove the AI message
+      const updated = prev.slice(0, idx) // Efficiently removes AI message and any successors
+      // Re-generate
+      setTimeout(() => handleAutoGenerate(prev[userMsgIdx].content), 0)
+      return updated
+    })
+  }, [handleAutoGenerate])
+
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <Link href="/" className="text-xl font-sans font-light text-white absolute top-[-20px] left-2">
-        <img width={140} className="relative top-[-1px]" src="/logo_light.png" alt="Logo" />
-      </Link>
-      <Navbar
-        projectId={project.id}
-        handleDownload={handleDownload}
-        isTerminalOpen={isTerminalOpen}
-        onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
-        isSplitScreen={isSplitScreen}
-        onEnterSplit={() => setIsSplitScreen(true)}
-      />
+    <div className="h-full flex flex-col overflow-hidden">
+      {typeof document !== 'undefined' && document.getElementById('header-right-portal') ? (
+        createPortal(
+          <Navbar
+            projectId={project.id}
+            handleDownload={handleDownload}
+            isTerminalOpen={isTerminalOpen}
+            onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+            isSplitScreen={isSplitScreen}
+            onEnterSplit={() => setIsSplitScreen(true)}
+            projectName={project.title}
+          />,
+          document.getElementById('header-right-portal')!
+        )
+      ) : (
+        <Navbar
+          projectId={project.id}
+          handleDownload={handleDownload}
+          isTerminalOpen={isTerminalOpen}
+          onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+          isSplitScreen={isSplitScreen}
+          onEnterSplit={() => setIsSplitScreen(true)}
+          projectName={project.title}
+        />
+      )}
       <div className="flex-1 flex overflow-hidden">
         <div
-          className={`flex flex-col overflow-hidden ${isPreviewOpen ? "" : "flex-1"} ${isSplitScreen ? "hidden" : ""}`}
-          style={{ width: isPreviewOpen && !isSplitScreen ? leftWidth : "100%" }}
+          className={`flex flex-col overflow-hidden ${isPreviewOpen ? "" : "flex-1"} ${isSplitScreen || workbenchTab === "database" || workbenchTab === "settings" ? "hidden" : ""}`}
+          style={{
+            width: (isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && !isSplitScreen ? leftWidth : "100%"
+          }}
         >
           <div
             ref={messagesContainerRef}
-            className={`flex-1 overflow-y-auto overflow-x-hidden y-4 mt-14 ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
+            className={`flex-1 overflow-y-auto overflow-x-hidden py-4 ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
           >
             <div
-              className={`${isPreviewOpen ? (isNarrow ? "px-4" : "max-w-2xl mx-auto px-4") : "max-w-2xl mx-auto px-4"} ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
+              className={cn(
+                "px-4 w-full",
+                !isPreviewOpen && "max-w-3xl mx-auto",
+                isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"
+              )}
             >
               <MessageList
                 messages={formattedMessages}
                 projectId={project.id}
                 activeMessageId={activeMessageId}
                 onActivateVersion={handleActivateVersion}
-                onCodeExtracted={handleCodeExtracted}
+                onRegenerate={handleRegenerateMessage}
+                onEdit={(id, content) => setEditingMessage({ id, content })}
               />
             </div>
             <div ref={messagesEndRef} />
           </div>
           <div
-            className={`flex-none pb-4 ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
+            className={`flex-none pb-1 ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
           >
             <div
-              className={`${isPreviewOpen ? (isNarrow ? "px-4" : "max-w-2xl mx-auto px-4") : "max-w-2xl mx-auto px-4"} ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
+              className={cn(
+                "px-4 w-full",
+                !isPreviewOpen && "max-w-3xl mx-auto",
+                isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out",
+                "relative z-[70] transition-all duration-300",
+                editingMessage && "scale-[1.02]"
+              )}
             >
               <ChatInput
                 isAuthenticated={true}
@@ -546,6 +682,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
                 externalIsLoading={isStreaming}
                 onStop={handleStopAutoGenerate}
                 messages={messages}
+                editingMessage={editingMessage}
+                onCancelEdit={() => setEditingMessage(null)}
+                onSaveEdit={handleEditMessage}
               />
             </div>
           </div>
@@ -553,8 +692,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
         {/* {isPreviewOpen && !isSplitScreen && (
           <div onMouseDown={handleMouseDown} className="w-1 cursor-col-resize hover:bg-[#e7e7e7] py-4 mt-14" />
         )} */}
-        {isPreviewOpen && (
-          <div className="flex-1 px-2 py-4 mt-10 overflow-hidden">
+        {(isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && (
+          <div className={cn("flex-1 overflow-hidden", isSplitScreen ? "p-0" : "")}>
             <CodePreview
               projectId={project.id}
               isCodeGenerating={isCodeGenerating}
@@ -562,7 +701,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
               isOpen={isPreviewOpen}
               onClose={() => { if (!hasProjectFiles) setIsPreviewOpen(false) }}
               initialTab={workbenchTab}
-              onTabChange={setWorkbenchTab}
+              onTabChange={(tab) => setWorkbenchTab(tab as any)}
               filesOverride={extractedFiles.length > 0 ? extractedFiles : undefined}
               isSplitScreen={isSplitScreen}
               onEnterSplit={() => setIsSplitScreen(true)}
@@ -574,6 +713,18 @@ export function ChatInterface({ project, initialMessages, initialUserMessage }: 
           </div>
         )}
       </div>
+
+      <AnimatePresence>
+        {editingMessage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-white/60 backdrop-blur-sm z-[60] cursor-pointer"
+            onClick={() => setEditingMessage(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

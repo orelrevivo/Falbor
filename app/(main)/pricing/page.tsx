@@ -23,10 +23,10 @@ const tiers = [
   {
     name: "Free",
     price: 0,
-    balanceAmount: 500, // $5.00
+    balanceAmount: 150, // $1.50
     features: [
       "Public and private projects",
-      "$5.00 balance per month",
+      "$1.50 balance per month",
       "Falbor branding on websites",
       "Website hosting",
       "Unlimited databases",
@@ -136,8 +136,8 @@ function PricingContent() {
   if (isLoading) return <div>Loading...</div>
 
   return (
-    <div className="bg-white min-h-screen mt-10">
-      <div className="container mx-auto py-10">
+    <div className="bg-transparent">
+      <div className="container mx-auto py-10 px-4">
 
         {/* Title */}
         <h1 className="text-3xl font-bold mb-12 text-center text-black">
@@ -172,7 +172,7 @@ function PricingContent() {
 
                 <p className="text-3xl font-bold mb-4">
                   ${tier.price}
-                  <span className="text-sm font-normal"> /month</span>
+                  <span className="text-sm font-normal"> /One-time subscription</span>
                 </p>
 
                 {/* Features */}

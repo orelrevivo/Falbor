@@ -35,7 +35,10 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "../ui/badge"
 import { SignupChart } from "./signup-chart"
 import { AuthProviders } from "./auth-providers"
+import { McpConnectModal } from "@/components/project/McpConnectModal"
 import dynamic from "next/dynamic"
+
+import { useWorkbench } from "@/lib/workbench-context"
 
 const Editor = dynamic(
   () => import("@monaco-editor/react").then((mod) => mod.Editor),
@@ -133,7 +136,7 @@ interface ConnectionData {
 type TabType = "tables" | "users" | "sql" | "emails" | "storage" | "functions" | "credentials" | "auth_providers"
 
 export function DatabasePanel({ projectId, filesOverride, onSendMessage }: DatabasePanelProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("tables")
+  const { databaseTab: activeTab, setDatabaseTab: setActiveTab } = useWorkbench()
   const [users, setUsers] = useState<SupabaseUser[]>([])
   const [tables, setTables] = useState<TableInfo[]>([])
   const [sqlFiles, setSqlFiles] = useState<SQLFile[]>([])
@@ -141,6 +144,18 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
   const [authConfig, setAuthConfig] = useState<any>(null)
   const [authConfigError, setAuthConfigError] = useState<string | null>(null)
   const [selectedEmailTemplate, setSelectedEmailTemplate] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<any[]>([])
+  const [selectedFeedback, setSelectedFeedback] = useState<any | null>(null)
+  const [replyText, setReplyText] = useState("")
+  const [sendingReply, setSendingReply] = useState(false)
+  const [resendKey, setResendKey] = useState("")
+
+  useEffect(() => {
+    if (projectId) {
+      const savedKey = localStorage.getItem(`falbor_resend_api_key_${projectId}`)
+      if (savedKey) setResendKey(savedKey)
+    }
+  }, [projectId])
 
   // Listen for AI-driven email template edits from the chat
   useEffect(() => {
@@ -286,6 +301,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
       setTableRows([])
     }
   }, [selectedTable, fetchTableRows])
+
   // Fetch storage
   const fetchStorage = useCallback(async () => {
     if (!connectionStatus?.connected) return;
@@ -299,6 +315,19 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
       console.error("Storage fetch error:", err);
     }
   }, [projectId, connectionStatus?.connected]);
+
+  // Fetch feedback
+  const fetchFeedback = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/feedback`);
+      if (res.ok) {
+        const data = await res.json();
+        setFeedback(data || []);
+      }
+    } catch (err) {
+      console.error("Feedback fetch error:", err);
+    }
+  }, [projectId]);
 
   // Fetch functions
   const fetchFunctions = useCallback(async () => {
@@ -489,10 +518,11 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
         fetchStorage(),
         fetchFunctions(),
         fetchSqlFiles(),
-        fetchAuthConfig()
+        fetchAuthConfig(),
+        fetchFeedback()
       ]).finally(() => setLoading(false))
     }
-  }, [connectionStatus, fetchTables, fetchUsers, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig])
+  }, [connectionStatus?.connected, fetchTables, fetchUsers, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig, fetchFeedback])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -502,8 +532,9 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     else if (activeTab === "functions") await fetchFunctions()
     else if (activeTab === "sql") await fetchSqlFiles()
     else if (activeTab === "emails") await fetchAuthConfig()
+    else if (activeTab === "feedback") await fetchFeedback()
     setLoading(false)
-  }, [activeTab, fetchUsers, fetchTables, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig])
+  }, [activeTab, fetchUsers, fetchTables, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig, fetchFeedback])
 
   const filteredTables = tables.filter(t =>
     t.name.toLowerCase().includes(tableSearchTerm.toLowerCase())
@@ -603,6 +634,36 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     }
   }
 
+  const handleSendReply = async () => {
+    if (!selectedFeedback || !replyText) return
+    setSendingReply(true)
+    try {
+      if (resendKey) {
+        localStorage.setItem(`falbor_resend_api_key_${projectId}`, resendKey)
+      }
+
+      const res = await fetch(`/api/projects/${projectId}/feedback/${selectedFeedback.id}/reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reply: replyText, resendKey })
+      })
+      if (res.ok) {
+        const data = await res.json()
+        alert(data.emailSent ? "Reply sent successfully via Resend!" : `Reply saved to database, but failed to send email: ${data.emailError || "Unknown error"}. Please check your Resend API Key.`)
+        setReplyText("")
+        await fetchFeedback()
+        setSelectedFeedback(null)
+      } else {
+        const data = await res.json()
+        alert(data.error || "Failed to send reply")
+      }
+    } catch (err) {
+      alert("Error sending reply")
+    } finally {
+      setSendingReply(false)
+    }
+  }
+
   const copyToClipboard = async (text: string | undefined, field: string) => {
     if (!text) return;
     await navigator.clipboard.writeText(text);
@@ -611,1169 +672,1278 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
   };
 
   const filteredUsers = users.filter(u =>
-    u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (u.name?.toLowerCase().includes(searchTerm.toLowerCase()))
+    (u.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (u.name || "").toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const connection = connectionStatus?.connection
 
   return (
     <div className="flex h-full w-full bg-white font-sans text-gray-900 overflow-hidden">
-      {/* Navigation Sidebar */}
-      <div className="w-[240px] flex flex-col bg-white">
-        <nav className="flex-1 p-3 space-y-1">
-          {[
-            { id: "tables", icon: Database, label: "Database" },
-            { id: "users", icon: Users, label: "Users" },
-            // { id: "sql", icon: FileCode, label: "SQL Editor" },
-            { id: "emails", icon: Mail, label: "Emails" },
-            { id: "storage", icon: HardDrive, label: "Storage" },
-            { id: "functions", icon: Cpu, label: "Functions" },
-            { id: "auth_providers", icon: ShieldCheck, label: "Auth Providers" },
-            // { id: "credentials", icon: Shield, label: "API Keys" },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id as TabType)}
-              className={cn(
-                "w-full flex items-center gap-2.5 cursor-pointer h-8 px-3 py-2 rounded-md text-[13px] font-medium text-left",
-                activeTab === tab.id
-                  ? "bg-white text-gray-900 BackgroundStyleButton"
-                  : "text-gray-500 hover:text-gray-900 hover:bg-gray-100/50"
-              )}
-            >
-              <tab.icon className="w-4 h-4 shrink-0" />
-              {tab.label}
-            </button>
-          ))}
-        </nav>
-        {/* 
-        <div className="p-4 border-t border-gray-100/50 bg-white/50">
-          <div className="flex items-center gap-2">
-            <div className={cn("w-1.5 h-1.5 rounded-full shadow-sm", connectionStatus?.connected ? "bg-emerald-500 animate-pulse" : "bg-gray-300")} />
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest truncate">
-              {connectionStatus?.connected ? (connection?.projectName || "Connected") : "No Connection"}
-            </span>
-          </div>
-        </div> */}
-      </div>
-
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Dynamic Header */}
-        {/* <div className="flex items-center justify-between px-6 py-3 border-b border-gray-100 h-[57px] bg-white">
-          <h3 className="text-sm font-bold text-gray-800 capitalize select-none">{activeTab}</h3>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
-          </button>
-        </div> */}
-
-        <div className="flex-1 overflow-auto relative">
-          {activeTab === "tables" && (
-            <div className="p-6 space-y-4">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-md text-gray-900 font-bold">Database</h3>
-                  <p className="text-[12px] text-gray-500">Manage and browse your database tables.</p>
+        <div className="flex-1 overflow-auto relative py-8 px-6">
+          <div className="max-w-5xl mx-auto w-full">
+            {activeTab === "tables" && (
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-md text-gray-900 font-bold">Database</h3>
+                    <p className="text-[12px] text-gray-500">Manage and browse your database tables.</p>
+                  </div>
+                  <div className="relative">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Filter tables..."
+                      value={tableSearchTerm}
+                      onChange={(e) => setTableSearchTerm(e.target.value)}
+                      className="pl-9 pr-4 py-1.5 bg-white h-7 border rounded-md text-xs focus:bg-white focus:border-blue-200 outline-none transition-all w-32 md:w-48"
+                    />
+                  </div>
                 </div>
-                <div className="relative">
-                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Filter tables..."
-                    value={tableSearchTerm}
-                    onChange={(e) => setTableSearchTerm(e.target.value)}
-                    className="pl-9 pr-4 py-1.5 bg-white h-7 border rounded-md text-xs focus:bg-white focus:border-blue-200 outline-none transition-all w-32 md:w-48"
-                  />
+
+                {filteredTables.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
+                    <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                      <Table2 className="w-8 h-8 text-gray-200" />
+                    </div>
+                    <h4 className="text-sm font-bold text-gray-900">{tableSearchTerm ? "No matching tables" : "No tables found"}</h4>
+                    <p className="text-xs text-gray-500 mt-1 max-w-[240px]">
+                      {tableSearchTerm ? "Try a different search term." : "AI will automatically create tables based on your requirements."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3">
+                    {filteredTables.map((table) => (
+                      <div
+                        key={table.name}
+                        onClick={() => setSelectedTable(selectedTable?.name === table.name ? null : table)}
+                        className={cn(
+                          "group bg-white border rounded-md p-4 cursor-pointer hover:border-blue-200 transition-all",
+                          selectedTable?.name === table.name ? "border-blue-200 shadow-sm" : "border-gray-100"
+                        )}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="p-2 rounded-xl bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                              <Table2 className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-sm font-bold">{table.name}</span>
+                              <span className="text-[10px] ml-2 text-gray-400 font-medium uppercase tracking-tighter">{table.columns.length} columns</span>
+                            </div>
+                          </div>
+                          <ChevronRight className={cn("w-4 h-4 text-gray-300 transition-transform duration-200", selectedTable?.name === table.name && "rotate-90 text-blue-600")} />
+                        </div>
+
+                        {selectedTable?.name === table.name && (
+                          <div className="mt-4 pt-4 border-t border-gray-50 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <div className="mb-4">
+                              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Definition</h4>
+                              <table className="w-full text-left text-xs">
+                                <thead>
+                                  <tr className="text-gray-400 font-bold uppercase tracking-tighter">
+                                    <th className="pb-2">Name</th>
+                                    <th className="pb-2">Type</th>
+                                    <th className="pb-2">Default</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="font-mono text-[11px]">
+                                  {table.columns.map((col) => (
+                                    <tr key={col.name} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                                      <td className="py-2 text-gray-900">{col.name} {col.nullable ? "" : "*"}</td>
+                                      <td className="py-2 text-blue-600">{col.type}</td>
+                                      <td className="py-2 text-gray-400">{col.default || "-"}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+
+                            <div className="mt-6">
+                              <div className="flex items-center justify-between mb-2">
+                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Data Browsing</h4>
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); fetchTableRows(table.name); }}
+                                  className="text-[10px] text-blue-600 hover:font-bold transition-all"
+                                >
+                                  Refresh Data
+                                </button>
+                              </div>
+                              <div className="overflow-x-auto border border-gray-100 rounded-xl overflow-hidden">
+                                {loadingTableData ? (
+                                  <div className="flex items-center justify-center py-8 bg-gray-50/30">
+                                    <Loader className="animate-spin w-4 h-4 text-blue-500" />
+                                  </div>
+                                ) : tableRows.length === 0 ? (
+                                  <div className="py-8 text-center text-gray-400 text-[10px] bg-gray-50/30 font-medium">No data in this table</div>
+                                ) : (
+                                  <table className="w-full text-left text-[10px] min-w-max bg-white">
+                                    <thead>
+                                      <tr className="text-gray-400 font-bold uppercase tracking-tight border-b border-gray-100 bg-gray-50/50">
+                                        {Object.keys(tableRows[0]).map(k => (
+                                          <th key={k} className="px-3 py-2 border-r border-gray-100 last:border-0">{k}</th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody className="font-mono">
+                                      {tableRows.map((row, i) => (
+                                        <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-blue-50/30 transition-colors">
+                                          {Object.values(row).map((v: any, j) => (
+                                            <td key={j} className="px-3 py-2 border-r border-gray-50 last:border-0 text-gray-600 truncate max-w-[150px]">
+                                              {v === null ? <span className="text-gray-300 italic">null</span> : String(v)}
+                                            </td>
+                                          ))}
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "auth_providers" && (
+              <div className="h-full bg-white">
+                <AuthProviders projectId={projectId} onSendMessage={onSendMessage} />
+              </div>
+            )}
+
+            {activeTab === "sql" && (
+              <div className="flex h-full overflow-hidden">
+                {/* SQL Files Sidebar */}
+                <div className="w-[240px] border-r border-gray-100 flex flex-col bg-white">
+                  <div className="p-4 border-b border-gray-50">
+                    <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Migration History</h4>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {sqlFiles.length === 0 ? (
+                      <div className="p-8 text-center text-gray-400 text-xs">No migrations pushed yet</div>
+                    ) : (
+                      sqlFiles.map(file => (
+                        <button
+                          key={file.id}
+                          onClick={() => setSelectedSqlFile(file)}
+                          className={cn(
+                            "w-full text-left px-4 py-3 border-b border-gray-50 transition-colors",
+                            selectedSqlFile?.id === file.id ? "bg-blue-50/50" : "hover:bg-gray-50/50"
+                          )}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            <FileCode className="w-3.5 h-3.5 text-blue-500" />
+                            <span className="text-xs font-bold text-gray-900 truncate">{file.fileName}</span>
+                          </div>
+                          <div className="text-[10px] text-gray-400">
+                            {new Date(file.createdAt).toLocaleString()}
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* SQL Content Viewer */}
+                <div className="flex-1 flex flex-col bg-gray-50/30 overflow-hidden">
+                  {selectedSqlFile ? (
+                    <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-2 duration-300">
+                      <div className="px-6 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
+                        <span className="text-xs font-mono text-gray-500">{selectedSqlFile.fileName}</span>
+                        <span className="text-[10px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-500 uppercase font-bold tracking-tight">Read-only</span>
+                      </div>
+                      <div className="flex-1 p-6 overflow-auto">
+                        <pre className="p-4 bg-gray-900 text-gray-100 rounded-2xl text-[11px] font-mono overflow-x-auto shadow-inner whitespace-pre-wrap leading-relaxed">
+                          {selectedSqlFile.content}
+                        </pre>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
+                      <div className="w-16 h-16 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-4 shadow-sm">
+                        <Terminal className="w-8 h-8 text-gray-200" />
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">Select a migration</h4>
+                      <p className="text-xs text-gray-400 mt-1 max-w-[240px]">View the SQL code transmitted to your database in previous pushes.</p>
+                    </div>
+                  )}
                 </div>
               </div>
+            )}
 
-              {filteredTables.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                    <Table2 className="w-8 h-8 text-gray-200" />
-                  </div>
-                  <h4 className="text-sm font-bold text-gray-900">{tableSearchTerm ? "No matching tables" : "No tables found"}</h4>
-                  <p className="text-xs text-gray-500 mt-1 max-w-[240px]">
-                    {tableSearchTerm ? "Try a different search term." : "AI will automatically create tables based on your requirements."}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid gap-3">
-                  {filteredTables.map((table) => (
-                    <div
-                      key={table.name}
-                      onClick={() => setSelectedTable(selectedTable?.name === table.name ? null : table)}
-                      className={cn(
-                        "group bg-white border rounded-md p-4 cursor-pointer hover:border-blue-200 transition-all",
-                        selectedTable?.name === table.name ? "border-blue-200 shadow-sm" : "border-gray-100"
-                      )}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-xl bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                            <Table2 className="w-4 h-4" />
-                          </div>
-                          <div>
-                            <span className="text-sm font-bold">{table.name}</span>
-                            <span className="text-[10px] ml-2 text-gray-400 font-medium uppercase tracking-tighter">{table.columns.length} columns</span>
-                          </div>
+            {activeTab === "users" && (
+              <div className="flex h-full overflow-hidden">
+                {/* Left side: Scrollable user list */}
+                <div className={cn("flex flex-col border-r border-gray-100 transition-all duration-200", selectedUser ? "w-1/2" : "w-full")}>
+                  <div className="p-6">
+                    {/* Signup Analytics Chart */}
+                    <div className="mb-6">
+                      <SignupChart projectId={projectId} />
+                    </div>
+
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="text-md text-gray-900">User Management</h3>
+                        <p className="text-[12px] text-gray-500">Manage authenticated users and permissions.</p>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <Button
+                          onClick={() => setShowAddUserModal(true)}
+                          className="bg-white hover:bg-white hover:border-blue-200 text-gray-900  border rounded-md gap-2 shadow-none h-7"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add User
+                        </Button>
+                        <div className="relative">
+                          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            placeholder="Search..."
+                            className="pl-9 pr-4 py-1.5 bg-white h-7 border rounded-md text-xs focus:bg-white focus:border-blue-200 outline-none transition-all w-32 md:w-48"
+                          />
                         </div>
-                        <ChevronRight className={cn("w-4 h-4 text-gray-300 transition-transform duration-200", selectedTable?.name === table.name && "rotate-90 text-blue-600")} />
+                      </div>
+                    </div>
+
+                    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="bg-white border-b border-gray-100 text-gray-900 text-[14px]">
+                              <th className="px-4 py-3 font-normal">User</th>
+                              {!selectedUser && <th className="px-4 py-3 font-normal">ID</th>}
+                              <th className="px-4 py-3 font-normal">Created</th>
+                              <th className="px-4 py-3 text-right font-normal">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredUsers.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-4 py-20 text-center text-gray-400">
+                                  <Users className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                                  No users found
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredUsers.map((user) => (
+                                <tr
+                                  key={user.id}
+                                  className={cn(
+                                    "border-b border-gray-50 last:border-0 hover:bg-gray-50/30 cursor-pointer",
+                                    selectedUser?.id === user.id ? "bg-blue-50/50 hover:bg-blue-50/50" : ""
+                                  )}
+                                  onClick={() => setSelectedUser(user)}
+                                >
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center gap-3 group/user">
+                                      <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                                        {(user.email || user.name || "?")[0].toUpperCase()}
+                                      </div>
+                                      <div className="flex flex-col">
+                                        <span className="font-bold text-gray-900 truncate max-w-[120px]">{user.email || "No Email"}</span>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-[10px] text-gray-400">{user.role}</span>
+
+                                          {user.confirmed && <span className="w-1 h-1 rounded-full bg-emerald-500" title="Email Confirmed" />}
+                                          {user.banned && <span className="text-[9px] BackgroundStyleButton rounded-sm text-black font-bold px-2 py-0.5">BANNED</span>}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+                                  {!selectedUser && <td className="px-4 py-3 font-mono text-gray-400 text-[10px] truncate max-w-[100px]">{user.id}</td>}
+                                  <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                                    <div>{new Date(user.createdAt).toLocaleDateString()}</div>
+                                  </td>
+                                  <td className="px-4 py-3 text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => { e.stopPropagation(); handleDeleteUser(user.id); }}
+                                        className="h-8 w-8 p-0 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
+                                        title="Delete user"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right side: Detailed user view */}
+                {selectedUser && (
+                  <div className="w-1/2 flex flex-col bg-white overflow-y-auto">
+                    <div className="p-6 space-y-6">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-gray-900">User Details</h3>
+                        <button onClick={() => setSelectedUser(null)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+                          <X className="w-4 h-4 text-gray-400" />
+                        </button>
                       </div>
 
-                      {selectedTable?.name === table.name && (
-                        <div className="mt-4 pt-4 border-t border-gray-50 animate-in fade-in slide-in-from-top-2 duration-300">
-                          <div className="mb-4">
-                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Definition</h4>
+                      <div className="flex items-center gap-4">
+                        <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold">
+                          {(selectedUser.email || selectedUser.name || "?")[0].toUpperCase()}
+                        </div>
+                        <div className="flex-1 overflow-hidden">
+                          <h4 className="font-bold text-gray-900 text-lg truncate">{selectedUser.email || "No Email"}</h4>
+                          <div className="flex items-center gap-2 mt-1">
+                            <code className="text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded">{selectedUser.id}</code>
+                            <button onClick={() => copyToClipboard(selectedUser.id, 'id')} className="text-gray-400 hover:text-blue-600">
+                              {copiedField === 'id' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="">
+                        {[
+                          { label: "Role", value: selectedUser.role },
+                          { label: "Provider", value: selectedUser.provider || "email" },
+                          { label: "Confirmed", value: selectedUser.confirmed ? "Yes" : "No", color: selectedUser.confirmed ? "text-gray-900" : "text-gray-900" },
+                          { label: "Banned", value: selectedUser.banned ? "Yes" : "No", color: selectedUser.banned ? "text-gray-900" : "text-gray-900" },
+                          { label: "Created At", value: new Date(selectedUser.createdAt).toLocaleDateString() },
+                          { label: "Last Sign In", value: selectedUser.lastSignIn ? new Date(selectedUser.lastSignIn).toLocaleDateString() : "Never" },
+                        ].map((item, i) => (
+                          <div
+                            key={i}
+                            className="flex items-center justify-between px-1 py-2 bg-white border-b border-gray-10"
+                          >
+                            <span className="text-[12px] text-gray-900">
+                              {item.label}
+                            </span>
+                            <span
+                              className={cn(
+                                "text-xs font-semibold",
+                                item.color || "text-gray-700"
+                              )}
+                            >
+                              {item.value}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Login Methods Section */}
+                      <div className="mt-6 pt-6 border-t border-gray-100">
+                        <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">
+                          Login Methods
+                        </h4>
+                        <div className="grid grid-cols-2 gap-2">
+                          {[
+                            { id: "email", label: "Email/Password", active: selectedUser?.provider?.includes("email") || selectedUser?.provider === "email" },
+                            { id: "phone", label: "Phone", active: selectedUser?.provider?.includes("phone") },
+                            { id: "google", label: "Google", active: selectedUser?.provider?.includes("google") },
+                            { id: "apple", label: "Apple", active: selectedUser?.provider?.includes("apple") },
+                          ].map(method => (
+                            <div
+                              key={method.id}
+                              className={`p-3 rounded-lg border ${method.active
+                                ? "border-green-200 bg-green-50"
+                                : "border-gray-200 bg-gray-50"
+                                }`}
+                            >
+                              <div className="text-xs font-medium">{method.label}</div>
+                              <div className={`text-[10px] mt-1 ${method.active ? "text-green-600" : "text-gray-400"
+                                }`}>
+                                {method.active ? "Active" : "Inactive"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
+                        <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Administrative Actions</h5>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            onClick={() => handleBanUser(selectedUser.id, !!selectedUser.banned)}
+                            className={cn("gap-2 h-9 text-xs rounded-xl flex-1", selectedUser.banned ? "hover:bg-white text-gray-900 border border-[#0099ff] bg-white h-8 rounded-md" : "hover:border-blue-200 hover:bg-white text-gray-900 border bg-white h-8 rounded-md")}
+                          >
+                            {selectedUser.banned ? <CheckCircle className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
+                            {selectedUser.banned ? "Unban User" : "Ban User"}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleResetPassword(selectedUser.email)}
+                            className="gap-2 h-9 text-xs flex-1 text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Reset
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => handleDeleteUser(selectedUser.id)}
+                            className="gap-2 h-9 text-xs w-full text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            Permanently Delete User
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "credentials" && (
+              <div className="p-6 space-y-6">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
+                      <Shield className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-emerald-900">Secure Database Link</h4>
+                      <p className="text-xs text-emerald-700">Project: {connection?.projectName || "Automated Falbor Database"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {[
+                    { label: "Project URL", value: connection?.supabaseUrl, key: "url" },
+                    { label: "Anon Public Key", value: connection?.anonKey, key: "anon" },
+                    { label: "Service Role (Admin)", value: connection?.serviceRoleKey, key: "service" },
+                  ].map((cred) => (
+                    <div key={cred.key} className="p-4 border border-gray-100 rounded-2xl bg-white shadow-sm transition-all hover:bg-gray-50 group">
+                      <div className="flex items-center justify-between mb-1.5">
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cred.label}</span>
+                        <button
+                          onClick={() => copyToClipboard(cred.value, cred.key)}
+                          className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-all"
+                        >
+                          {copiedField === cred.key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                      <div className="font-mono text-xs text-gray-600 truncate">
+                        {cred.value || "Not available"}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div className="flex items-start gap-3">
+                    <Info className="w-4 h-4 text-gray-400 mt-0.5" />
+                    <p className="text-[11px] text-gray-500 leading-relaxed">
+                      These credentials are automatically injected into your project environment. Use the **Service Role** key only in server-side logic for administrative control.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "emails" && (
+              <div className="flex flex-col h-full overflow-hidden bg-white">
+                {!selectedEmailTemplate ? (
+                  /* List View */
+                  <div className="p-6 overflow-y-auto">
+                    <div className="mb-6 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-md font-bold text-gray-900">Email Templates</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">Customize authentication email notifications</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-2.5">
+                      {[
+                        { id: "confirmation", label: "Confirm Sign Up", desc: "Ask users to confirm their email address after signing up" },
+                        { id: "invite", label: "Invite User", desc: "Invite users who don't yet have an account to sign up" },
+                        { id: "magic_link", label: "Magic Link", desc: "Allow users to sign in via a one-time link sent to their email" },
+                        { id: "email_change", label: "Change Email", desc: "Ask users to verify their new email address after changing it" },
+                        { id: "recovery", label: "Reset Password", desc: "Allow users to reset their password if they forget it" },
+                        { id: "reauthentication", label: "Reauthentication", desc: "Ask users to re-authenticate before performing a sensitive action" },
+                      ].map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setSelectedEmailTemplate(t.id)}
+                          className="p-4 rounded-xl border border-gray-100 bg-white cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left flex items-center justify-between group"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="p-2.5 rounded-lg bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                              <Mail className="w-5 h-5" />
+                            </div>
+                            <div>
+                              <div className="text-sm font-bold text-gray-900 mb-0.5">{t.label}</div>
+                              <div className="text-xs text-gray-500 leading-relaxed max-w-sm">{t.desc}</div>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
+                        </button>
+                      ))}
+
+                      <div className="mt-8 pt-6 border-t border-gray-100">
+                        <div className="bg-blue-50/50 rounded-2xl p-6">
+                          <div className="flex items-start gap-3 mb-4">
+                            <Info className="w-5 h-5 text-gray-900 mt-0.5" />
+                            <div>
+                              <h4 className="text-sm font-bold text-gray-900">Reset System Templates</h4>
+                              <p className="text-xs text-gray-900 mt-1">
+                                You can also <button onClick={handleResetTemplates} className="cursor-pointer text-blue-600 font-bold hover:underline">reset all templates to their defaults</button>.
+                                This will insert default headers and messages into all the templates.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Editor View */
+                  <div className="flex flex-col h-full bg-white">
+                    <div className="flex items-center justify-between bg-white sticky top-0 z-20 px-6 py-4 border-b border-gray-100">
+                      <div className="flex items-center gap-4">
+                        <button
+                          onClick={() => setSelectedEmailTemplate(null)}
+                          className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-900 group"
+                        >
+                          <ChevronRight className="w-5 h-5 rotate-180 group-hover:-translate-x-0.5 transition-transform" />
+                        </button>
+                        <div>
+                          <h3 className="text-md font-bold text-gray-900">
+                            {(() => {
+                              const t = [
+                                { id: "confirmation", label: "Confirm Sign Up" },
+                                { id: "invite", label: "Invite User" },
+                                { id: "magic_link", label: "Magic Link" },
+                                { id: "email_change", label: "Change Email" },
+                                { id: "recovery", label: "Reset Password" },
+                                { id: "reauthentication", label: "Reauthentication" },
+                              ].find(x => x.id === selectedEmailTemplate);
+                              return t?.label || "Email Template";
+                            })()}
+                          </h3>
+                          <p className="text-xs text-gray-500 mt-0.5">Template Editor</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="flex bg-gray-100 p-0.5 rounded-lg">
+                          <button
+                            onClick={() => setViewMode("code")}
+                            className={cn(
+                              "px-3 py-1 text-xs font-bold rounded-md transition-all",
+                              viewMode === "code" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                            )}
+                          >
+                            Code
+                          </button>
+                          <button
+                            onClick={() => setViewMode("preview")}
+                            className={cn(
+                              "px-3 py-1 text-xs font-bold rounded-md transition-all",
+                              viewMode === "preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-900"
+                            )}
+                          >
+                            Display
+                          </button>
+                        </div>
+                        <Button
+                          onClick={handleSaveAuthConfig}
+                          disabled={loading}
+                          className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-8 px-4 gap-2 text-xs font-bold shadow-sm"
+                        >
+                          {loading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                          Save Changes
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto">
+                      {authConfig && authConfigError === null ? (
+                        <div className="p-6 space-y-6 max-w-5xl mx-auto">
+                          {/* Subject Line */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between px-1">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Subject Line</label>
+                              <span className="text-[10px] text-blue-500 font-bold">Synchronized with Supabase</span>
+                            </div>
+                            <input
+                              type="text"
+                              value={authConfig[`mailer_templates_${selectedEmailTemplate}_subject`] || ""}
+                              onChange={(e) => setAuthConfig({ ...authConfig, [`mailer_templates_${selectedEmailTemplate}_subject`]: e.target.value })}
+                              className="w-full px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm focus:border-blue-200 outline-none transition-all shadow-sm font-medium text-gray-900 hover:border-gray-200"
+                              placeholder="Enter email subject..."
+                            />
+                          </div>
+
+                          {/* Editor Section */}
+                          {viewMode === "code" ? (
+                            <div className="space-y-4">
+                              <div className="flex items-center justify-between px-1">
+                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">HTML Content</label>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-tighter ring-1 ring-blue-100">Editor Pane Mode</span>
+                                </div>
+                              </div>
+                              <div className="rounded-2xl border border-gray-100 overflow-hidden shadow-sm bg-white h-[600px] relative">
+                                <Editor
+                                  height="100%"
+                                  language="html"
+                                  value={authConfig[`mailer_templates_${selectedEmailTemplate}_content`] || ""}
+                                  onChange={(value) => setAuthConfig({ ...authConfig, [`mailer_templates_${selectedEmailTemplate}_content`]: value || "" })}
+                                  options={{
+                                    minimap: { enabled: false },
+                                    fontSize: 13,
+                                    fontFamily: "'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace",
+                                    lineNumbers: "on",
+                                    roundedSelection: true,
+                                    scrollBeyondLastLine: false,
+                                    readOnly: false,
+                                    theme: "vs",
+                                    padding: { top: 20 },
+                                    automaticLayout: true,
+                                  }}
+                                />
+                              </div>
+
+                              {/* Variable Buttons */}
+                              <div className="space-y-3">
+                                <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Available Variables</h4>
+                                <div className="flex flex-wrap gap-2">
+                                  {[
+                                    ".ConfirmationURL",
+                                    ".Token",
+                                    ".TokenHash",
+                                    ".SiteURL",
+                                    ".Email",
+                                    ".Data",
+                                    ".RedirectTo"
+                                  ].map((variable) => (
+                                    <button
+                                      key={variable}
+                                      onClick={() => {
+                                        const currentContent = authConfig[`mailer_templates_${selectedEmailTemplate}_content`] || ""
+                                        setAuthConfig({
+                                          ...authConfig,
+                                          [`mailer_templates_${selectedEmailTemplate}_content`]: currentContent + ` {{ ${variable} }}`
+                                        })
+                                      }}
+                                      className="px-3 py-1.5 bg-gray-50 hover:bg-white hover:border-blue-200 border border-gray-100 rounded-lg text-[11px] font-mono text-gray-600 transition-all shadow-sm active:scale-95"
+                                    >
+                                      {"{{ " + variable + " }}"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2 h-[750px] flex flex-col">
+                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Live Display Preview</label>
+                              <div className="flex-1 rounded-2xl border border-gray-100 overflow-hidden shadow-sm bg-white">
+                                <iframe
+                                  title="Email Preview"
+                                  srcDoc={authConfig[`mailer_templates_${selectedEmailTemplate}_content`] || ""}
+                                  className="w-full h-full border-none bg-white"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : authConfigError ? (
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                          <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
+                            <AlertTriangle className="w-8 h-8 text-red-400" />
+                          </div>
+                          <h4 className="text-sm font-bold text-gray-900 mb-2">Failed to Load Template</h4>
+                          <p className="text-xs text-gray-500 max-w-[280px] mb-4">{authConfigError}</p>
+                          <Button onClick={fetchAuthConfig} variant="outline" className="gap-2 h-9 text-xs rounded-xl">
+                            <RefreshCw className="w-4 h-4" />
+                            Retry Connection
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
+                          <div className="w-10 h-10 rounded-full border-2 border-blue-100 border-t-blue-500 animate-spin mb-4" />
+                          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Syncing with server...</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "storage" && (
+              <div className="flex h-full overflow-hidden">
+                {/* Left: Buckets or Files List */}
+                <div className="w-1/2 border-r border-gray-100 flex flex-col">
+                  <div className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-md font-bold text-gray-900">
+                          {selectedBucket ? selectedBucket : "Storage Buckets"}
+                        </h3>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {selectedBucket ? "Files in this bucket" : "Manage file storage"}
+                        </p>
+                      </div>
+                      {selectedBucket && (
+                        <Button
+                          onClick={() => setSelectedBucket(null)}
+                          variant="outline"
+                          className="h-8 text-xs border bg-white hover:bg-white text-black hover:border-blue-200"
+                        >
+                          ← Back to Buckets
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {!selectedBucket ? (
+                      // Show buckets list
+                      storage.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                          <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+                            <HardDrive className="w-8 h-8 text-blue-400" />
+                          </div>
+                          <h4 className="text-sm font-bold text-gray-900">No Storage Buckets</h4>
+                          <p className="text-xs text-gray-500 mt-1 max-w-[280px]">
+                            Create a bucket in your Supabase dashboard to get started.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {storage.map((bucket: any) => (
+                            <button
+                              key={bucket.id}
+                              onClick={() => setSelectedBucket(bucket.name)}
+                              className="w-full p-4 bg-white border border-gray-100 rounded-md cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left group"
+                            >
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100">
+                                  <HardDrive className="w-5 h-5" />
+                                </div>
+                                <div className="flex-1">
+                                  <h4 className="font-bold text-gray-900">{bucket.name}</h4>
+                                  <p className="text-xs text-gray-500">
+                                    {bucket.public ? "Public" : "Private"} bucket
+                                  </p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600" />
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    ) : (
+                      // Show files in selected bucket
+                      loadingFiles ? (
+                        <div className="flex items-center justify-center h-full">
+                          <Loader className="w-6 h-6 animate-spin text-blue-500" />
+                        </div>
+                      ) : bucketFiles.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center">
+                          <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                            <FileCode className="w-8 h-8 text-gray-400" />
+                          </div>
+                          <h4 className="text-sm font-bold text-gray-900">No Files</h4>
+                          <p className="text-xs text-gray-500 mt-1 max-w-[280px]">
+                            This bucket is empty. Upload files through your application.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {bucketFiles.map((file: any) => (
+                            <button
+                              key={file.id}
+                              onClick={() => setSelectedFile(file)}
+                              className={cn(
+                                "w-full p-3 bg-white border rounded-md cursor-pointer hover:border-blue-200 transition-all text-left",
+                                selectedFile?.id === file.id ? "border-blue-500 bg-blue-50" : "border-gray-100"
+                              )}
+                            >
+                              <div className="flex items-center gap-3">
+                                <FileCode className="w-4 h-4 text-gray-400" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-sm text-gray-900 truncate">{file.name}</p>
+                                  <p className="text-xs text-gray-500">
+                                    {new Date(file.created_at).toLocaleDateString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+
+                {/* Right: File Preview */}
+                <div className="w-1/2 flex flex-col bg-white">
+                  {selectedFile ? (
+                    <div className="p-6">
+                      <h4 className="font-bold text-gray-900 mb-4">File Details</h4>
+                      <div className="bg-white rounded-md border p-4 space-y-3">
+                        <div>
+                          <span className="text-xs text-gray-500">Name</span>
+                          <p className="font-medium text-sm">{selectedFile.name}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-500">Bucket</span>
+                          <p className="font-medium text-sm">{selectedFile.bucket_id}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-500">Created</span>
+                          <p className="font-medium text-sm">
+                            {new Date(selectedFile.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        {selectedFile.metadata && (
+                          <div>
+                            <span className="text-xs text-gray-500">Size</span>
+                            <p className="font-medium text-sm">
+                              {(selectedFile.metadata.size / 1024).toFixed(2)} KB
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* File Actions */}
+                      <div className="mt-6 space-y-2">
+                        <h5 className="text-xs font-bold text-gray-400 uppercase mb-3">Actions</h5>
+                        <Button
+                          onClick={() => {
+                            const url = `${connection?.supabaseUrl}/storage/v1/object/public/${selectedFile.bucket_id}/${selectedFile.name}`
+                            window.open(url, '_blank')
+                          }}
+                          className="gap-2 w-full h-9 text-xs flex-1 text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
+                        >
+                          <HardDrive className="w-4 h-4" />
+                          Download File
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            const newName = prompt('Enter new file name:', selectedFile.name)
+                            if (newName && newName !== selectedFile.name) {
+                              alert('Rename functionality requires Supabase Storage API integration')
+                            }
+                          }}
+                          variant="outline"
+                          className="gap-2 w-full h-9 text-xs flex-1 text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
+                        >
+                          <FileCode className="w-4 h-4" />
+                          Rename File
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-center p-12">
+                      <div>
+                        <div className="w-16 h-16 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-4 mx-auto">
+                          <FileCode className="w-8 h-8 text-gray-200" />
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-900">Select a file</h4>
+                        <p className="text-xs text-gray-500 mt-1 max-w-[240px]">
+                          Click on a file to view its details
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "functions" && (
+              <div className="flex h-full overflow-hidden">
+                {/* Functions Table */}
+                <div className={cn("flex flex-col border-r border-gray-100 transition-all", selectedFunction ? "w-1/2" : "w-full")}>
+                  <div className="p-6">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-md font-bold text-gray-900">Edge Functions</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">Serverless functions deployed on Supabase</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {functions.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-center">
+                        <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
+                          <Cpu className="w-8 h-8 text-indigo-400" />
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-900">No Edge Functions</h4>
+                        <p className="text-xs text-gray-500 mt-1 max-w-[280px]">
+                          Deploy Edge Functions through the Supabase CLI or dashboard.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="bg-white border border-gray-100 rounded-md overflow-hidden">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="bg-white border-b border-gray-100 text-gray-400 font-bold">
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Name</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Version</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Status</th>
+                              <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Created</th>
+                              <th className="px-4 py-3"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {functions.map((fn: any) => (
+                              <tr
+                                key={fn.id}
+                                className={cn(
+                                  "border-b border-gray-50 last:border-0 hover:bg-blue-50/30 cursor-pointer transition-all",
+                                  selectedFunction?.id === fn.id ? "bg-blue-50" : ""
+                                )}
+                                onClick={() => setSelectedFunction(fn)}
+                              >
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
+                                      <Cpu className="w-4 h-4" />
+                                    </div>
+                                    <span className="font-bold text-sm text-gray-900">{fn.name}</span>
+                                  </div>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-600">{fn.version || "1"}</td>
+                                <td className="px-4 py-3">
+                                  <Badge className={cn(
+                                    "text-xs",
+                                    fn.status === "ACTIVE" ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700"
+                                  )}>
+                                    {fn.status || "Active"}
+                                  </Badge>
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-500">
+                                  {new Date(fn.createdAt).toLocaleDateString()}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Function Details Panel */}
+                {selectedFunction && (
+                  <div className="w-1/2 flex flex-col bg-white">
+                    <div className="p-6 border-b border-gray-100">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="font-bold text-gray-900">Function Details</h3>
+                        <button onClick={() => setSelectedFunction(null)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+                          <X className="w-4 h-4 text-gray-400" />
+                        </button>
+                      </div>
+
+                      {/* Detail Tabs */}
+                      <div className="flex gap-2 border-b border-gray-100 -mb-px">
+                        {["overview", "invocations", "logs", "details", "code"].map((tab) => (
+                          <button
+                            key={tab}
+                            onClick={() => setFunctionDetailTab(tab)}
+                            className={cn(
+                              "px-4 py-2 text-sm font-medium capitalize transition-all border-b-2",
+                              functionDetailTab === tab
+                                ? "border-blue-500 text-blue-600"
+                                : "border-transparent text-gray-500 hover:text-gray-900"
+                            )}
+                          >
+                            {tab}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6">
+                      {functionDetailTab === "overview" && (
+                        <div className="space-y-4">
+                          <div className="bg-white border border-gray-100 rounded-xl p-4">
+                            <h4 className="text-sm font-bold text-gray-900 mb-3">Function Information</h4>
+                            <div className="space-y-2">
+                              <div className="flex justify-between">
+                                <span className="text-xs text-gray-500">Name</span>
+                                <span className="text-sm font-medium">{selectedFunction.name}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-gray-500">Version</span>
+                                <span className="text-sm font-medium">{selectedFunction.version || "1"}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-gray-500">Status</span>
+                                <Badge className="text-xs">{selectedFunction.status || "Active"}</Badge>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-xs text-gray-500">Created</span>
+                                <span className="text-sm font-medium">{new Date(selectedFunction.createdAt).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {functionDetailTab === "invocations" && (
+                        <div className="text-center py-12">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                            <Terminal className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <p className="text-sm text-gray-500">Invocation metrics coming soon</p>
+                        </div>
+                      )}
+
+                      {functionDetailTab === "logs" && (
+                        <div className="text-center py-12">
+                          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
+                            <FileCode className="w-6 h-6 text-gray-400" />
+                          </div>
+                          <p className="text-sm text-gray-500">Function logs coming soon</p>
+                        </div>
+                      )}
+
+                      {functionDetailTab === "details" && (
+                        <div className="bg-white border border-gray-100 rounded-xl p-4">
+                          <h4 className="text-sm font-bold text-gray-900 mb-3">All Details</h4>
+                          <pre className="text-xs bg-gray-50 p-4 rounded-lg overflow-auto">
+                            {JSON.stringify(selectedFunction, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+
+                      {functionDetailTab === "code" && (
+                        <div className="bg-white border border-gray-100 rounded-xl p-4">
+                          <h4 className="text-sm font-bold text-gray-900 mb-3">Function Code</h4>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {activeTab === "feedback" && (
+              <div className="flex h-full overflow-hidden bg-white">
+                {/* Feedback List */}
+                <div className={cn("flex flex-col transition-all duration-200", selectedFeedback ? "w-1/2" : "w-full")}>
+                  <div className="p-6">
+                    <div className="flex items-center justify-between mb-6">
+                      <div>
+                        <h3 className="text-md font-bold text-gray-900">User Feedback</h3>
+                        <p className="text-[12px] text-gray-500">View and respond to feedback submitted by your users.</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <div className="relative">
+                          <Key className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="password"
+                            value={resendKey}
+                            onChange={(e) => setResendKey(e.target.value)}
+                            placeholder="Resend API Key"
+                            title="Enter your Resend API Key to automatically send reply emails"
+                            className="pl-9 pr-4 py-1.5 bg-white h-7 border rounded-md text-xs focus:bg-white focus:border-blue-200 outline-none transition-all w-48"
+                          />
+                        </div>
+                        <Button
+                          onClick={fetchFeedback}
+                          variant="outline"
+                          className="h-7 text-xs gap-2 hover:bg-white text-black shadow-none border bg-white rounded-md"
+                        >
+                          <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+                          Refresh
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {feedback.length === 0 ? (
+                        <div className="py-20 text-center border border-gray-100 rounded-2xl bg-gray-50/20">
+                          <Mail className="w-10 h-10 mx-auto mb-3 text-gray-200" />
+                          <h4 className="text-sm font-bold text-gray-900">No feedback yet</h4>
+                          <p className="text-xs text-gray-500 mt-1">Once users submit feedback via your website, it will appear here.</p>
+                        </div>
+                      ) : (
+                        <div className="bg-white border border-gray-100 rounded-md overflow-hidden">
+                          <div className="overflow-x-auto">
                             <table className="w-full text-left text-xs">
-                              <thead>
+                              <thead className="border-b border-gray-100">
                                 <tr className="text-gray-400 font-bold uppercase tracking-tighter">
-                                  <th className="pb-2">Name</th>
-                                  <th className="pb-2">Type</th>
-                                  <th className="pb-2">Default</th>
+                                  <th className="px-4 py-3">User</th>
+                                  <th className="px-4 py-3">Message</th>
+                                  <th className="px-4 py-3">Status</th>
+                                  <th className="px-4 py-3">Date</th>
                                 </tr>
                               </thead>
-                              <tbody className="font-mono text-[11px]">
-                                {table.columns.map((col) => (
-                                  <tr key={col.name} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
-                                    <td className="py-2 text-gray-900">{col.name} {col.nullable ? "" : "*"}</td>
-                                    <td className="py-2 text-blue-600">{col.type}</td>
-                                    <td className="py-2 text-gray-400">{col.default || "-"}</td>
+                              <tbody className="divide-y divide-gray-50">
+                                {feedback.map((item) => (
+                                  <tr
+                                    key={item.id}
+                                    onClick={() => setSelectedFeedback(item)}
+                                    className={cn(
+                                      "hover:bg-gray-50/50 cursor-pointer transition-colors",
+                                      selectedFeedback?.id === item.id ? "bg-blue-50/50" : ""
+                                    )}
+                                  >
+                                    <td className="px-4 py-3">
+                                      <div className="flex flex-col">
+                                        <span className="font-bold text-gray-900 truncate max-w-[150px]">{item.email}</span>
+                                        <span className="text-[10px] text-gray-400">{item.userId ? "Authenticated" : "Guest"}</span>
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <p className="text-gray-600 truncate max-w-[200px]">{item.message}</p>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <Badge className={cn(
+                                        "text-[11px]",
+                                        item.status === "pending" ? "BackgroundStyleButton text-black" : "bg-[#0099ff]/20 text-[#0099ff]"
+                                      )}>
+                                        {item.status}
+                                      </Badge>
+                                    </td>
+                                    <td className="px-4 py-3 text-gray-400 whitespace-nowrap">
+                                      {new Date(item.createdAt).toLocaleDateString()}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
                             </table>
                           </div>
-
-                          <div className="mt-6">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Data Browsing</h4>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); fetchTableRows(table.name); }}
-                                className="text-[10px] text-blue-600 hover:font-bold transition-all"
-                              >
-                                Refresh Data
-                              </button>
-                            </div>
-                            <div className="overflow-x-auto border border-gray-100 rounded-xl overflow-hidden">
-                              {loadingTableData ? (
-                                <div className="flex items-center justify-center py-8 bg-gray-50/30">
-                                  <Loader className="animate-spin w-4 h-4 text-blue-500" />
-                                </div>
-                              ) : tableRows.length === 0 ? (
-                                <div className="py-8 text-center text-gray-400 text-[10px] bg-gray-50/30 font-medium">No data in this table</div>
-                              ) : (
-                                <table className="w-full text-left text-[10px] min-w-max bg-white">
-                                  <thead>
-                                    <tr className="text-gray-400 font-bold uppercase tracking-tight border-b border-gray-100 bg-gray-50/50">
-                                      {Object.keys(tableRows[0]).map(k => (
-                                        <th key={k} className="px-3 py-2 border-r border-gray-100 last:border-0">{k}</th>
-                                      ))}
-                                    </tr>
-                                  </thead>
-                                  <tbody className="font-mono">
-                                    {tableRows.map((row, i) => (
-                                      <tr key={i} className="border-b border-gray-50 last:border-0 hover:bg-blue-50/30 transition-colors">
-                                        {Object.values(row).map((v: any, j) => (
-                                          <td key={j} className="px-3 py-2 border-r border-gray-50 last:border-0 text-gray-600 truncate max-w-[150px]">
-                                            {v === null ? <span className="text-gray-300 italic">null</span> : String(v)}
-                                          </td>
-                                        ))}
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              )}
-                            </div>
-                          </div>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "auth_providers" && (
-            <div className="h-full bg-white">
-              <AuthProviders projectId={projectId} onSendMessage={onSendMessage} />
-            </div>
-          )}
-
-          {activeTab === "sql" && (
-            <div className="flex h-full overflow-hidden">
-              {/* SQL Files Sidebar */}
-              <div className="w-[240px] border-r border-gray-100 flex flex-col bg-white">
-                <div className="p-4 border-b border-gray-50">
-                  <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Migration History</h4>
-                </div>
-                <div className="flex-1 overflow-y-auto">
-                  {sqlFiles.length === 0 ? (
-                    <div className="p-8 text-center text-gray-400 text-xs">No migrations pushed yet</div>
-                  ) : (
-                    sqlFiles.map(file => (
-                      <button
-                        key={file.id}
-                        onClick={() => setSelectedSqlFile(file)}
-                        className={cn(
-                          "w-full text-left px-4 py-3 border-b border-gray-50 transition-colors",
-                          selectedSqlFile?.id === file.id ? "bg-blue-50/50" : "hover:bg-gray-50/50"
-                        )}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          <FileCode className="w-3.5 h-3.5 text-blue-500" />
-                          <span className="text-xs font-bold text-gray-900 truncate">{file.fileName}</span>
-                        </div>
-                        <div className="text-[10px] text-gray-400">
-                          {new Date(file.createdAt).toLocaleString()}
-                        </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* SQL Content Viewer */}
-              <div className="flex-1 flex flex-col bg-gray-50/30 overflow-hidden">
-                {selectedSqlFile ? (
-                  <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in slide-in-from-right-2 duration-300">
-                    <div className="px-6 py-3 border-b border-gray-100 bg-white flex items-center justify-between">
-                      <span className="text-xs font-mono text-gray-500">{selectedSqlFile.fileName}</span>
-                      <span className="text-[10px] px-2 py-0.5 bg-gray-100 rounded-full text-gray-500 uppercase font-bold tracking-tight">Read-only</span>
-                    </div>
-                    <div className="flex-1 p-6 overflow-auto">
-                      <pre className="p-4 bg-gray-900 text-gray-100 rounded-2xl text-[11px] font-mono overflow-x-auto shadow-inner whitespace-pre-wrap leading-relaxed">
-                        {selectedSqlFile.content}
-                      </pre>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-12">
-                    <div className="w-16 h-16 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-4 shadow-sm">
-                      <Terminal className="w-8 h-8 text-gray-200" />
-                    </div>
-                    <h4 className="text-sm font-bold text-gray-900">Select a migration</h4>
-                    <p className="text-xs text-gray-400 mt-1 max-w-[240px]">View the SQL code transmitted to your database in previous pushes.</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {activeTab === "users" && (
-            <div className="flex h-full overflow-hidden">
-              {/* Left side: Scrollable user list */}
-              <div className={cn("flex flex-col border-r border-gray-100 transition-all duration-200", selectedUser ? "w-1/2" : "w-full")}>
-                <div className="p-6">
-                  {/* Signup Analytics Chart */}
-                  <div className="mb-6">
-                    <SignupChart projectId={projectId} />
-                  </div>
-
-                  <div className="flex items-center justify-between mb-6">
-                    <div>
-                      <h3 className="text-md text-gray-900">User Management</h3>
-                      <p className="text-[12px] text-gray-500">Manage authenticated users and permissions.</p>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Button
-                        onClick={() => setShowAddUserModal(true)}
-                        className="bg-white hover:bg-white hover:border-blue-200 text-gray-900  border rounded-md gap-2 shadow-none h-7"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add User
-                      </Button>
-                      <div className="relative">
-                        <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                        <input
-                          type="text"
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          placeholder="Search..."
-                          className="pl-9 pr-4 py-1.5 bg-white h-7 border rounded-md text-xs focus:bg-white focus:border-blue-200 outline-none transition-all w-32 md:w-48"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="bg-white border-b border-gray-100 text-gray-900 text-[14px]">
-                            <th className="px-4 py-3 font-normal">User</th>
-                            {!selectedUser && <th className="px-4 py-3 font-normal">ID</th>}
-                            <th className="px-4 py-3 font-normal">Created</th>
-                            <th className="px-4 py-3 text-right font-normal">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {filteredUsers.length === 0 ? (
-                            <tr>
-                              <td colSpan={4} className="px-4 py-20 text-center text-gray-400">
-                                <Users className="w-8 h-8 mx-auto mb-3 opacity-20" />
-                                No users found
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredUsers.map((user) => (
-                              <tr
-                                key={user.id}
-                                className={cn(
-                                  "border-b border-gray-50 last:border-0 hover:bg-gray-50/30 cursor-pointer",
-                                  selectedUser?.id === user.id ? "bg-blue-50/50 hover:bg-blue-50/50" : ""
-                                )}
-                                onClick={() => setSelectedUser(user)}
-                              >
-                                <td className="px-4 py-3">
-                                  <div className="flex items-center gap-3 group/user">
-                                    <div className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                                      {user.email[0].toUpperCase()}
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <span className="font-bold text-gray-900 truncate max-w-[120px]">{user.email}</span>
-                                      <div className="flex items-center gap-1.5">
-                                        <span className="text-[10px] text-gray-400">{user.role}</span>
-                                        {user.confirmed && <span className="w-1 h-1 rounded-full bg-emerald-500" title="Email Confirmed" />}
-                                        {user.banned && <span className="text-[9px] BackgroundStyleButton rounded-sm text-black font-bold px-2 py-0.5">BANNED</span>}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </td>
-                                {!selectedUser && <td className="px-4 py-3 font-mono text-gray-400 text-[10px] truncate max-w-[100px]">{user.id}</td>}
-                                <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
-                                  <div>{new Date(user.createdAt).toLocaleDateString()}</div>
-                                </td>
-                                <td className="px-4 py-3 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      onClick={(e) => { e.stopPropagation(); handleDeleteUser(user.id); }}
-                                      className="h-8 w-8 p-0 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50"
-                                      title="Delete user"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Right side: Detailed user view */}
-              {selectedUser && (
-                <div className="w-1/2 flex flex-col bg-white overflow-y-auto">
-                  <div className="p-6 space-y-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-gray-900">User Details</h3>
-                      <button onClick={() => setSelectedUser(null)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
-                        <X className="w-4 h-4 text-gray-400" />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-xl font-bold">
-                        {selectedUser.email[0].toUpperCase()}
-                      </div>
-                      <div className="flex-1 overflow-hidden">
-                        <h4 className="font-bold text-gray-900 text-lg truncate">{selectedUser.email}</h4>
-                        <div className="flex items-center gap-2 mt-1">
-                          <code className="text-xs text-gray-500 bg-gray-50 px-2 py-0.5 rounded">{selectedUser.id}</code>
-                          <button onClick={() => copyToClipboard(selectedUser.id, 'id')} className="text-gray-400 hover:text-blue-600">
-                            {copiedField === 'id' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="">
-                      {[
-                        { label: "Role", value: selectedUser.role },
-                        { label: "Provider", value: selectedUser.provider || "email" },
-                        { label: "Confirmed", value: selectedUser.confirmed ? "Yes" : "No", color: selectedUser.confirmed ? "text-gray-900" : "text-gray-900" },
-                        { label: "Banned", value: selectedUser.banned ? "Yes" : "No", color: selectedUser.banned ? "text-gray-900" : "text-gray-900" },
-                        { label: "Created At", value: new Date(selectedUser.createdAt).toLocaleDateString() },
-                        { label: "Last Sign In", value: selectedUser.lastSignIn ? new Date(selectedUser.lastSignIn).toLocaleDateString() : "Never" },
-                      ].map((item, i) => (
-                        <div
-                          key={i}
-                          className="flex items-center justify-between px-1 py-2 bg-white border-b border-gray-10"
-                        >
-                          <span className="text-[12px] text-gray-900">
-                            {item.label}
-                          </span>
-                          <span
-                            className={cn(
-                              "text-xs font-semibold",
-                              item.color || "text-gray-700"
-                            )}
-                          >
-                            {item.value}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Login Methods Section */}
-                    <div className="mt-6 pt-6 border-t border-gray-100">
-                      <h4 className="text-xs font-bold text-gray-400 uppercase mb-3">
-                        Login Methods
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[
-                          { id: "email", label: "Email/Password", active: selectedUser?.provider?.includes("email") || selectedUser?.provider === "email" },
-                          { id: "phone", label: "Phone", active: selectedUser?.provider?.includes("phone") },
-                          { id: "google", label: "Google", active: selectedUser?.provider?.includes("google") },
-                          { id: "apple", label: "Apple", active: selectedUser?.provider?.includes("apple") },
-                        ].map(method => (
-                          <div
-                            key={method.id}
-                            className={`p-3 rounded-lg border ${method.active
-                              ? "border-green-200 bg-green-50"
-                              : "border-gray-200 bg-gray-50"
-                              }`}
-                          >
-                            <div className="text-xs font-medium">{method.label}</div>
-                            <div className={`text-[10px] mt-1 ${method.active ? "text-green-600" : "text-gray-400"
-                              }`}>
-                              {method.active ? "Active" : "Inactive"}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="mt-6 pt-6 border-t border-gray-100 space-y-3">
-                      <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Administrative Actions</h5>
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          onClick={() => handleBanUser(selectedUser.id, !!selectedUser.banned)}
-                          className={cn("gap-2 h-9 text-xs rounded-xl flex-1", selectedUser.banned ? "hover:bg-white text-gray-900 border border-[#0099ff] bg-white h-8 rounded-md" : "hover:border-blue-200 hover:bg-white text-gray-900 border bg-white h-8 rounded-md")}
-                        >
-                          {selectedUser.banned ? <CheckCircle className="w-3.5 h-3.5" /> : <Ban className="w-3.5 h-3.5" />}
-                          {selectedUser.banned ? "Unban User" : "Ban User"}
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleResetPassword(selectedUser.email)}
-                          className="gap-2 h-9 text-xs flex-1 text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
-                        >
-                          <RefreshCw className="w-3.5 h-3.5" />
-                          Reset
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleDeleteUser(selectedUser.id)}
-                          className="gap-2 h-9 text-xs w-full text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          Permanently Delete User
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "emails" && (
-            <div className="flex flex-col h-full overflow-hidden bg-white">
-              {!selectedEmailTemplate ? (
-                /* List View */
-                <div className="p-6 overflow-y-auto">
-                  <div className="mb-6 flex items-center justify-between">
-                    <div>
-                      <h3 className="text-md font-bold text-gray-900">Email Templates</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Customize authentication email notifications</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2.5">
-                    {[
-                      { id: "confirmation", label: "Confirm Sign Up", desc: "Ask users to confirm their email address after signing up" },
-                      { id: "invite", label: "Invite User", desc: "Invite users who don't yet have an account to sign up" },
-                      { id: "magic_link", label: "Magic Link", desc: "Allow users to sign in via a one-time link sent to their email" },
-                      { id: "email_change", label: "Change Email", desc: "Ask users to verify their new email address after changing it" },
-                      { id: "recovery", label: "Reset Password", desc: "Allow users to reset their password if they forget it" },
-                      { id: "reauthentication", label: "Reauthentication", desc: "Ask users to re-authenticate before performing a sensitive action" },
-                    ].map(t => (
-                      <button
-                        key={t.id}
-                        onClick={() => setSelectedEmailTemplate(t.id)}
-                        className="p-4 rounded-xl border border-gray-100 bg-white cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left flex items-center justify-between group"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="p-2.5 rounded-lg bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
-                            <Mail className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <div className="text-sm font-bold text-gray-900 mb-0.5">{t.label}</div>
-                            <div className="text-xs text-gray-500 leading-relaxed max-w-sm">{t.desc}</div>
-                          </div>
-                        </div>
-                        <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all" />
-                      </button>
-                    ))}
-
-                    <div className="mt-8 pt-6 border-t border-gray-100">
-                      <div className="bg-blue-50/50 rounded-2xl p-6">
-                        <div className="flex items-start gap-3 mb-4">
-                          <Info className="w-5 h-5 text-gray-900 mt-0.5" />
-                          <div>
-                            <h4 className="text-sm font-bold text-gray-900">Reset System Templates</h4>
-                            <p className="text-xs text-gray-900 mt-1">
-                              You can also <button onClick={handleResetTemplates} className="cursor-pointer text-blue-600 font-bold hover:underline">reset all templates to their defaults</button>.
-                              This will insert default headers and messages into all the templates.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : (
-                /* Editor View */
-                <div className="flex flex-col h-full bg-white">
-                  <div className="flex items-center justify-between bg-white sticky top-0 z-20 px-6 py-4 border-b border-gray-100">
-                    <div className="flex items-center gap-4">
-                      <button
-                        onClick={() => setSelectedEmailTemplate(null)}
-                        className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-gray-900 group"
-                      >
-                        <ChevronRight className="w-5 h-5 rotate-180 group-hover:-translate-x-0.5 transition-transform" />
-                      </button>
-                      <div>
-                        <h3 className="text-md font-bold text-gray-900">
-                          {(() => {
-                            const t = [
-                              { id: "confirmation", label: "Confirm Sign Up" },
-                              { id: "invite", label: "Invite User" },
-                              { id: "magic_link", label: "Magic Link" },
-                              { id: "email_change", label: "Change Email" },
-                              { id: "recovery", label: "Reset Password" },
-                              { id: "reauthentication", label: "Reauthentication" },
-                            ].find(x => x.id === selectedEmailTemplate);
-                            return t?.label || "Email Template";
-                          })()}
-                        </h3>
-                        <p className="text-xs text-gray-500 mt-0.5">Template Editor</p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="flex bg-gray-100 p-0.5 rounded-lg">
-                        <button
-                          onClick={() => setViewMode("code")}
-                          className={cn(
-                            "px-3 py-1 text-xs font-bold rounded-md transition-all",
-                            viewMode === "code" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-900"
-                          )}
-                        >
-                          Code
-                        </button>
-                        <button
-                          onClick={() => setViewMode("preview")}
-                          className={cn(
-                            "px-3 py-1 text-xs font-bold rounded-md transition-all",
-                            viewMode === "preview" ? "bg-white text-blue-600 shadow-sm" : "text-gray-500 hover:text-gray-900"
-                          )}
-                        >
-                          Display
+                {/* Feedback Detail View */}
+                {selectedFeedback && (
+                  <div className="w-1/2 flex flex-col bg-white overflow-y-auto animate-in fade-in slide-in-from-right-2 duration-300">
+                    <div className="p-6 space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-bold text-gray-900">Feedback Details</h3>
+                        <button onClick={() => setSelectedFeedback(null)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                          <X className="w-4 h-4 text-gray-400" />
                         </button>
                       </div>
-                      <Button
-                        onClick={handleSaveAuthConfig}
-                        disabled={loading}
-                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg h-8 px-4 gap-2 text-xs font-bold shadow-sm"
-                      >
-                        {loading ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        Save Changes
-                      </Button>
-                    </div>
-                  </div>
 
-                  <div className="flex-1 overflow-y-auto">
-                    {authConfig && authConfigError === null ? (
-                      <div className="p-6 space-y-6 max-w-5xl mx-auto">
-                        {/* Subject Line */}
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between px-1">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Subject Line</label>
-                            <span className="text-[10px] text-blue-500 font-bold">Synchronized with Supabase</span>
+                      <div className="space-y-4">
+                        <div className="BackgroundStyleButton rounded-md p-1 space-y-4">
+                          <div className="flex items-center gap-3 px-2 py-2 border border-gray-300 rounded-sm">
+                            <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                              {selectedFeedback.email[0].toUpperCase()}
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-gray-900">{selectedFeedback.email}</h4>
+                              <p className="text-[10px] text-gray-400">{new Date(selectedFeedback.createdAt).toLocaleString()}</p>
+                            </div>
                           </div>
-                          <input
-                            type="text"
-                            value={authConfig[`mailer_templates_${selectedEmailTemplate}_subject`] || ""}
-                            onChange={(e) => setAuthConfig({ ...authConfig, [`mailer_templates_${selectedEmailTemplate}_subject`]: e.target.value })}
-                            className="w-full px-4 py-3 bg-white border border-gray-100 rounded-xl text-sm focus:border-blue-200 outline-none transition-all shadow-sm font-medium text-gray-900 hover:border-gray-200"
-                            placeholder="Enter email subject..."
-                          />
+                          <div className="bg-white rounded-sm p-2 mt-[-10px]">
+                            <p className="text-sm text-gray-700 leading-relaxed italic">"{selectedFeedback.message}"</p>
+                          </div>
                         </div>
 
-                        {/* Editor Section */}
-                        {viewMode === "code" ? (
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between px-1">
-                              <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">HTML Content</label>
-                              <div className="flex items-center gap-3">
-                                <span className="text-[10px] font-bold text-blue-500 bg-blue-50 px-2.5 py-1 rounded-full uppercase tracking-tighter ring-1 ring-blue-100">Editor Pane Mode</span>
-                              </div>
+                        {selectedFeedback.reply ? (
+                          <div className="BackgroundStyleButton rounded-md p-1 space-y-3">
+                            <div className="flex items-center gap-2 text-black px-2 py-2">
+                              <CheckCircle className="w-4 h-4" />
+                              <h4 className="text-sm">Your Response</h4>
+                              <p className="text-[10px] text-gray-400 text-right">Replied on {new Date(selectedFeedback.repliedAt).toLocaleString()}</p>
                             </div>
-                            <div className="rounded-2xl border border-gray-100 overflow-hidden shadow-sm bg-white h-[600px] relative">
-                              <Editor
-                                height="100%"
-                                language="html"
-                                value={authConfig[`mailer_templates_${selectedEmailTemplate}_content`] || ""}
-                                onChange={(value) => setAuthConfig({ ...authConfig, [`mailer_templates_${selectedEmailTemplate}_content`]: value || "" })}
-                                options={{
-                                  minimap: { enabled: false },
-                                  fontSize: 13,
-                                  fontFamily: "'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace",
-                                  lineNumbers: "on",
-                                  roundedSelection: true,
-                                  scrollBeyondLastLine: false,
-                                  readOnly: false,
-                                  theme: "vs",
-                                  padding: { top: 20 },
-                                  automaticLayout: true,
-                                }}
-                              />
-                            </div>
-
-                            {/* Variable Buttons */}
-                            <div className="space-y-3">
-                              <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Available Variables</h4>
-                              <div className="flex flex-wrap gap-2">
-                                {[
-                                  ".ConfirmationURL",
-                                  ".Token",
-                                  ".TokenHash",
-                                  ".SiteURL",
-                                  ".Email",
-                                  ".Data",
-                                  ".RedirectTo"
-                                ].map((variable) => (
-                                  <button
-                                    key={variable}
-                                    onClick={() => {
-                                      const currentContent = authConfig[`mailer_templates_${selectedEmailTemplate}_content`] || ""
-                                      setAuthConfig({
-                                        ...authConfig,
-                                        [`mailer_templates_${selectedEmailTemplate}_content`]: currentContent + ` {{ ${variable} }}`
-                                      })
-                                    }}
-                                    className="px-3 py-1.5 bg-gray-50 hover:bg-white hover:border-blue-200 border border-gray-100 rounded-lg text-[11px] font-mono text-gray-600 transition-all shadow-sm active:scale-95"
-                                  >
-                                    {"{{ " + variable + " }}"}
-                                  </button>
-                                ))}
-                              </div>
+                            <div className="bg-white rounded-sm p-2 mt-[-10px]">
+                              <p className="text-sm text-gray-900 leading-relaxed">{selectedFeedback.reply}</p>
                             </div>
                           </div>
                         ) : (
-                          <div className="space-y-2 h-[750px] flex flex-col">
-                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-1">Live Display Preview</label>
-                            <div className="flex-1 rounded-2xl border border-gray-100 overflow-hidden shadow-sm bg-white">
-                              <iframe
-                                title="Email Preview"
-                                srcDoc={authConfig[`mailer_templates_${selectedEmailTemplate}_content`] || ""}
-                                className="w-full h-full border-none bg-white"
-                              />
-                            </div>
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest pl-1">Write a Response</h4>
+                            <textarea
+                              value={replyText}
+                              onChange={(e) => setReplyText(e.target.value)}
+                              placeholder="Type your reply here..."
+                              rows={6}
+                              className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm focus:bg-white focus:border-blue-200 outline-none transition-all resize-none shadow-inner"
+                            />
+                            <Button
+                              onClick={handleSendReply}
+                              disabled={sendingReply || !replyText}
+                              className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 gap-2 font-bold shadow-md shadow-blue-200/50 transition-all active:scale-[0.98]"
+                            >
+                              {sendingReply ? <Loader className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                              Send Reply via Gmail
+                            </Button>
+                            <p className="text-[10px] text-gray-400 text-center px-4">
+                              Note: This will send an email to the user if your Gmail account is connected in the MCP settings.
+                            </p>
                           </div>
                         )}
                       </div>
-                    ) : authConfigError ? (
-                      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                        <div className="w-16 h-16 rounded-2xl bg-red-50 flex items-center justify-center mb-4">
-                          <AlertTriangle className="w-8 h-8 text-red-400" />
-                        </div>
-                        <h4 className="text-sm font-bold text-gray-900 mb-2">Failed to Load Template</h4>
-                        <p className="text-xs text-gray-500 max-w-[280px] mb-4">{authConfigError}</p>
-                        <Button onClick={fetchAuthConfig} variant="outline" className="gap-2 h-9 text-xs rounded-xl">
-                          <RefreshCw className="w-4 h-4" />
-                          Retry Connection
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
-                        <div className="w-10 h-10 rounded-full border-2 border-blue-100 border-t-blue-500 animate-spin mb-4" />
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Syncing with server...</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "storage" && (
-            <div className="flex h-full overflow-hidden">
-              {/* Left: Buckets or Files List */}
-              <div className="w-1/2 border-r border-gray-100 flex flex-col">
-                <div className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-md font-bold text-gray-900">
-                        {selectedBucket ? selectedBucket : "Storage Buckets"}
-                      </h3>
-                      <p className="text-xs text-gray-500 mt-0.5">
-                        {selectedBucket ? "Files in this bucket" : "Manage file storage"}
-                      </p>
-                    </div>
-                    {selectedBucket && (
-                      <Button
-                        onClick={() => setSelectedBucket(null)}
-                        variant="outline"
-                        className="h-8 text-xs border bg-white hover:bg-white text-black hover:border-blue-200"
-                      >
-                        ← Back to Buckets
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-3">
-                  {!selectedBucket ? (
-                    // Show buckets list
-                    storage.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-center">
-                        <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
-                          <HardDrive className="w-8 h-8 text-blue-400" />
-                        </div>
-                        <h4 className="text-sm font-bold text-gray-900">No Storage Buckets</h4>
-                        <p className="text-xs text-gray-500 mt-1 max-w-[280px]">
-                          Create a bucket in your Supabase dashboard to get started.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {storage.map((bucket: any) => (
-                          <button
-                            key={bucket.id}
-                            onClick={() => setSelectedBucket(bucket.name)}
-                            className="w-full p-4 bg-white border border-gray-100 rounded-md cursor-pointer hover:border-blue-200 hover:bg-blue-50/30 transition-all text-left group"
-                          >
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-blue-50 text-blue-600 group-hover:bg-blue-100">
-                                <HardDrive className="w-5 h-5" />
-                              </div>
-                              <div className="flex-1">
-                                <h4 className="font-bold text-gray-900">{bucket.name}</h4>
-                                <p className="text-xs text-gray-500">
-                                  {bucket.public ? "Public" : "Private"} bucket
-                                </p>
-                              </div>
-                              <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-blue-600" />
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    // Show files in selected bucket
-                    loadingFiles ? (
-                      <div className="flex items-center justify-center h-full">
-                        <Loader className="w-6 h-6 animate-spin text-blue-500" />
-                      </div>
-                    ) : bucketFiles.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center h-full text-center">
-                        <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                          <FileCode className="w-8 h-8 text-gray-400" />
-                        </div>
-                        <h4 className="text-sm font-bold text-gray-900">No Files</h4>
-                        <p className="text-xs text-gray-500 mt-1 max-w-[280px]">
-                          This bucket is empty. Upload files through your application.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-2">
-                        {bucketFiles.map((file: any) => (
-                          <button
-                            key={file.id}
-                            onClick={() => setSelectedFile(file)}
-                            className={cn(
-                              "w-full p-3 bg-white border rounded-md cursor-pointer hover:border-blue-200 transition-all text-left",
-                              selectedFile?.id === file.id ? "border-blue-500 bg-blue-50" : "border-gray-100"
-                            )}
-                          >
-                            <div className="flex items-center gap-3">
-                              <FileCode className="w-4 h-4 text-gray-400" />
-                              <div className="flex-1 min-w-0">
-                                <p className="font-medium text-sm text-gray-900 truncate">{file.name}</p>
-                                <p className="text-xs text-gray-500">
-                                  {new Date(file.created_at).toLocaleDateString()}
-                                </p>
-                              </div>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
-                    )
-                  )}
-                </div>
-              </div>
-
-              {/* Right: File Preview */}
-              <div className="w-1/2 flex flex-col bg-white">
-                {selectedFile ? (
-                  <div className="p-6">
-                    <h4 className="font-bold text-gray-900 mb-4">File Details</h4>
-                    <div className="bg-white rounded-md border p-4 space-y-3">
-                      <div>
-                        <span className="text-xs text-gray-500">Name</span>
-                        <p className="font-medium text-sm">{selectedFile.name}</p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-gray-500">Bucket</span>
-                        <p className="font-medium text-sm">{selectedFile.bucket_id}</p>
-                      </div>
-                      <div>
-                        <span className="text-xs text-gray-500">Created</span>
-                        <p className="font-medium text-sm">
-                          {new Date(selectedFile.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      {selectedFile.metadata && (
-                        <div>
-                          <span className="text-xs text-gray-500">Size</span>
-                          <p className="font-medium text-sm">
-                            {(selectedFile.metadata.size / 1024).toFixed(2)} KB
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* File Actions */}
-                    <div className="mt-6 space-y-2">
-                      <h5 className="text-xs font-bold text-gray-400 uppercase mb-3">Actions</h5>
-                      <Button
-                        onClick={() => {
-                          const url = `${connection?.supabaseUrl}/storage/v1/object/public/${selectedFile.bucket_id}/${selectedFile.name}`
-                          window.open(url, '_blank')
-                        }}
-                        className="gap-2 w-full h-9 text-xs flex-1 text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
-                      >
-                        <HardDrive className="w-4 h-4" />
-                        Download File
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          const newName = prompt('Enter new file name:', selectedFile.name)
-                          if (newName && newName !== selectedFile.name) {
-                            alert('Rename functionality requires Supabase Storage API integration')
-                          }
-                        }}
-                        variant="outline"
-                        className="gap-2 w-full h-9 text-xs flex-1 text-gray-900 hover:bg-white border bg-white h-8 rounded-md hover:border-blue-200"
-                      >
-                        <FileCode className="w-4 h-4" />
-                        Rename File
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex items-center justify-center text-center p-12">
-                    <div>
-                      <div className="w-16 h-16 rounded-2xl bg-white border border-gray-100 flex items-center justify-center mb-4 mx-auto">
-                        <FileCode className="w-8 h-8 text-gray-200" />
-                      </div>
-                      <h4 className="text-sm font-bold text-gray-900">Select a file</h4>
-                      <p className="text-xs text-gray-500 mt-1 max-w-[240px]">
-                        Click on a file to view its details
-                      </p>
                     </div>
                   </div>
                 )}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {activeTab === "functions" && (
-            <div className="flex h-full overflow-hidden">
-              {/* Functions Table */}
-              <div className={cn("flex flex-col border-r border-gray-100 transition-all", selectedFunction ? "w-1/2" : "w-full")}>
-                <div className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-md font-bold text-gray-900">Edge Functions</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">Serverless functions deployed on Supabase</p>
-                    </div>
-                  </div>
+          {/* User Details Modal - REMOVED for Split-View */}
+
+          {/* Add User Modal */}
+          {showAddUserModal && (
+            <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+                <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="font-bold text-gray-900">Create New User</h3>
+                  <button onClick={() => setShowAddUserModal(false)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
+                    <X className="w-4 h-4 text-gray-400" />
+                  </button>
                 </div>
-
-                <div className="flex-1 overflow-y-auto p-3">
-                  {functions.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center h-full text-center">
-                      <div className="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
-                        <Cpu className="w-8 h-8 text-indigo-400" />
-                      </div>
-                      <h4 className="text-sm font-bold text-gray-900">No Edge Functions</h4>
-                      <p className="text-xs text-gray-500 mt-1 max-w-[280px]">
-                        Deploy Edge Functions through the Supabase CLI or dashboard.
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="bg-white border border-gray-100 rounded-md overflow-hidden">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-white border-b border-gray-100 text-gray-400 font-bold">
-                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Name</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Version</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Status</th>
-                            <th className="px-4 py-3 text-left text-xs font-bold text-gray-500">Created</th>
-                            <th className="px-4 py-3"></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {functions.map((fn: any) => (
-                            <tr
-                              key={fn.id}
-                              className={cn(
-                                "border-b border-gray-50 last:border-0 hover:bg-blue-50/30 cursor-pointer transition-all",
-                                selectedFunction?.id === fn.id ? "bg-blue-50" : ""
-                              )}
-                              onClick={() => setSelectedFunction(fn)}
-                            >
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-3">
-                                  <div className="p-2 rounded-lg bg-indigo-50 text-indigo-600">
-                                    <Cpu className="w-4 h-4" />
-                                  </div>
-                                  <span className="font-bold text-sm text-gray-900">{fn.name}</span>
-                                </div>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-600">{fn.version || "1"}</td>
-                              <td className="px-4 py-3">
-                                <Badge className={cn(
-                                  "text-xs",
-                                  fn.status === "ACTIVE" ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-700"
-                                )}>
-                                  {fn.status || "Active"}
-                                </Badge>
-                              </td>
-                              <td className="px-4 py-3 text-sm text-gray-500">
-                                {new Date(fn.createdAt).toLocaleDateString()}
-                              </td>
-                              <td className="px-4 py-3">
-                                <ChevronRight className="w-4 h-4 text-gray-400" />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Function Details Panel */}
-              {selectedFunction && (
-                <div className="w-1/2 flex flex-col bg-white">
-                  <div className="p-6 border-b border-gray-100">
-                    <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-bold text-gray-900">Function Details</h3>
-                      <button onClick={() => setSelectedFunction(null)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
-                        <X className="w-4 h-4 text-gray-400" />
-                      </button>
-                    </div>
-
-                    {/* Detail Tabs */}
-                    <div className="flex gap-2 border-b border-gray-100 -mb-px">
-                      {["overview", "invocations", "logs", "details", "code"].map((tab) => (
-                        <button
-                          key={tab}
-                          onClick={() => setFunctionDetailTab(tab)}
-                          className={cn(
-                            "px-4 py-2 text-sm font-medium capitalize transition-all border-b-2",
-                            functionDetailTab === tab
-                              ? "border-blue-500 text-blue-600"
-                              : "border-transparent text-gray-500 hover:text-gray-900"
-                          )}
-                        >
-                          {tab}
-                        </button>
-                      ))}
-                    </div>
+                <div className="p-6 space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Email Address</label>
+                    <input
+                      type="email"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      placeholder="user@example.com"
+                      className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:bg-white focus:border-blue-200 outline-none transition-all"
+                    />
                   </div>
-
-                  <div className="flex-1 overflow-y-auto p-6">
-                    {functionDetailTab === "overview" && (
-                      <div className="space-y-4">
-                        <div className="bg-white border border-gray-100 rounded-xl p-4">
-                          <h4 className="text-sm font-bold text-gray-900 mb-3">Function Information</h4>
-                          <div className="space-y-2">
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-500">Name</span>
-                              <span className="text-sm font-medium">{selectedFunction.name}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-500">Version</span>
-                              <span className="text-sm font-medium">{selectedFunction.version || "1"}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-500">Status</span>
-                              <Badge className="text-xs">{selectedFunction.status || "Active"}</Badge>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-xs text-gray-500">Created</span>
-                              <span className="text-sm font-medium">{new Date(selectedFunction.createdAt).toLocaleString()}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {functionDetailTab === "invocations" && (
-                      <div className="text-center py-12">
-                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                          <Terminal className="w-6 h-6 text-gray-400" />
-                        </div>
-                        <p className="text-sm text-gray-500">Invocation metrics coming soon</p>
-                      </div>
-                    )}
-
-                    {functionDetailTab === "logs" && (
-                      <div className="text-center py-12">
-                        <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-                          <FileCode className="w-6 h-6 text-gray-400" />
-                        </div>
-                        <p className="text-sm text-gray-500">Function logs coming soon</p>
-                      </div>
-                    )}
-
-                    {functionDetailTab === "details" && (
-                      <div className="bg-white border border-gray-100 rounded-xl p-4">
-                        <h4 className="text-sm font-bold text-gray-900 mb-3">All Details</h4>
-                        <pre className="text-xs bg-gray-50 p-4 rounded-lg overflow-auto">
-                          {JSON.stringify(selectedFunction, null, 2)}
-                        </pre>
-                      </div>
-                    )}
-
-                    {functionDetailTab === "code" && (
-                      <div className="bg-white border border-gray-100 rounded-xl p-4">
-                        <h4 className="text-sm font-bold text-gray-900 mb-3">Function Code</h4>
-                        <div className="bg-gray-50 p-4 rounded-lg">
-                          <p className="text-xs text-gray-500 mb-2">// Function source code</p>
-                          <p className="text-xs text-gray-400">Code viewing requires Supabase Management API integration</p>
-                        </div>
-                      </div>
-                    )}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Password</label>
+                    <input
+                      type="password"
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      placeholder="Min. 6 characters"
+                      className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:bg-white focus:border-blue-200 outline-none transition-all"
+                    />
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {activeTab === "credentials" && (
-            <div className="p-6 space-y-6">
-              <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center">
-                    <Shield className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-bold text-emerald-900">Secure Database Link</h4>
-                    <p className="text-xs text-emerald-700">Project: {connection?.projectName || "Automated Falbor Database"}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {[
-                  { label: "Project URL", value: connection?.supabaseUrl, key: "url" },
-                  { label: "Anon Public Key", value: connection?.anonKey, key: "anon" },
-                  { label: "Service Role (Admin)", value: connection?.serviceRoleKey, key: "service" },
-                ].map((cred) => (
-                  <div key={cred.key} className="p-4 border border-gray-100 rounded-2xl bg-white shadow-sm transition-all hover:bg-gray-50 group">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cred.label}</span>
-                      <button
-                        onClick={() => copyToClipboard(cred.value, cred.key)}
-                        className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-all"
-                      >
-                        {copiedField === cred.key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                    <div className="font-mono text-xs text-gray-600 truncate">
-                      {cred.value || "Not available"}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                <div className="flex items-start gap-3">
-                  <Info className="w-4 h-4 text-gray-400 mt-0.5" />
-                  <p className="text-[11px] text-gray-500 leading-relaxed">
-                    These credentials are automatically injected into your project environment. Use the **Service Role** key only in server-side logic for administrative control.
-                  </p>
+                  <Button
+                    onClick={handleCreateUser}
+                    disabled={loading || !newUserEmail || newUserPassword.length < 6}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 mt-2 gap-2"
+                  >
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                    Create User
+                  </Button>
                 </div>
               </div>
             </div>
           )}
         </div>
-
-        {/* User Details Modal - REMOVED for Split-View */}
-
-        {/* Add User Modal */}
-        {showAddUserModal && (
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h3 className="font-bold text-gray-900">Create New User</h3>
-                <button onClick={() => setShowAddUserModal(false)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">
-                  <X className="w-4 h-4 text-gray-400" />
-                </button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={newUserEmail}
-                    onChange={(e) => setNewUserEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:bg-white focus:border-blue-200 outline-none transition-all"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Password</label>
-                  <input
-                    type="password"
-                    value={newUserPassword}
-                    onChange={(e) => setNewUserPassword(e.target.value)}
-                    placeholder="Min. 6 characters"
-                    className="w-full px-4 py-2 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:bg-white focus:border-blue-200 outline-none transition-all"
-                  />
-                </div>
-                <Button
-                  onClick={handleCreateUser}
-                  disabled={loading || !newUserEmail || newUserPassword.length < 6}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 mt-2 gap-2"
-                >
-                  {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Create User
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   )

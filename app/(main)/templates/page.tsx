@@ -103,80 +103,21 @@ export const metadata = {
 
 // ── Page ──────────────────────────────────────────────
 export default async function TemplatesPage() {
-  const { userId } = await auth()
-  const isAuthenticated = !!userId
-
   const templatesData = await getTemplates()
-  const projects = isAuthenticated && userId
-    ? await getUserProjects(userId)
-    : []
 
-  // ── AUTHENTICATED VIEW ────────────────────────────
-  if (isAuthenticated) {
-    return (
-      <div className="relative min-h-screen bg-[#FAF9F5] overflow-hidden">
-        {/* Sidebar */}
-        <div className="absolute inset-y-0 left-0 z-20">
-          <Suspense
-            fallback={
-              <div className="w-[320px] lg:w-[350px] h-screen bg-gray-100/60 animate-pulse" />
-            }
-          >
-            <SidebarProjects userId={userId!} initialProjects={projects} />
-          </Suspense>
-        </div>
-
-        {/* Logo */}
-        <div className="absolute top-[-20px] left-2 z-30">
-          <img src="/logo_light.png" width={140} alt="Falbor" />
-        </div>
-
-        {/* User menu */}
-        <div className="absolute top-3 right-4 z-50">
-          <UserProfileMenu />
-        </div>
-
-        {/* Main content */}
-        <div
-          className="absolute z-10 backdrop-blur-md border rounded-md shadow-sm p-6 sm:p-8 bg-white overflow-auto"
-          style={{ top: "60px", left: "300px", right: "10px", bottom: "10px" }}
-        >
-          <h1 className="text-3xl md:text-4xl font-bold text-center mt-6 mb-3">
-            Community <span className="text-primary">Templates</span>
-          </h1>
-
-          <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-10">
-            Start faster by cloning high-quality templates shared by the community
-          </p>
-
-          <div className="max-w-7xl mx-auto">
-            <TemplatesGrid templates={templatesData} />
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // ── PUBLIC VIEW ────────────────────────────────────
   return (
-    <div className="min-h-screen Bg-main flex flex-col">
-      <main className="container mx-auto px-4 mt-10 py-8 flex-1">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl md:text-5xl font-medium tracking-tight">
-            Start with the best{" "}
-            <span className="font-semibold text-primary">Templates.</span>
-          </h2>
-          <p className="text-muted-foreground mt-3 max-w-2xl mx-auto">
-            Discover and clone templates published by the community
-          </p>
-        </div>
+    <div className="p-6 sm:p-8">
+      <h1 className="text-3xl md:text-4xl font-bold text-center mt-6 mb-3">
+        Community <span className="text-primary">Templates</span>
+      </h1>
 
-        <div className="max-w-7xl mx-auto">
-          <TemplatesGrid templates={templatesData} />
-        </div>
-      </main>
+      <p className="text-muted-foreground text-center max-w-2xl mx-auto mb-10">
+        Start faster by cloning high-quality templates shared by the community
+      </p>
 
-      <Footer />
+      <div className="max-w-7xl mx-auto">
+        <TemplatesGrid templates={templatesData} />
+      </div>
     </div>
   )
 }

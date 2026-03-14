@@ -170,3 +170,41 @@ export async function toggleProfilePrivacy(isPrivate: boolean) {
     }
 }
 
+export async function updateNotificationSettings(data: { notificationSoundEnabled: boolean; notificationVolume: number }) {
+    const { userId } = await auth()
+
+    if (!userId) {
+        return { success: false, error: "Unauthorized" }
+    }
+
+    const sqlConn = neon(process.env.NEON_NEON_DATABASE_URL!)
+    const db = drizzle(sqlConn)
+
+    try {
+        const existing = await db.select().from(userProfiles).where(eq(userProfiles.userId, userId))
+
+        if (existing.length > 0) {
+            await db.update(userProfiles).set({
+                notificationSoundEnabled: data.notificationSoundEnabled,
+                notificationVolume: data.notificationVolume,
+                updatedAt: new Date(),
+            }).where(eq(userProfiles.userId, userId))
+        } else {
+            const clerkUser = await clerkClient.users.getUser(userId);
+            await db.insert(userProfiles).values({
+                userId,
+                email: clerkUser.emailAddresses[0]?.emailAddress || "",
+                username: clerkUser.username || "",
+                fullName: clerkUser.fullName || "",
+                notificationSoundEnabled: data.notificationSoundEnabled,
+                notificationVolume: data.notificationVolume,
+            })
+        }
+
+        return { success: true }
+    } catch (error) {
+        console.error("Failed to update notification settings:", error)
+        return { success: false, error: "Failed to update notification settings" }
+    }
+}
+

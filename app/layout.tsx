@@ -3,8 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google"
 import "./globals.css"
 import "@/styles/bg.css"
 import Providers from "./providers"
-import ClientDockWrapper from "@/components/layout/Button/ClientDockWrapper"
-import DefaultDemo from "@/components/layout/Button/Navbar"
+import { ClerkProvider } from "@clerk/nextjs"
+import Shell from "@/components/layout/Shell"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,13 +27,16 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <Providers>
-          <ClientDockWrapper />
-          {children}
-        </Providers>
-      </body>
-    </html>
+    <ClerkProvider>
+      <html lang="en">
+        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+          <Providers>
+            <Shell>
+              {children}
+            </Shell>
+          </Providers>
+        </body>
+      </html>
+    </ClerkProvider>
   )
 }

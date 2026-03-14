@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server"
 import { InputArea } from "@/components/workbench/input-area"
+import DefaultDemo from "@/components/layout/Button/Navbar"
 import Footer from "@/components/layout/footer"
 import HeroSection from "@/components/layout/HeroSection"
 import FAQ from "@/components/layout/faq"
 import HeroText from "@/components/layout/hero"
+import { LandingScrollHandler } from "@/components/layout/landing-scroll-handler"
 import CompanyLogos from "@/components/layout/LogsCompanySection"
 import SidebarProjects from "@/components/project/SidebarProjects"
 import { UserProfileMenu } from "@/components/layout/user-profile-menu"
@@ -16,6 +18,9 @@ import FeatureScroller from "@/components/layout/features/feature-scroller";
 import ApplicationPreview from "@/components/layout/features/feature-scroller/application-preview"
 import PricingSection from "@/components/layout/features/feature-scroller/pricing"
 import { Button } from "@/components/ui/button"
+import FeatureCards from "@/components/layout/features/FeatureCards"
+import { HomeTabs } from "@/components/home/home-tabs"
+import * as motion from "framer-motion/client"
 
 interface ProjectItem {
   id: string
@@ -65,38 +70,16 @@ export default async function HomePage() {
 
   return (
     <div
-      className={`relative min-h-screen flex flex-col overflow-hidden ${isAuthenticated ? "bg-[#FAF9F5]" : "" //Bg-main
+      className={`relative min-h-screen flex flex-col ${isAuthenticated ? "overflow-hidden bg-white" : "" //Bg-main
         }`}
     >
       <main className="flex flex-1 flex-col items-center px-4 w-full">
-        {isAuthenticated && (
-          <>
-            <div className="absolute inset-y-0 left-0 z-20">
-              <Suspense
-                fallback={
-                  <div className="w-[320px] lg:w-[350px] h-screen bg-gray-100/60 animate-pulse" />
-                }
-              >
-                <SidebarProjects
-                  userId={userId!}
-                  initialProjects={projects}
-                />
-              </Suspense>
-            </div>
-
-            <div className="absolute top-[-20px] left-2">
-              <img src="/logo_light.png" width={140} alt="" />
-            </div>
-
-            <div className="absolute top-3 right-4 z-50">
-              <UserProfileMenu />
-            </div>
-          </>
-        )}
 
         {/* ================= NOT AUTH ================= */}
         {!isAuthenticated && (
           <div className="w-full flex flex-col">
+            <LandingScrollHandler />
+            <DefaultDemo />
             {/* ✅ FIXED BACKGROUND SECTION */}
             <div className="relative w-full min-h-screen flex flex-col items-center justify-center">
 
@@ -134,21 +117,30 @@ export default async function HomePage() {
         {/* ================= AUTH ================= */}
         {isAuthenticated && (
           <div
-            className="absolute z-10 backdrop-blur-md border rounded-md shadow-sm p-6 sm:p-8 overflow-auto bg-white"
+            className="absolute z-10 p-6 sm:p-8 no-scrollbar w-full h-full"
             style={{
-              top: "60px",
-              left: "300px",
-              right: "10px",
-              bottom: "10px",
+              top: "0px",
+              left: "0px",
+              right: "0px",
+              bottom: "0px",
+              overflowY: "auto"
             }}
           >
-            <div className="flex flex-col items-center h-full justify-center top-[-120px] relative">
-              <div className="z-10">
+            <div className="">
+              <HomeTabs />
+            </div>
+            <div
+              className="flex flex-col items-center h-full justify-center top-[-170px] relative w-full"
+            >
+              <div className="z-10 w-full flex flex-col items-center">
                 <HeroText />
               </div>
-              <img src="/bg/bg-text.png" alt="" className="absolute mt-[-160px] ml-25 w-[50%]" />
+              <img src="/bg/bg-text.png" alt="" className="absolute mt-[-160px] ml-25 w-[50%] pointer-events-none" />
               <div className="w-full flex justify-center mt-6 z-10">
                 <InputArea isAuthenticated />
+              </div>
+              <div className="absolute bottom-[-50px] flex justify-center w-full z-10">
+                <FeatureCards />
               </div>
             </div>
           </div>

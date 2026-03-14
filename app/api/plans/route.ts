@@ -35,10 +35,10 @@ export async function POST(req: NextRequest) {
       updatedAt: new Date(),
     })
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       planId,
-      message: "Plan saved successfully" 
+      message: "Plan saved successfully"
     })
   } catch (error) {
     console.error("[Plans API] Error saving plan:", error)

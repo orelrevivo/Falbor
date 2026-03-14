@@ -1,6 +1,6 @@
 "use client"
 
-import { ClerkProvider } from "@clerk/nextjs"
+import { WorkbenchProvider } from "@/lib/workbench-context"
 
 export default function Providers({
   children,
@@ -8,8 +8,8 @@ export default function Providers({
   children: React.ReactNode
 }) {
   return (
-    <ClerkProvider>
+    <WorkbenchProvider>
       {children}
-    </ClerkProvider>
+    </WorkbenchProvider>
   )
 }

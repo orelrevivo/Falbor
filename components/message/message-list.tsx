@@ -32,6 +32,9 @@ import {
   Terminal as TerminalIcon,
   Mail,
   ShieldAlert,
+  RefreshCw,
+  Edit,
+  Clock,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
@@ -48,6 +51,23 @@ import { motion, AnimatePresence } from "framer-motion"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Smartphone, MoreVertical } from "lucide-react"
+
+function formatTimeAgo(date: string | Date | undefined): string {
+  if (!date) return ""
+  const now = new Date()
+  const then = new Date(date)
+  const diffMs = now.getTime() - then.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHr = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHr / 24)
+
+  if (diffSec < 60) return "just now"
+  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffHr < 24) return `${diffHr}h ago`
+  if (diffDay < 30) return `${diffDay}d ago`
+  return then.toLocaleDateString()
+}
 
 interface Message {
   id: string
@@ -577,8 +597,6 @@ export function MessageList({
   const [fileHistory, setFileHistory] = useState<Record<string, Array<{ code: string; version: number }>>>({})
   const [fullMessageModal, setFullMessageModal] = useState<Message | null>(null)
   const [modalExpandedSections, setModalExpandedSections] = useState<Record<string, boolean>>({})
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editContent, setEditContent] = useState<string>("")
   const [expandedMessages, setExpandedMessages] = useState<Record<string, boolean>>({})
   const [contextModal, setContextModal] = useState<{
     type: "file" | "pasted" | "database" | "design"
@@ -586,6 +604,8 @@ export function MessageList({
     content: string
   } | null>(null)
   const [thinkingTimer, setThinkingTimer] = useState(0)
+  const [editOverlay, setEditOverlay] = useState<{ id: string; content: string } | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
   const { user, isLoaded } = useUser()
 
   const toggleSection = (messageId: string, section: string) => {
@@ -732,606 +752,709 @@ export function MessageList({
   }
 
   return (
-    <div className="space-y-3" role="log" aria-live="polite">
-      {messages.map((message, index) => {
-        const isStreaming = message.id.startsWith("temp-") && index === messages.length - 1
-        const isEditing = editingId === message.id
+    <>
+      <div className="space-y-1" role="log" aria-live="polite">
+        {messages.map((message, index) => {
+          const isStreaming = message.id.startsWith("temp-") && index === messages.length - 1
 
-        const isTerminalErrorResponse =
-          message.role === "assistant" &&
-          index > 0 &&
-          messages[index - 1].role === "user" &&
-          messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
+          const isTerminalErrorResponse =
+            message.role === "assistant" &&
+            index > 0 &&
+            messages[index - 1].role === "user" &&
+            messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
 
-        const messageWrapperClass = cn(
-          "relative max-w-[100%] rounded-lg px-1 py-3",
-          message.role === "user" ? "BackgroundStyleButton text-[15px] text-black w-full" : "text-[15px] text-black",
-        )
+          const messageWrapperClass = cn(
+            "relative w-full rounded-lg px-1 py-2",
+            message.role === "user" ? "BackgroundStyleButton text-[15px] text-black" : "text-[15px] text-black",
+          )
 
-        const renderedMessage = (
-          <div
-            className={messageWrapperClass}
-            role={message.role === "user" ? "user-message" : "assistant-message"}
-            aria-label={`${message.role} message`}
-          >
-            {message.role === "user" ? (
-              <div className="flex items-start gap-2 w-full px-3">
-                <div className="flex-1 space-y-2">
-                  {message.imageData?.map((img, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedImage(img.url)}
-                      className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
-                      aria-label={`View image ${idx + 1}`}
-                    >
-                      <img
-                        src={img.url || "/placeholder.svg?height=200&width=300"}
-                        alt={`Uploaded image ${idx + 1}`}
-                        className="max-w-xs max-h-48 object-cover hover:opacity-80 transition-opacity"
-                      />
-                    </button>
-                  ))}
-
-                  {message.uploadedFiles?.map((file, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setSelectedFile(file)}
-                      className="flex items-center gap-2 px-3 py-2 bg-black/5 hover:bg-black/10 rounded transition-colors text-sm w-full text-left"
-                      aria-label={`View file ${file.name}`}
-                    >
-                      <FileText className="w-4 h-4 flex-shrink-0" />
-                      <span className="truncate">{file.name}</span>
-                    </button>
-                  ))}
-
-                  {isEditing ? (
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !e.shiftKey) {
-                          e.preventDefault()
-                          onEdit?.(message.id, editContent)
-                          setEditingId(null)
-                        } else if (e.key === "Escape") {
-                          setEditingId(null)
-                        }
-                      }}
-                      className="w-full p-2 border rounded resize-none text-sm bg-white text-black/75"
-                      placeholder="Edit your message..."
-                      autoFocus
-                      rows={3}
-                    />
-                  ) : (
-                    <>
-                      {(() => {
-                        const { parts, mainText } = parseUserContent(message.content)
-                        const contextParts = parts.filter(
-                          (p) => p.type === "file" || p.type === "pasted" || p.type === "database" || p.type === "design"
-                        )
-                        const hasContext = contextParts.length > 0
-
-                        return (
-                          <div className="space-y-2">
-                            {hasContext && (
-                              <div className="flex flex-wrap gap-1 mb-2">
-                                {contextParts.map((part, partIdx) => {
-                                  if (part.type === "file") {
-                                    return (
-                                      <TooltipProvider key={`file-${partIdx}`}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setContextModal({
-                                                  type: "file",
-                                                  name: part.content.name,
-                                                  content: part.content.fileContent,
-                                                })
-                                              }
-                                              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                              aria-label={`View file ${part.content.name}`}
-                                            >
-                                              <FileText className="w-3 h-3 text-gray-600" />
-                                              <span className="truncate max-w-[100px]">{part.content.name}</span>
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom">
-                                            <p>Click to view full content</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )
-                                  }
-
-                                  if (part.type === "pasted") {
-                                    return (
-                                      <TooltipProvider key={`pasted-${partIdx}`}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setContextModal({
-                                                  type: "pasted",
-                                                  name: "Pasted Text",
-                                                  content: part.content,
-                                                })
-                                              }
-                                              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                              aria-label="View pasted text"
-                                            >
-                                              <FileText className="w-3 h-3 text-gray-600" />
-                                              <span className="truncate max-w-[100px]">
-                                                {part.content.substring(0, 15)}...
-                                              </span>
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom">
-                                            <p>Click to view full content</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )
-                                  }
-
-                                  if (part.type === "database") {
-                                    return (
-                                      <TooltipProvider key={`db-${partIdx}`}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setContextModal({
-                                                  type: "database",
-                                                  name: "Database Connection",
-                                                  content: `Supabase URL: ${part.content.supabaseUrl}\nAnon Key: ${part.content.anonKey}`,
-                                                })
-                                              }
-                                              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                              aria-label="View database connection"
-                                            >
-                                              <CheckCircle2 className="w-3 h-3" />
-                                              <span>Database Connected</span>
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom">
-                                            <p>Click to view full content</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )
-                                  }
-
-                                  if (part.type === "design") {
-                                    return (
-                                      <TooltipProvider key={`design-${partIdx}`}>
-                                        <Tooltip>
-                                          <TooltipTrigger asChild>
-                                            <button
-                                              type="button"
-                                              onClick={() =>
-                                                setContextModal({
-                                                  type: "design",
-                                                  name: `Design: ${part.content.name}`,
-                                                  content: part.content.json,
-                                                })
-                                              }
-                                              className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                              aria-label={`View design system ${part.content.name}`}
-                                            >
-                                              <div
-                                                className="w-3 h-3 rounded"
-                                                style={{
-                                                  backgroundColor: part.content.config?.primaryColor || "#000",
-                                                }}
-                                              />
-                                              <span>{part.content.name}</span>
-                                            </button>
-                                          </TooltipTrigger>
-                                          <TooltipContent side="bottom">
-                                            <p>Click to view full content</p>
-                                          </TooltipContent>
-                                        </Tooltip>
-                                      </TooltipProvider>
-                                    )
-                                  }
-
-                                  return null
-                                })}
-                              </div>
-                            )}
-
-                            {mainText && (
-                              <div
-                                className={cn(
-                                  mainText.length > 200 &&
-                                  !(expandedMessages[message.id] ?? false) &&
-                                  "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent"
-                                )}
-                              >
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    strong: ({ children }: { children?: React.ReactNode }) => (
-                                      <strong className="font-bold text-black">{children}</strong>
-                                    ),
-                                    em: ({ children }: { children?: React.ReactNode }) => (
-                                      <em className="italic text-black/80">{children}</em>
-                                    ),
-                                    p: ({ children }: { children?: React.ReactNode }) => (
-                                      <p className="text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0">
-                                        {children}
-                                      </p>
-                                    ),
-                                    ul: ({ children }: { children?: React.ReactNode }) => (
-                                      <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
-                                    ),
-                                    ol: ({ children }: { children?: React.ReactNode }) => (
-                                      <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
-                                    ),
-                                    li: ({ children }: { children?: React.ReactNode }) => (
-                                      <li className="text-sm leading-relaxed">{children}</li>
-                                    ),
-                                  }}
-                                >
-                                  {mainText}
-                                </ReactMarkdown>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })()}
-                    </>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="w-full">
-                <AIMessageContent
-                  message={message}
-                  isStreaming={index === messages.length - 1 && isStreaming}
-                  thinkingTimer={thinkingTimer}
-                  expandedSections={expandedSections[message.id] || {}}
-                  activeMessageId={activeMessageId}
-                  onActivateVersion={onActivateVersion}
-                  onToggleSection={(section) => toggleSection(message.id, section)}
-                  onArtifactClick={onArtifactClick}
-                  onCodeSelect={handleCodeSelect}
-                  onViewChanges={handleViewChanges}
-                  onOpenFullModal={() => openFullMessageModal(message)}
-                  onOpenPreview={onOpenPreview}
-                />
-              </div>
-            )}
-
-            {message.role === "user" ? (
-              <div className="absolute top-2 right-1 flex items-center gap-1">
-                {message.content.length > 200 && (
-                  <Button
-                    variant="link"
-                    size="sm"
-                    onClick={() => toggleMessageExpand(message.id)}
-                    className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
-                  >
-                    {expandedMessages[message.id] ? (
-                      <ChevronUp className="w-5 h-5" />
-                    ) : (
-                      <ChevronDown className="w-5 h-5" />
-                    )}
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <>
-                {!isStreaming && (
-                  <div className="absolute bottom-2 right-2 flex gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        const sections = parseAIResponse(message.content)
-                        const textToCopy =
-                          sections.parts
-                            .filter((p) => p.type === "text")
-                            .map((p) => p.content)
-                            .join("\n") || message.content
-                        handleCopy(textToCopy)
-                      }}
-                      className="h-6 w-6 p-0 hover:bg-[#e4e4e4]"
-                      aria-label="Copy response"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )
-
-        return (
-          <div
-            key={`${message.id}-${index}`}
-            className={cn("flex flex-col", message.role === "user" ? "items-end" : "items-start")}
-          >
-            {isTerminalErrorResponse ? (
-              <div className="w-full bg-red-50 border-2 border-red-400 rounded-lg p-4 mb-4">
-                <h3 className="text-red-800 font-bold mb-3 flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5" />
-                  Terminal Error Explanation & Fix
-                </h3>
-                {renderedMessage}
-              </div>
-            ) : (
-              renderedMessage
-            )}
-          </div>
-        )
-      })}
-
-      {/* Image Modal */}
-      {selectedImage && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedImage(null)}
-          role="dialog"
-          aria-label="Image viewer"
-        >
-          <div
-            className="relative max-w-4xl max-h-full bg-black rounded-lg overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              onClick={() => setSelectedImage(null)}
-              className="absolute top-2 right-2 bg-black/50 hover:bg-black/80 p-2 rounded transition-colors"
-              aria-label="Close image"
+          const renderedMessage = (
+            <div
+              className={messageWrapperClass}
+              role={message.role === "user" ? "user-message" : "assistant-message"}
+              aria-label={`${message.role} message`}
             >
-              <XCircle className="w-4 h-4 text-white" />
-            </button>
-            <img
-              src={selectedImage || "/placeholder.svg"}
-              alt="Full view"
-              className="w-full h-auto max-h-full object-contain"
-            />
-          </div>
-        </div>
-      )}
+              {message.role === "user" ? (
+                <div className="w-full">
+                  {/* User Message Header: Timestamp + Menu */}
+                  <div className="flex items-center justify-between mb-2 px-3 absolute top-3 right-0">
+                    <div className="flex items-center gap-1 text-[10px] mr-3 text-black/30">
+                      <Clock className="w-3 h-3" />
+                      <span>{formatTimeAgo(message.createdAt)}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="link"
+                        size="sm"
+                        onClick={() => {
+                          const { mainText } = parseUserContent(message.content)
+                          onEdit?.(message.id, mainText || message.content)
+                        }}
+                        className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
+                        aria-label="User message options"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </Button>
+                      {message.content.length > 200 && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          onClick={() => toggleMessageExpand(message.id)}
+                          className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
+                        >
+                          {expandedMessages[message.id] ? (
+                            <ChevronUp className="w-4 h-4" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4" />
+                          )}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-2 px-1.5">
+                    {message.imageData?.map((img, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedImage(img.url)}
+                        className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
+                        aria-label={`View image ${idx + 1}`}
+                      >
+                        <img
+                          src={img.url || "/placeholder.svg?height=200&width=300"}
+                          alt={`Uploaded image ${idx + 1}`}
+                          className="max-w-xs max-h-48 object-cover hover:opacity-80 transition-opacity"
+                        />
+                      </button>
+                    ))}
 
-      {/* File Modal */}
-      {selectedFile && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedFile(null)}
-          role="dialog"
-          aria-label={`File viewer: ${selectedFile.name}`}
-        >
+                    {message.uploadedFiles?.map((file, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setSelectedFile(file)}
+                        className="flex items-center gap-2 px-3 py-2 bg-black/5 hover:bg-black/10 rounded transition-colors text-sm w-full text-left"
+                        aria-label={`View file ${file.name}`}
+                      >
+                        <FileText className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">{file.name}</span>
+                      </button>
+                    ))}
+
+                    {(() => {
+                      const { parts, mainText } = parseUserContent(message.content)
+                      const contextParts = parts.filter(
+                        (p) => p.type === "file" || p.type === "pasted" || p.type === "database" || p.type === "design"
+                      )
+                      const hasContext = contextParts.length > 0
+
+                      return (
+                        <div className="space-y-2">
+                          {hasContext && (
+                            <div className="flex flex-wrap gap-1 mb-2">
+                              {contextParts.map((part, partIdx) => {
+                                if (part.type === "file") {
+                                  return (
+                                    <TooltipProvider key={`file-${partIdx}`}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setContextModal({
+                                                type: "file",
+                                                name: part.content.name,
+                                                content: part.content.fileContent,
+                                              })
+                                            }
+                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                            aria-label={`View file ${part.content.name}`}
+                                          >
+                                            <FileText className="w-3 h-3 text-gray-600" />
+                                            <span className="truncate max-w-[100px]">{part.content.name}</span>
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">
+                                          <p>Click to view full content</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )
+                                }
+
+                                if (part.type === "pasted") {
+                                  return (
+                                    <TooltipProvider key={`pasted-${partIdx}`}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setContextModal({
+                                                type: "pasted",
+                                                name: "Pasted Text",
+                                                content: part.content,
+                                              })
+                                            }
+                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                            aria-label="View pasted text"
+                                          >
+                                            <FileText className="w-3 h-3 text-gray-600" />
+                                            <span className="truncate max-w-[100px]">
+                                              {part.content.substring(0, 15)}...
+                                            </span>
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">
+                                          <p>Click to view full content</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )
+                                }
+
+                                if (part.type === "database") {
+                                  return (
+                                    <TooltipProvider key={`db-${partIdx}`}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setContextModal({
+                                                type: "database",
+                                                name: "Database Connection",
+                                                content: `Supabase URL: ${part.content.supabaseUrl}\nAnon Key: ${part.content.anonKey}`,
+                                              })
+                                            }
+                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                            aria-label="View database connection"
+                                          >
+                                            <CheckCircle2 className="w-3 h-3" />
+                                            <span>Database Connected</span>
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">
+                                          <p>Click to view full content</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )
+                                }
+
+                                if (part.type === "design") {
+                                  return (
+                                    <TooltipProvider key={`design-${partIdx}`}>
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              setContextModal({
+                                                type: "design",
+                                                name: `Design: ${part.content.name}`,
+                                                content: part.content.json,
+                                              })
+                                            }
+                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                            aria-label={`View design system ${part.content.name}`}
+                                          >
+                                            <div
+                                              className="w-3 h-3 rounded"
+                                              style={{
+                                                backgroundColor: part.content.config?.primaryColor || "#000",
+                                              }}
+                                            />
+                                            <span>{part.content.name}</span>
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom">
+                                          <p>Click to view full content</p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    </TooltipProvider>
+                                  )
+                                }
+
+                                return null
+                              })}
+                            </div>
+                          )}
+
+                          {mainText && (
+                            <div
+                              className={cn(
+                                mainText.length > 200 &&
+                                !(expandedMessages[message.id] ?? false) &&
+                                "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent"
+                              )}
+                            >
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  strong: ({ children }: { children?: React.ReactNode }) => (
+                                    <strong className="font-bold text-black">{children}</strong>
+                                  ),
+                                  em: ({ children }: { children?: React.ReactNode }) => (
+                                    <em className="italic text-black/80">{children}</em>
+                                  ),
+                                  p: ({ children }: { children?: React.ReactNode }) => (
+                                    <p className="text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0">
+                                      {children}
+                                    </p>
+                                  ),
+                                  ul: ({ children }: { children?: React.ReactNode }) => (
+                                    <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
+                                  ),
+                                  ol: ({ children }: { children?: React.ReactNode }) => (
+                                    <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
+                                  ),
+                                  li: ({ children }: { children?: React.ReactNode }) => (
+                                    <li className="text-sm leading-relaxed">{children}</li>
+                                  ),
+                                }}
+                              >
+                                {mainText}
+                              </ReactMarkdown>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </div>
+              ) : (
+                <div className="w-full">
+                  {/* AI Message Header: Logo + Three-dot Menu */}
+                  <div className="flex items-center justify-between mb-2 px-1">
+                    <div className="flex items-center gap-2 ml-8 mt-3 mb-4">
+                      <img src="/logo_light.png" alt="AI" className="w-24 absolute left-0 object-contain" />
+                      <div className="flex items-center gap-1 text-[10px] text-black/30">
+                        {/* <Clock className="w-3 h-3" />
+                        <span>{formatTimeAgo(message.createdAt)}</span> */}
+                      </div>
+                    </div>
+                    {!(index === messages.length - 1 && isStreaming) && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0 hover:bg-[#e4e4e4] cursor-pointer"
+                            aria-label="AI message options"
+                          >
+                            <MoreVertical className="h-3.5 w-3.5 text-black/40" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[200px] p-1.5 bg-white border border-[#e4e4e4] shadow-xs rounded-lg">
+                          <DropdownMenuItem
+                            className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
+                            onClick={() => onRegenerate?.(message.id)}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Recreate Response
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
+                            onClick={() => {
+                              const sections = parseAIResponse(message.content)
+                              const textToCopy =
+                                sections.parts
+                                  .filter((p) => p.type === "text")
+                                  .map((p) => p.content)
+                                  .join("\n") || message.content
+                              handleCopy(textToCopy)
+                              setCopiedId(message.id)
+                              setTimeout(() => setCopiedId(null), 2000)
+                            }}
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                            {copiedId === message.id ? "Copied!" : "Copy Message"}
+                          </DropdownMenuItem>
+                          {(message.tokensUsed || message.cost) && (
+                            <div className="border-t border-gray-100 mt-1 pt-1 px-2 py-1.5">
+                              <div className="text-[10px] font-semibold text-black/30 uppercase tracking-wider mb-1">Usage</div>
+                              {message.tokensUsed && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-black/50">
+                                  <Zap className="w-3 h-3" />
+                                  <span>{message.tokensUsed.toLocaleString()} tokens</span>
+                                </div>
+                              )}
+                              {message.cost && (
+                                <div className="flex items-center gap-1.5 text-[11px] text-black/50 mt-0.5">
+                                  <Database className="w-3 h-3" />
+                                  <span>${(message.cost / 100).toFixed(2)} credits</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                  <AIMessageContent
+                    message={message}
+                    isStreaming={index === messages.length - 1 && isStreaming}
+                    thinkingTimer={thinkingTimer}
+                    expandedSections={expandedSections[message.id] || {}}
+                    activeMessageId={activeMessageId}
+                    onActivateVersion={onActivateVersion}
+                    onToggleSection={(section) => toggleSection(message.id, section)}
+                    onArtifactClick={onArtifactClick}
+                    onCodeSelect={handleCodeSelect}
+                    onViewChanges={handleViewChanges}
+                    onOpenFullModal={() => openFullMessageModal(message)}
+                    onOpenPreview={onOpenPreview}
+                  />
+                </div>
+              )}
+            </div>
+          )
+
+          return (
+            <div
+              key={`${message.id}-${index}`}
+              className={cn("flex flex-col", message.role === "user" ? "items-end" : "items-start")}
+            >
+              {isTerminalErrorResponse ? (
+                <div className="w-full bg-red-50 border-2 border-red-400 rounded-lg p-4 mb-4">
+                  <h3 className="text-red-800 font-bold mb-3 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    Terminal Error Explanation & Fix
+                  </h3>
+                  {renderedMessage}
+                </div>
+              ) : (
+                renderedMessage
+              )}
+            </div>
+          )
+        })}
+
+        {/* Image Modal */}
+        {selectedImage && (
           <div
-            className="relative max-w-4xl max-h-full bg-[#1E1E21] border border-[#3A3A3E] rounded-lg overflow-hidden flex flex-col w-full max-w-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedImage(null)}
+            role="dialog"
+            aria-label="Image viewer"
           >
-            <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
-              <p className="text-sm font-mono text-white truncate">{selectedFile.name}</p>
+            <div
+              className="relative max-w-4xl max-h-full bg-black rounded-lg overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
               <button
-                onClick={() => setSelectedFile(null)}
-                className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
-                aria-label="Close file"
+                onClick={() => setSelectedImage(null)}
+                className="absolute top-2 right-2 bg-black/50 hover:bg-black/80 p-2 rounded transition-colors"
+                aria-label="Close image"
               >
                 <XCircle className="w-4 h-4 text-white" />
               </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <pre className="text-xs text-white/75 whitespace-pre-wrap break-words font-mono">
-                {selectedFile.content}
-              </pre>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Code Modal */}
-      {selectedCode && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setSelectedCode(null)
-            setSelectedOldCode(null)
-          }}
-          role="dialog"
-          aria-label={`Code viewer: ${selectedCode.filename}`}
-        >
-          <div
-            className="relative max-w-6xl max-h-full bg-[#1E1E21] border border-[#3A3A3E] rounded-lg overflow-hidden flex flex-col w-full h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {selectedOldCode ? (
-              <>
-                <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
-                  <h3 className="text-sm font-mono text-white">Diff View: {selectedCode.filename}</h3>
-                  <button
-                    onClick={() => {
-                      setSelectedCode(null)
-                      setSelectedOldCode(null)
-                    }}
-                    className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
-                    aria-label="Close diff"
-                  >
-                    <XCircle className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-                <div className="flex flex-1 overflow-hidden">
-                  <div className="w-1/2 flex flex-col border-r border-[#3A3A3E]">
-                    <div className="p-2 bg-red-900/20 text-red-300 font-semibold border-b border-red-500/30">
-                      Original
-                    </div>
-                    <div className="flex-1 overflow-auto p-4">
-                      {(() => {
-                        const oldLines = selectedOldCode.split("\n")
-                        const newLines = selectedCode.code.split("\n")
-                        const newSet = new Set(newLines)
-                        return oldLines.map((line, i) => (
-                          <div
-                            key={i}
-                            className={cn(
-                              "flex items-start text-sm leading-relaxed font-mono text-white/80 mb-0.5",
-                              !newSet.has(line) && "bg-red-900/30 border-l-2 border-red-500 pl-2",
-                            )}
-                          >
-                            <span className="w-8 text-right pr-2 text-xs text-gray-500 select-none flex-shrink-0">
-                              {i + 1}
-                            </span>
-                            <span className="flex-1 whitespace-pre">{line}</span>
-                          </div>
-                        ))
-                      })()}
-                    </div>
-                  </div>
-                  <div className="w-1/2 flex flex-col">
-                    <div className="p-2 bg-green-900/20 text-green-300 font-semibold border-b border-green-500/30">
-                      Updated
-                    </div>
-                    <div className="flex-1 overflow-auto p-4">
-                      {(() => {
-                        const oldLines = selectedOldCode.split("\n")
-                        const newLines = selectedCode.code.split("\n")
-                        const oldSet = new Set(oldLines)
-                        return newLines.map((line, i) => (
-                          <div
-                            key={i}
-                            className={cn(
-                              "flex items-start text-sm leading-relaxed font-mono text-white/80 mb-0.5",
-                              !oldSet.has(line) && "bg-green-900/30 border-l-2 border-green-500 pl-2",
-                            )}
-                          >
-                            <span className="w-8 text-right pr-2 text-xs text-gray-500 select-none flex-shrink-0">
-                              {i + 1}
-                            </span>
-                            <span className="flex-1 whitespace-pre">{line}</span>
-                          </div>
-                        ))
-                      })()}
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
-                  <p className="text-sm font-mono text-white truncate">{selectedCode.filename}</p>
-                  <button
-                    onClick={() => {
-                      setSelectedCode(null)
-                      setSelectedOldCode(null)
-                    }}
-                    className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
-                    aria-label="Close code"
-                  >
-                    <XCircle className="w-4 h-4 text-white" />
-                  </button>
-                </div>
-                <div className="flex-1 overflow-auto p-4">
-                  <SyntaxHighlighter language={selectedCode.language} style={oneDark} customStyle={{ margin: 0 }}>
-                    {selectedCode.code}
-                  </SyntaxHighlighter>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Full AI Message Modal */}
-      {fullMessageModal && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setFullMessageModal(null)}
-          role="dialog"
-          aria-label="Full AI message viewer"
-        >
-          <div
-            className="relative max-w-4xl max-h-full bg-white rounded-lg overflow-hidden flex flex-col w-full h-[90vh]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between p-3 border-b border-gray-200">
-              <h3 className="text-sm font-semibold text-black">Full AI Response</h3>
-              <button
-                onClick={() => setFullMessageModal(null)}
-                className="p-2 hover:bg-gray-100 rounded transition-colors"
-                aria-label="Close full message"
-              >
-                <XCircle className="w-4 h-4 text-black" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <AIMessageContent
-                message={fullMessageModal}
-                isStreaming={false}
-                thinkingTimer={0}
-                expandedSections={modalExpandedSections}
-                onToggleSection={toggleModalSection}
-                onArtifactClick={onArtifactClick}
-                onCodeSelect={handleCodeSelect}
-                onViewChanges={handleViewChanges}
-                onOpenFullModal={() => { }}
-                onOpenPreview={onOpenPreview}
+              <img
+                src={selectedImage || "/placeholder.svg"}
+                alt="Full view"
+                className="w-full h-auto max-h-full object-contain"
               />
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Context Modal for User Messages */}
-      {contextModal && (
-        <div
-          className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
-          onClick={() => setContextModal(null)}
-          role="dialog"
-          aria-label={`Context viewer: ${contextModal.name}`}
-        >
+        {/* File Modal */}
+        {selectedFile && (
           <div
-            className="relative max-w-4xl max-h-full bg-[#1E1E21] border border-[#3A3A3E] rounded-lg overflow-hidden flex flex-col w-full max-w-2xl h-[70vh]"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => setSelectedFile(null)}
+            role="dialog"
+            aria-label={`File viewer: ${selectedFile.name}`}
           >
-            <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
-              <div className="flex items-center gap-2">
-                {contextModal.type === "file" && <FileText className="w-4 h-4 text-gray-400" />}
-                {contextModal.type === "pasted" && <FileText className="w-4 h-4 text-gray-400" />}
-                {contextModal.type === "database" && <CheckCircle2 className="w-4 h-4 text-green-400" />}
-                {contextModal.type === "design" && (
-                  <div className="w-4 h-4 rounded bg-purple-500" />
-                )}
-                <p className="text-sm font-mono text-white truncate">{contextModal.name}</p>
-              </div>
-              <div className="flex items-center gap-2">
+            <div
+              className="relative max-w-4xl max-h-full bg-[#1E1E21] border border-[#3A3A3E] rounded-lg overflow-hidden flex flex-col w-full max-w-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
+                <p className="text-sm font-mono text-white truncate">{selectedFile.name}</p>
                 <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(contextModal.content)
-                  }}
+                  onClick={() => setSelectedFile(null)}
                   className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
-                  aria-label="Copy content"
-                >
-                  <Copy className="w-4 h-4 text-white" />
-                </button>
-                <button
-                  onClick={() => setContextModal(null)}
-                  className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
-                  aria-label="Close context"
+                  aria-label="Close file"
                 >
                   <XCircle className="w-4 h-4 text-white" />
                 </button>
               </div>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4">
-              <pre className="text-xs text-white/75 whitespace-pre-wrap break-words font-mono">
-                {contextModal.content}
-              </pre>
+              <div className="flex-1 overflow-y-auto p-4">
+                <pre className="text-xs text-white/75 whitespace-pre-wrap break-words font-mono">
+                  {selectedFile.content}
+                </pre>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+
+        {/* Code Modal */}
+        {selectedCode && (
+          <div
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setSelectedCode(null)
+              setSelectedOldCode(null)
+            }}
+            role="dialog"
+            aria-label={`Code viewer: ${selectedCode.filename}`}
+          >
+            <div
+              className="relative max-w-6xl max-h-full bg-[#1E1E21] border border-[#3A3A3E] rounded-lg overflow-hidden flex flex-col w-full h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {selectedOldCode ? (
+                <>
+                  <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
+                    <h3 className="text-sm font-mono text-white">Diff View: {selectedCode.filename}</h3>
+                    <button
+                      onClick={() => {
+                        setSelectedCode(null)
+                        setSelectedOldCode(null)
+                      }}
+                      className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
+                      aria-label="Close diff"
+                    >
+                      <XCircle className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+                  <div className="flex flex-1 overflow-hidden">
+                    <div className="w-1/2 flex flex-col border-r border-[#3A3A3E]">
+                      <div className="p-2 bg-red-900/20 text-red-300 font-semibold border-b border-red-500/30">
+                        Original
+                      </div>
+                      <div className="flex-1 overflow-auto p-4">
+                        {(() => {
+                          const oldLines = selectedOldCode.split("\n")
+                          const newLines = selectedCode.code.split("\n")
+                          const newSet = new Set(newLines)
+                          return oldLines.map((line, i) => (
+                            <div
+                              key={i}
+                              className={cn(
+                                "flex items-start text-sm leading-relaxed font-mono text-white/80 mb-0.5",
+                                !newSet.has(line) && "bg-red-900/30 border-l-2 border-red-500 pl-2",
+                              )}
+                            >
+                              <span className="w-8 text-right pr-2 text-xs text-gray-500 select-none flex-shrink-0">
+                                {i + 1}
+                              </span>
+                              <span className="flex-1 whitespace-pre">{line}</span>
+                            </div>
+                          ))
+                        })()}
+                      </div>
+                    </div>
+                    <div className="w-1/2 flex flex-col">
+                      <div className="p-2 bg-green-900/20 text-green-300 font-semibold border-b border-green-500/30">
+                        Updated
+                      </div>
+                      <div className="flex-1 overflow-auto p-4">
+                        {(() => {
+                          const oldLines = selectedOldCode.split("\n")
+                          const newLines = selectedCode.code.split("\n")
+                          const oldSet = new Set(oldLines)
+                          return newLines.map((line, i) => (
+                            <div
+                              key={i}
+                              className={cn(
+                                "flex items-start text-sm leading-relaxed font-mono text-white/80 mb-0.5",
+                                !oldSet.has(line) && "bg-green-900/30 border-l-2 border-green-500 pl-2",
+                              )}
+                            >
+                              <span className="w-8 text-right pr-2 text-xs text-gray-500 select-none flex-shrink-0">
+                                {i + 1}
+                              </span>
+                              <span className="flex-1 whitespace-pre">{line}</span>
+                            </div>
+                          ))
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
+                    <p className="text-sm font-mono text-white truncate">{selectedCode.filename}</p>
+                    <button
+                      onClick={() => {
+                        setSelectedCode(null)
+                        setSelectedOldCode(null)
+                      }}
+                      className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
+                      aria-label="Close code"
+                    >
+                      <XCircle className="w-4 h-4 text-white" />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4">
+                    <SyntaxHighlighter language={selectedCode.language} style={oneDark} customStyle={{ margin: 0 }}>
+                      {selectedCode.code}
+                    </SyntaxHighlighter>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Full AI Message Modal */}
+        {fullMessageModal && (
+          <div
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => setFullMessageModal(null)}
+            role="dialog"
+            aria-label="Full AI message viewer"
+          >
+            <div
+              className="relative max-w-4xl max-h-full bg-white rounded-lg overflow-hidden flex flex-col w-full h-[90vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-3 border-b border-gray-200">
+                <h3 className="text-sm font-semibold text-black">Full AI Response</h3>
+                <button
+                  onClick={() => setFullMessageModal(null)}
+                  className="p-2 hover:bg-gray-100 rounded transition-colors"
+                  aria-label="Close full message"
+                >
+                  <XCircle className="w-4 h-4 text-black" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <AIMessageContent
+                  message={fullMessageModal}
+                  isStreaming={false}
+                  thinkingTimer={0}
+                  expandedSections={modalExpandedSections}
+                  onToggleSection={toggleModalSection}
+                  onArtifactClick={onArtifactClick}
+                  onCodeSelect={handleCodeSelect}
+                  onViewChanges={handleViewChanges}
+                  onOpenFullModal={() => { }}
+                  onOpenPreview={onOpenPreview}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Context Modal for User Messages */}
+        {contextModal && (
+          <div
+            className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+            onClick={() => setContextModal(null)}
+            role="dialog"
+            aria-label={`Context viewer: ${contextModal.name}`}
+          >
+            <div
+              className="relative max-w-4xl max-h-full bg-[#1E1E21] border border-[#3A3A3E] rounded-lg overflow-hidden flex flex-col w-full max-w-2xl h-[70vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between p-3 border-b border-[#3A3A3E]">
+                <div className="flex items-center gap-2">
+                  {contextModal.type === "file" && <FileText className="w-4 h-4 text-gray-400" />}
+                  {contextModal.type === "pasted" && <FileText className="w-4 h-4 text-gray-400" />}
+                  {contextModal.type === "database" && <CheckCircle2 className="w-4 h-4 text-green-400" />}
+                  {contextModal.type === "design" && (
+                    <div className="w-4 h-4 rounded bg-purple-500" />
+                  )}
+                  <p className="text-sm font-mono text-white truncate">{contextModal.name}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(contextModal.content)
+                    }}
+                    className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
+                    aria-label="Copy content"
+                  >
+                    <Copy className="w-4 h-4 text-white" />
+                  </button>
+                  <button
+                    onClick={() => setContextModal(null)}
+                    className="p-2 hover:bg-[#2A2A2E] rounded transition-colors"
+                    aria-label="Close context"
+                  >
+                    <XCircle className="w-4 h-4 text-white" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                <pre className="text-xs text-white/75 whitespace-pre-wrap break-words font-mono">
+                  {contextModal.content}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Message Overlay */}
+        {editOverlay && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center pb-8"
+            onClick={() => setEditOverlay(null)}
+          >
+            <div
+              className="w-full max-w-2xl mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="bg-white rounded-xl shadow-2xl border border-[#e4e4e4] p-3">
+                <div className="flex items-center gap-2 mb-2">
+                  <Edit className="w-4 h-4 text-black/40" />
+                  <span className="text-xs font-medium text-black/50">Editing message</span>
+                  <button
+                    onClick={() => setEditOverlay(null)}
+                    className="ml-auto text-black/40 hover:text-black/70 transition-colors"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </div>
+                <textarea
+                  value={editOverlay.content}
+                  onChange={(e) => setEditOverlay({ ...editOverlay, content: e.target.value })}
+                  className="w-full p-3 border border-[#e4e4e4] rounded-lg resize-none text-sm bg-white text-black/80 focus:outline-none focus:ring-2 focus:ring-[#0099ff]/30 focus:border-[#0099ff]/50 transition-all"
+                  placeholder="Edit your message..."
+                  autoFocus
+                  rows={4}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault()
+                      onEdit?.(editOverlay.id, editOverlay.content)
+                      setEditOverlay(null)
+                    } else if (e.key === "Escape") {
+                      setEditOverlay(null)
+                    }
+                  }}
+                />
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-[10px] text-black/30">Press Enter to save, Esc to cancel</span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditOverlay(null)}
+                      className="h-7 px-3 text-xs text-black/50 hover:text-black/70"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        onEdit?.(editOverlay.id, editOverlay.content)
+                        setEditOverlay(null)
+                      }}
+                      className="h-7 px-3 text-xs bg-black text-white hover:bg-black/80"
+                    >
+                      Save & Resend
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -1892,25 +2015,6 @@ function AIMessageContent({
       ))}
       {isStreaming && parts.some((p) => p.type === "text" && p.content) && (
         <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 align-middle" />
-      )}
-
-      {/* Token and Cost Info */}
-      {(message.tokensUsed || message.cost) && !isStreaming && (
-        <div className="flex items-center gap-2 mt-4 pt-2 border-t border-black/5 text-[10px] text-black/30 font-mono select-none">
-          {message.tokensUsed && (
-            <div className="flex items-center gap-1">
-              <Zap className="w-3 h-3" />
-              <span>{message.tokensUsed.toLocaleString()} tokens</span>
-            </div>
-          )}
-          {message.tokensUsed && message.cost && <span className="opacity-50">•</span>}
-          {message.cost && (
-            <div className="flex items-center gap-1">
-              <Database className="w-3 h-3" />
-              <span>${(message.cost / 100).toFixed(2)}</span>
-            </div>
-          )}
-        </div>
       )}
     </div>
   )

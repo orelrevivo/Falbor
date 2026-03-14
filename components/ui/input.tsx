@@ -10,7 +10,6 @@ function Input({ className, type, isActive = false, ...props }: InputProps) {
   return (
     <input
       type={type}
-      data-slot="input"
       className={cn(
         "p-3 border border-gray-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
         "prose prose-sm max-w-none",

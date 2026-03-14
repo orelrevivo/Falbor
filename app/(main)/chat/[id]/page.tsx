@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server"
 import { redirect } from "next/navigation"
 import { db } from "@/config/db"
-import { projects, messages, projectCollaborators } from "@/config/schema"
+import { projects, messages, projectCollaborators, userProfiles } from "@/config/schema"
 import { eq, asc, and } from "drizzle-orm"
 import { ChatInterface } from "@/components/chat-interface"
 
@@ -61,9 +61,11 @@ export default async function ChatPage({
     .where(eq(messages.projectId, id))
     .orderBy(asc(messages.createdAt))
 
-  return (
-    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#FAF9F5" }}>
-      <ChatInterface project={project} initialMessages={projectMessages} />
-    </div>
-  )
+  // 6. Get user profile for notification settings
+  const [userProfile] = await db
+    .select()
+    .from(userProfiles)
+    .where(eq(userProfiles.userId, userId))
+
+  return <ChatInterface project={project} initialMessages={projectMessages} userProfile={userProfile} />
 }

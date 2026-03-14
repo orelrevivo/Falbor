@@ -59,13 +59,57 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
   // Check connection and load repos
   const fetchGithubConnection = async () => {
     try {
+      // First check direct GitHub connection
       const res = await fetch("/api/github/connection")
       if (res.ok) {
         const data = await res.json()
-        setIsConnected(data.connected)
         if (data.connected) {
+          setIsConnected(true)
           setUsername(data.username)
           loadRepositories()
+          return
+        }
+      }
+
+      // If no direct connection, check for MCP GitHub connection
+      const mcpRes = await fetch("/api/mcp/connections")
+      if (mcpRes.ok) {
+        const mcpData = await mcpRes.json()
+        const githubConnection = mcpData.connections?.find(
+          (c: any) => c.name.toLowerCase() === 'github' && c.type === 'github'
+        )
+
+        if (githubConnection?.accessToken) {
+          // Sync MCP GitHub connection with GitHub connection system
+          try {
+            const userRes = await fetch("https://api.github.com/user", {
+              headers: {
+                "Authorization": `Bearer ${githubConnection.accessToken}`,
+                "Accept": "application/vnd.github.v3+json"
+              }
+            })
+
+            if (userRes.ok) {
+              const userData = await userRes.json()
+
+              // Store in GitHub connection system
+              await fetch("/api/github/connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  token: githubConnection.accessToken,
+                  username: userData.login,
+                  fromMcp: true
+                })
+              })
+
+              setIsConnected(true)
+              setUsername(userData.login)
+              loadRepositories()
+            }
+          } catch (err) {
+            console.error("Failed to sync MCP GitHub connection:", err)
+          }
         }
       }
     } catch (err) {
@@ -175,7 +219,7 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl bg-[#ffffff] border border-[#ececec50] p-1 flex flex-col max-h-[90vh]">
+      <DialogContent className="sm:max-w-lg p-0 flex flex-col max-h-[60vh]">
         <DialogTitle className="sr-only">Clone GitHub Repository</DialogTitle>
 
         {/* HEADER — ONLY FOR SUBSCRIBED USERS */}

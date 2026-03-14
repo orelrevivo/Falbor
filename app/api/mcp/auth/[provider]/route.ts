@@ -17,6 +17,18 @@ const PROVIDER_CONFIGS: Record<string, { authUrl: string; client_env: string }> 
     gmail: {
         authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
         client_env: "GOOGLE_CLIENT_ID"
+    },
+    linkedin: {
+        authUrl: "https://www.linkedin.com/oauth/v2/authorization",
+        client_env: "LINKEDIN_CLIENT_ID"
+    },
+    twitter: {
+        authUrl: "https://twitter.com/i/oauth2/authorize",
+        client_env: "TWITTER_CLIENT_ID"
+    },
+    spotify: {
+        authUrl: "https://accounts.spotify.com/authorize",
+        client_env: "SPOTIFY_CLIENT_ID"
     }
 }
 
@@ -62,6 +74,13 @@ export async function GET(
     } else if (provider === "gmail") {
         url += "&scope=" + encodeURIComponent("https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.labels email profile")
         url += "&access_type=offline&prompt=consent"
+    } else if (provider === "linkedin") {
+        url += "&scope=" + encodeURIComponent("r_liteprofile r_emailaddress w_member_social")
+    } else if (provider === "twitter") {
+        url += "&scope=" + encodeURIComponent("tweet.read tweet.write users.read offline.access")
+        url += "&code_challenge=challenge&code_challenge_method=plain"
+    } else if (provider === "spotify") {
+        url += "&scope=" + encodeURIComponent("user-read-private user-read-email playlist-read-private playlist-modify-private user-modify-playback-state")
     }
 
     return NextResponse.redirect(url)

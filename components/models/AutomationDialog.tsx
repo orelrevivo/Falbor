@@ -235,7 +235,7 @@ export function AutomationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-sm overflow-y-auto bg-[#ffffff] border-0 p-0 sm:max-w-md">
+      <DialogContent className="p-0">
         <DialogHeader className="p-6 pb-4">
           <DialogTitle className="text-black text-xl flex items-center gap-2">
             AI Automation Settings

@@ -4,6 +4,7 @@
 "use client"
 import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import React from "react"
+import { createPortal } from "react-dom"
 
 import { Github, GitCommit, TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database } from "lucide-react"
 
@@ -978,83 +979,161 @@ class StdoutRedirect:
   return (
     <div className="h-full flex flex-col w-full">
       <Tabs value={tabValue} onValueChange={handleTabChange} className="h-full flex flex-col">
-        {/* Tab buttons positioned above the bordered box, left-aligned, at navbar height */}
-        <div className="flex-none flex items-center h-0 mb-3 absolute top-7.5">
-          <TabsList className="bg-white shadow-xs flex items-center">
-
-            <TabsTrigger
-              value="preview"
-              className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-            >
-              <Globe className="w-4 h-4" />
-            </TabsTrigger>
-
-            <TabsTrigger
-              value="code"
-              className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-            >
-              <Code2 className="w-4 h-4" />
-            </TabsTrigger>
-
-            <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
-
-            <TabsTrigger
-              value="database"
-              className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-            >
-              <Database className="w-4 h-4" />
-            </TabsTrigger>
-
-
-          </TabsList>
-
-          <button
-            className={cn(
-              "ml-3 cursor-pointer",
-              activeTab === "settings"
-                ? "text-[#0099ff]"
-                : "text-gray-700 hover:text-gray-900"
-            )}
-            onClick={() => handleTabChange("settings")}
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
-          {isGitHubImport && (
-            <div className="ml-4 flex items-center gap-2">
-              <div className="h-4 w-[1px] bg-gray-300 mx-1" />
-              {projectMetadata?.isGitAdopted ? (
-                <button
-                  onClick={handleGitPush}
-                  disabled={isPushing}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0099ff]/10 text-[#0099ff] hover:bg-[#0099ff]/20 text-xs font-medium transition-colors disabled:opacity-50"
+        {typeof document !== 'undefined' && document.getElementById('header-left-portal') ? (
+          createPortal(
+            <div className="flex items-center">
+              {/* <TabsList className="bg-white shadow-xs flex items-center">
+                <TabsTrigger
+                  value="preview"
+                  className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
                 >
-                  {isPushing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCommit className="w-3.5 h-3.5" />}
-                  Push to GitHub
-                </button>
-              ) : (
-                <button
-                  onClick={handleGitAdopt}
-                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black text-white hover:bg-black/90 text-xs font-medium transition-colors"
+                  <Globe className="w-4 h-4" />
+                </TabsTrigger>
+
+                <TabsTrigger
+                  value="code"
+                  className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
                 >
-                  <Github className="w-3.5 h-3.5" />
-                  Adopt project to Git
-                </button>
-              )}
-              {(gitError || gitSuccess) && (
-                <div className={cn(
-                  "text-[10px] px-2 py-0.5 rounded-md",
-                  gitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
-                )}>
-                  {gitError || gitSuccess}
+                  <Code2 className="w-4 h-4" />
+                </TabsTrigger>
+
+                <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
+
+                <TabsTrigger
+                  value="database"
+                  className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+                >
+                  <Database className="w-4 h-4" />
+                </TabsTrigger>
+              </TabsList>
+
+              <button
+                className={cn(
+                  "ml-3 cursor-pointer",
+                  tabValue === "settings"
+                    ? "text-[#0099ff]"
+                    : "text-gray-700 hover:text-gray-900"
+                )}
+                onClick={() => handleTabChange("settings")}
+              >
+                <Settings className="w-4 h-4" />
+              </button> */}
+
+              {isGitHubImport && (
+                <div className="ml-4 flex items-center gap-2">
+                  <div className="h-4 w-[1px] bg-gray-300 mx-1" />
+                  {projectMetadata?.isGitAdopted ? (
+                    <button
+                      onClick={handleGitPush}
+                      disabled={isPushing}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0099ff]/10 text-[#0099ff] hover:bg-[#0099ff]/20 text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      {isPushing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCommit className="w-3.5 h-3.5" />}
+                      Push to GitHub
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleGitAdopt}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black text-white hover:bg-black/90 text-xs font-medium transition-colors"
+                    >
+                      <Github className="w-3.5 h-3.5" />
+                      Adopt project to Git
+                    </button>
+                  )}
+                  {(gitError || gitSuccess) && (
+                    <div className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-md",
+                      gitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                    )}>
+                      {gitError || gitSuccess}
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
-        </div>
+            </div>,
+            document.getElementById('header-left-portal')!
+          )
+        ) : (
+          <div className="flex-none flex items-center h-0 mb-3 absolute top-7.5">
+            <TabsList className="bg-white shadow-xs flex items-center">
+
+              <TabsTrigger
+                value="preview"
+                className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+              >
+                <Globe className="w-4 h-4" />
+              </TabsTrigger>
+
+              <TabsTrigger
+                value="code"
+                className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+              >
+                <Code2 className="w-4 h-4" />
+              </TabsTrigger>
+
+              <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
+
+              <TabsTrigger
+                value="database"
+                className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+              >
+                <Database className="w-4 h-4" />
+              </TabsTrigger>
 
 
-        <div className="flex-1 flex flex-col border border-[#d6d6d6] rounded-sm bg-[#ffffff] relative overflow-hidden shadow-sm">
+            </TabsList>
+
+            <button
+              className={cn(
+                "ml-3 cursor-pointer",
+                activeTab === "settings"
+                  ? "text-[#0099ff]"
+                  : "text-gray-700 hover:text-gray-900"
+              )}
+              onClick={() => handleTabChange("settings")}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+
+            {isGitHubImport && (
+              <div className="ml-4 flex items-center gap-2">
+                <div className="h-4 w-[1px] bg-gray-300 mx-1" />
+                {projectMetadata?.isGitAdopted ? (
+                  <button
+                    onClick={handleGitPush}
+                    disabled={isPushing}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0099ff]/10 text-[#0099ff] hover:bg-[#0099ff]/20 text-xs font-medium transition-colors disabled:opacity-50"
+                  >
+                    {isPushing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCommit className="w-3.5 h-3.5" />}
+                    Push to GitHub
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleGitAdopt}
+                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black text-white hover:bg-black/90 text-xs font-medium transition-colors"
+                  >
+                    <Github className="w-3.5 h-3.5" />
+                    Adopt project to Git
+                  </button>
+                )}
+                {(gitError || gitSuccess) && (
+                  <div className={cn(
+                    "text-[10px] px-2 py-0.5 rounded-md",
+                    gitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                  )}>
+                    {gitError || gitSuccess}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+
+        <div className={cn(
+          "flex-1 flex flex-col relative overflow-hidden",
+          isSplitScreen || (tabValue !== "preview" && tabValue !== "code") ? "" : "border-l border-[#d6d6d6] bg-[#ffffff] shadow-xs"
+        )}>
           <div className="flex-1 flex flex-col overflow-hidden">
             {isSplitScreen ? (
               <div className="flex-1 flex w-full h-full overflow-hidden">

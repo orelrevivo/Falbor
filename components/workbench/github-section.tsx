@@ -29,13 +29,62 @@ export function GithubSection({ projectId }: GithubSectionProps) {
     const fetchData = async () => {
         try {
             setLoading(true)
+            
+            // First check direct GitHub connection
             const [connRes, projRes] = await Promise.all([
                 fetch("/api/github/connection"),
                 fetch(`/api/projects/${projectId}`)
             ])
 
             const connData = connRes.ok ? await connRes.json() : null
-            setConnection(connData?.connected ? connData : null)
+            
+            if (connData?.connected) {
+                setConnection(connData)
+            } else {
+                // If no direct connection, check for MCP GitHub connection
+                const mcpRes = await fetch("/api/mcp/connections")
+                if (mcpRes.ok) {
+                    const mcpData = await mcpRes.json()
+                    const githubConnection = mcpData.connections?.find(
+                        (c: any) => c.name.toLowerCase() === 'github' && c.type === 'github'
+                    )
+                    
+                    if (githubConnection?.accessToken) {
+                        // Sync MCP GitHub connection with GitHub connection system
+                        try {
+                            const userRes = await fetch("https://api.github.com/user", {
+                                headers: {
+                                    "Authorization": `Bearer ${githubConnection.accessToken}`,
+                                    "Accept": "application/vnd.github.v3+json"
+                                }
+                            })
+                            
+                            if (userRes.ok) {
+                                const userData = await userRes.json()
+                                
+                                // Store in GitHub connection system
+                                await fetch("/api/github/connection", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ 
+                                        token: githubConnection.accessToken,
+                                        username: userData.login,
+                                        fromMcp: true 
+                                    })
+                                })
+                                
+                                setConnection({
+                                    connected: true,
+                                    username: userData.login,
+                                    fromMcp: true
+                                })
+                            }
+                        } catch (err) {
+                            console.error("Failed to sync MCP GitHub connection:", err)
+                        }
+                    }
+                }
+            }
 
             const projData = projRes.ok ? await projRes.json() : null
             setProjectMetadata(projData)

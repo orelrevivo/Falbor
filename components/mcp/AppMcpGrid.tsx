@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { McpConnectModal } from "@/components/project/McpConnectModal"
 import { DiscordConfigModal } from "@/components/mcp/DiscordConfigModal"
+import { GitConfigModal } from "@/components/mcp/GitConfigModal"
 import { toast } from "sonner"
 import { useRouter } from "next/navigation"
 import {
@@ -31,6 +32,55 @@ const BUILTIN_MCPS = [
         icon: "https://static.vecteezy.com/system/resources/previews/019/493/250/non_2x/discord-logo-discord-icon-discord-symbol-free-free-vector.jpg",
         docs: "https://discord.com/developers/docs/intro",
         supportsOAuth: true
+    },
+    {
+        type: "github",
+        name: "GitHub",
+        description: "Integration with GitHub repositories. Allow the AI to read code, manage repositories, clone projects, and assist with development workflows.",
+        icon: "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+        docs: "https://docs.github.com/en/rest",
+        supportsOAuth: true
+    },
+    {
+        type: "git",
+        name: "Git Clone",
+        description: "Clone and import Git repositories directly into your projects. Connect your Git account to seamlessly import public and private repositories.",
+        icon: "https://git-scm.com/images/logos/downloads/Git-Icon-1788C.png",
+        docs: "https://git-scm.com/doc",
+        supportsOAuth: true,
+        isGitClone: true
+    },
+    // {
+    //     type: "social",
+    //     name: "LinkedIn",
+    //     description: "Integration with LinkedIn. Allow the AI to manage your professional profile, share updates, and assist with networking workflows.",
+    //     icon: "https://content.linkedin.com/content/dam/me/business/en-us/amp/brand-site/v2/bg/LI-Bug.svg.original.svg",
+    //     docs: "https://docs.microsoft.com/en-us/linkedin/",
+    //     supportsOAuth: true
+    // },
+    {
+        type: "social",
+        name: "Twitter",
+        description: "Integration with Twitter/X. Allow the AI to read tweets, post updates, and assist with social media management.",
+        icon: "https://about.twitter.com/content/dam/about-twitter/x/brand-toolkit/logo-black.png.twimg.1920.png",
+        docs: "https://developer.twitter.com/en/docs/twitter-api",
+        supportsOAuth: true
+    },
+    {
+        type: "communication",
+        name: "Slack",
+        description: "Integration with Slack workspaces. Allow the AI to send messages, read channels, and assist with team communication.",
+        icon: "https://a.slack-edge.com/80588/marketing/img/icons/icon_slack_hash_colored.png",
+        docs: "https://api.slack.com/docs",
+        supportsOAuth: true
+    },
+    {
+        type: "entertainment",
+        name: "Spotify",
+        description: "Integration with Spotify. Allow the AI to manage playlists, control playback, and assist with music workflows.",
+        icon: "/icons/Spotify_App_Logo.svg.png",
+        docs: "https://developer.spotify.com/documentation/web-api",
+        supportsOAuth: true
     }
 ]
 
@@ -45,6 +95,8 @@ export function AppMcpGrid({ connections, searchQuery = "", onDisconnect, onSucc
     const [selectedMcp, setSelectedMcp] = useState<any>(null)
     const [discordConfigOpen, setDiscordConfigOpen] = useState(false)
     const [discordConfigConnection, setDiscordConfigConnection] = useState<any>(null)
+    const [gitConfigOpen, setGitConfigOpen] = useState(false)
+    const [gitConfigConnection, setGitConfigConnection] = useState<any>(null)
     const router = useRouter()
 
     const filteredBuiltins = BUILTIN_MCPS.filter(mcp =>
@@ -79,7 +131,7 @@ export function AppMcpGrid({ connections, searchQuery = "", onDisconnect, onSucc
                                     <td className="px-6 py-6 border-none">
                                         <div className="flex items-center gap-4">
                                             <div className={`h-12 min-w-12 rounded-md bg-white flex items-center justify-center shadow-xs border`}>
-                                                <img src={mcp.icon} alt={mcp.name} className="w-10 h-10" />
+                                                <img src={mcp.icon} alt={mcp.name} className="w-8 h-8 rounded-md" />
                                             </div>
                                             <div className="">{mcp.name}</div>
                                         </div>
@@ -105,7 +157,13 @@ export function AppMcpGrid({ connections, searchQuery = "", onDisconnect, onSucc
                                             {!connection ? (
                                                 <Button
                                                     size="sm"
-                                                    onClick={() => setSelectedMcp(mcp)}
+                                                    onClick={() => {
+                                                        if (mcp.isGitClone) {
+                                                            setGitConfigOpen(true)
+                                                        } else {
+                                                            setSelectedMcp(mcp)
+                                                        }
+                                                    }}
                                                     className="h-8 px-3 bg-[#0099ff]/20 hover:bg-[#0099ff]/20 text-[#0099ff] gap-2 text-[10px] rounded-md"
                                                 >
                                                     <Plus className="w-4 h-4" />
@@ -148,7 +206,22 @@ export function AppMcpGrid({ connections, searchQuery = "", onDisconnect, onSucc
                                                                     <div className="h-px bg-zinc-100 my-1" />
                                                                 </>
                                                             )}
-                                                            {mcp.name !== 'Discord' && (
+                                                            {mcp.name === 'Git Clone' && (
+                                                                <>
+                                                                    <DropdownMenuItem
+                                                                        className="flex items-center gap-3 px-3 py-2.5 font-bold text-zinc-600 text-[11px] rounded-md hover:bg-zinc-50 focus:bg-zinc-50 focus:text-zinc-900 cursor-pointer"
+                                                                        onClick={() => {
+                                                                            setGitConfigConnection(connection)
+                                                                            setGitConfigOpen(true)
+                                                                        }}
+                                                                    >
+                                                                        <Settings2 className="w-4 h-4" />
+                                                                        Configure & Clone Repo
+                                                                    </DropdownMenuItem>
+                                                                    <div className="h-px bg-zinc-100 my-1" />
+                                                                </>
+                                                            )}
+                                                            {mcp.name !== 'Discord' && mcp.name !== 'Git Clone' && (
                                                                 <>
                                                                     <DropdownMenuItem
                                                                         className="flex items-center gap-3 px-3 py-2.5 font-bold text-zinc-600 text-[11px] rounded-md hover:bg-zinc-50 focus:bg-zinc-50 focus:text-zinc-900 cursor-pointer"
@@ -199,6 +272,16 @@ export function AppMcpGrid({ connections, searchQuery = "", onDisconnect, onSucc
                     onSuccess={onSuccess}
                 />
             )}
+
+            <GitConfigModal
+                open={gitConfigOpen}
+                onOpenChange={setGitConfigOpen}
+                connection={gitConfigConnection}
+                onSuccess={() => {
+                    onSuccess()
+                    setGitConfigConnection(null)
+                }}
+            />
         </div>
     )
 }

@@ -5,7 +5,10 @@ const TOKEN_ENDPOINTS: Record<string, string> = {
   github: "https://github.com/login/oauth/access_token",
   slack: "https://slack.com/api/oauth.v2.access",
   discord: "https://discord.com/api/oauth2/token",
-  gmail: "https://oauth2.googleapis.com/token"
+  gmail: "https://oauth2.googleapis.com/token",
+  linkedin: "https://www.linkedin.com/oauth/v2/accessToken",
+  twitter: "https://api.twitter.com/2/oauth2/token",
+  spotify: "https://accounts.spotify.com/api/token"
 }
 
 export async function GET(request: Request) {
@@ -98,7 +101,7 @@ export async function GET(request: Request) {
     }
 
     // Save the connection
-    const typeMap: Record<string, string> = { github: "code", slack: "communication", discord: "communication", gmail: "email" }
+    const typeMap: Record<string, string> = { github: "github", slack: "communication", discord: "communication", gmail: "email" }
     const result = await saveMcpConnection({
       name: provider.charAt(0).toUpperCase() + provider.slice(1),
       type: typeMap[provider] || "tool",
@@ -114,6 +117,54 @@ export async function GET(request: Request) {
 
     if (!result.success) {
       return NextResponse.redirect(`${currentBaseUrl}/settings/mcp?error=${encodeURIComponent(result.error || "save_connection_failed")}`)
+    }
+
+    // For GitHub, also sync with the GitHub connection system for clone/settings features
+    if (provider === "github" && accessToken) {
+      try {
+        // Fetch GitHub user info
+        const userRes = await fetch("https://api.github.com/user", {
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Accept": "application/vnd.github.v3+json"
+          }
+        })
+        
+        if (userRes.ok) {
+          const userData = await userRes.json()
+          
+          // Store GitHub connection for clone/settings features
+          await fetch(`${currentBaseUrl}/api/github/connection`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ 
+              token: accessToken,
+              username: userData.login,
+              fromMcp: true 
+            })
+          })
+          
+          // Also save as Git Clone MCP if not already exists
+          const gitCloneResult = await saveMcpConnection({
+            name: "Git Clone",
+            type: "git",
+            accessToken,
+            metadata: {
+              username: userData.login,
+              fromGitHubOAuth: true,
+              scope: data.scope,
+              token_type: data.token_type
+            }
+          })
+          
+          if (!gitCloneResult.success) {
+            console.error("Failed to save Git Clone MCP connection:", gitCloneResult.error)
+          }
+        }
+      } catch (err) {
+        console.error("Failed to sync GitHub connection:", err)
+        // Don't fail the MCP connection if this sync fails
+      }
     }
 
     return NextResponse.redirect(`${currentBaseUrl}/settings/mcp?success=true&provider=${provider}`)

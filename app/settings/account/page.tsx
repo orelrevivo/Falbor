@@ -19,6 +19,8 @@ import { Github, Globe, Twitter, Loader2 } from "lucide-react"
 import ActivityGraph from "./activity-graph"
 import { ProfileForm } from "./profile-form"
 
+import { NotificationSettings } from "./notification-settings"
+
 import { userProfiles } from "@/config/schema"
 import { eq } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/neon-http"
@@ -64,6 +66,7 @@ export default async function AccountPage() {
                 </div>
 
                 <ProfileForm user={userData} initialProfile={profile} />
+                <NotificationSettings initialProfile={profile} />
             </div>
 
             {/* Activity Section */}
