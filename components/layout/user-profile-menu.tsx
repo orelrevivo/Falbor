@@ -9,7 +9,8 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { Settings, LogOut, Zap, DollarSign } from "lucide-react"
+import { useRouter } from "next/navigation"
+import { User, Settings, LogOut, Zap, DollarSign, Shield } from "lucide-react"
 import { CreditsSection } from "./CreditsSection"
 import { AutomationDialog } from "@/components/models/AutomationDialog"
 import { israelTimeToUTC, utcToIsraelTime } from "@/lib/common/timezone/timezone-utils"
@@ -49,6 +50,7 @@ const modelOptions: Record<ModelType, ModelOption> = {
 }
 
 export function UserProfileMenu() {
+    const router = useRouter()
     const { user, isLoaded } = useUser()
     const clerk = useClerk()
 
@@ -279,11 +281,30 @@ export function UserProfileMenu() {
                         onClick={() => setAutomationOpen(true)}
                         className="gap-2 px-3 py-2 rounded-md cursor-pointer"
                     >
-                        <Zap className="w-3.5 h-3.5 text-blue-500" />
+                        <Zap className="w-3.5 h-3.5 text-gray-500" />
                         <span className="text-xs text-gray-700 flex-1">AI Automation</span>
-                        <Badge className="bg-[#e4e4e4] text-black/60 text-[9px] px-1.5 py-0 h-4">
+                        <Badge className="bg-[#e4e4e4] text-black/60 text-[10px] px-1.5 py-0 h-4">
                             Beta
                         </Badge>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onClick={() => router.push("/super-security")}
+                        className="gap-2 px-3 py-2 rounded-md cursor-pointer"
+                    >
+                        <Shield className="w-3.5 h-3.5 text-gray-500" />
+                        <span className="text-xs text-gray-700 flex-1">Super Security</span>
+                        <Badge className="text-[10px] px-1.5 py-0 h-4">
+                            New
+                        </Badge>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onClick={() => router.push(`/profile/${user.id}`)}
+                        className="gap-2 px-3 py-2 rounded-md cursor-pointer"
+                    >
+                        <User className="w-3.5 h-3.5 text-gray-500" />
+                        <span className="text-xs text-gray-700 flex-1">Profile</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem

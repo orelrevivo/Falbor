@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   LineChart,
   Line,
@@ -21,6 +21,7 @@ import {
   Loader2,
   ChevronDown,
   Rocket,
+  RefreshCw,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -81,6 +82,9 @@ const BREAKDOWN_SECTIONS = [
   { key: "os" as const, label: "Operating System" },
 ]
 
+// Auto-refresh interval: 30 seconds
+const AUTO_REFRESH_MS = 30_000
+
 interface AnalyticsSectionProps {
   projectId: string
 }
@@ -91,30 +95,54 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
   const [selectedMetric, setSelectedMetric] = useState<Metric>("visitors")
   const [data, setData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const fetchData = useCallback(async (p: Period, m: Metric) => {
-    setLoading(true)
+  const fetchData = useCallback(async (p: Period, m: Metric, silent = false) => {
+    if (!silent) setLoading(true)
+    else setRefreshing(true)
     setError(null)
     try {
       const res = await fetch(`/api/projects/${projectId}/analytics?period=${p}&metric=${m}`)
       if (!res.ok) throw new Error("Failed to fetch analytics")
       const json = await res.json()
       setData(json)
+      setLastRefreshed(new Date())
     } catch (e) {
       setError("Failed to load analytics data")
     } finally {
       setLoading(false)
+      setRefreshing(false)
     }
   }, [projectId])
 
+  // Fetch when period or metric changes
   useEffect(() => {
     fetchData(period, selectedMetric)
   }, [period, selectedMetric, fetchData])
 
-  const handleMetricClick = (metric: Metric) => {
-    setSelectedMetric(metric)
+  // Auto-refresh every 30s
+  useEffect(() => {
+    timerRef.current = setInterval(() => {
+      fetchData(period, selectedMetric, true)
+    }, AUTO_REFRESH_MS)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [period, selectedMetric, fetchData])
+
+  const handleRefresh = () => {
+    fetchData(period, selectedMetric, true)
+    // Reset interval
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      fetchData(period, selectedMetric, true)
+    }, AUTO_REFRESH_MS)
   }
+
+  const handleMetricClick = (metric: Metric) => setSelectedMetric(metric)
 
   const handlePeriodSelect = (p: Period) => {
     setPeriod(p)
@@ -130,7 +158,7 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
     )
   }
 
-  if (error) {
+  if (error && !data) {
     return (
       <div className="flex items-center justify-center h-64 text-zinc-400">
         <span className="text-sm">{error}</span>
@@ -143,9 +171,14 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
   const selectedMetricCard = METRIC_CARDS.find((m) => m.id === selectedMetric)!
   const currentValue =
     selectedMetric === "visitors" ? data.summary.visitors
-    : selectedMetric === "pageviews" ? data.summary.pageviews
-    : selectedMetric === "bounce_rate" ? data.summary.bounceRate
-    : data.summary.avgDuration
+      : selectedMetric === "pageviews" ? data.summary.pageviews
+        : selectedMetric === "bounce_rate" ? data.summary.bounceRate
+          : data.summary.avgDuration
+
+  // Format last refreshed time
+  const lastRefreshedLabel = lastRefreshed
+    ? lastRefreshed.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    : null
 
   return (
     <div className="relative">
@@ -158,33 +191,55 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
           </p>
         </div>
 
-        {/* Period selector */}
-        <div className="relative">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5 text-xs h-8 border-zinc-200"
-            onClick={() => setPeriodOpen((v) => !v)}
-          >
-            {PERIOD_OPTIONS.find((p) => p.value === period)?.label}
-            <ChevronDown className={cn("h-3 w-3 transition-transform", periodOpen && "rotate-180")} />
-          </Button>
-          {periodOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-zinc-200 shadow-lg z-20 py-1 min-w-[120px]">
-              {PERIOD_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => handlePeriodSelect(opt.value)}
-                  className={cn(
-                    "w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-50 transition-colors",
-                    period === opt.value ? "font-medium text-zinc-900" : "text-zinc-600"
-                  )}
-                >
-                  Last {opt.label}
-                </button>
-              ))}
-            </div>
+        <div className="flex items-center gap-2">
+          {/* Last refreshed label */}
+          {lastRefreshedLabel && (
+            <span className="text-[10px] text-zinc-400 hidden sm:inline">
+              Updated {lastRefreshedLabel}
+            </span>
           )}
+
+          {/* Manual refresh button */}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            title="Refresh analytics"
+            className={cn(
+              "flex items-center justify-center h-8 w-8 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 transition-all text-zinc-500 hover:text-zinc-800",
+              refreshing && "opacity-50 cursor-not-allowed"
+            )}
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
+          </button>
+
+          {/* Period selector */}
+          <div className="relative">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs h-8 border-zinc-200"
+              onClick={() => setPeriodOpen((v) => !v)}
+            >
+              {PERIOD_OPTIONS.find((p) => p.value === period)?.label}
+              <ChevronDown className={cn("h-3 w-3 transition-transform", periodOpen && "rotate-180")} />
+            </Button>
+            {periodOpen && (
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-lg border border-zinc-200 shadow-lg z-20 py-1 min-w-[120px]">
+                {PERIOD_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => handlePeriodSelect(opt.value)}
+                    className={cn(
+                      "w-full px-3 py-1.5 text-left text-xs hover:bg-zinc-50 transition-colors",
+                      period === opt.value ? "font-medium text-zinc-900" : "text-zinc-600"
+                    )}
+                  >
+                    Last {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -193,9 +248,9 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
         {METRIC_CARDS.map((card) => {
           const value =
             card.id === "visitors" ? data.summary.visitors
-            : card.id === "pageviews" ? data.summary.pageviews
-            : card.id === "bounce_rate" ? data.summary.bounceRate
-            : data.summary.avgDuration
+              : card.id === "pageviews" ? data.summary.pageviews
+                : card.id === "bounce_rate" ? data.summary.bounceRate
+                  : data.summary.avgDuration
           const isActive = selectedMetric === card.id
           return (
             <button
@@ -227,10 +282,12 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
           <span className="text-xs font-medium text-zinc-600">
             {selectedMetricCard.label} over time
           </span>
+          {refreshing && <Loader2 className="h-3 w-3 animate-spin text-zinc-300 ml-auto" />}
         </div>
         {data.timeSeries.length === 0 ? (
-          <div className="flex items-center justify-center h-[180px] text-zinc-400">
-            <span className="text-sm">No data available</span>
+          <div className="flex flex-col items-center justify-center h-[180px] text-zinc-400 gap-2">
+            <span className="text-sm">No data yet</span>
+            <span className="text-xs text-zinc-300">Visit your published site to start tracking</span>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={180}>
@@ -279,7 +336,7 @@ export function AnalyticsSection({ projectId }: AnalyticsSectionProps) {
             <div key={section.key} className="bg-white border border-zinc-200 rounded-xl p-4">
               <h3 className="text-xs font-semibold text-zinc-700 mb-3">{section.label}</h3>
               {items.length === 0 ? (
-                <p className="text-xs text-zinc-400 py-2">No data available</p>
+                <p className="text-xs text-zinc-400 py-2">No data yet</p>
               ) : (
                 <div className="space-y-2">
                   {items.map((item, i) => (

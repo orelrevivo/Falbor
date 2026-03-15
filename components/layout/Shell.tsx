@@ -22,7 +22,7 @@ export default function Shell({
   const isChatPage = pathname?.startsWith("/chat/")
   const isSettingsPage = pathname?.startsWith("/settings")
   const effectiveSidebarHovered = isChatPage || isSettingsPage ? true : sidebarHovered
-  const currentSidebarWidth = (isChatPage || isSettingsPage) ? 160 : (effectiveSidebarHovered ? 280 : 64)
+  const currentSidebarWidth = (isChatPage || isSettingsPage) ? 160 : (effectiveSidebarHovered ? 170 : 64)
 
   // Manage body scrollbar visibility
   useEffect(() => {

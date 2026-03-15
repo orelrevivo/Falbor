@@ -9,6 +9,17 @@ import {
 } from "@/config/schema"
 import { eq, and, gte, count, countDistinct, avg, sql } from "drizzle-orm"
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type",
+}
+
+// Handle CORS preflight for beacon requests from published subdomains
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204, headers: CORS_HEADERS })
+}
+
 function getPeriodDate(period: string): Date {
   const now = new Date()
   switch (period) {
@@ -64,32 +75,43 @@ export async function GET(
 
   const since = getPeriodDate(period)
 
-  const baseWhere = and(
+  // pageview events only (not duration_update)
+  const pageviewWhere = and(
+    eq(projectAnalyticsEvents.projectId, projectId),
+    gte(projectAnalyticsEvents.createdAt, since),
+    eq(projectAnalyticsEvents.type, "pageview")
+  )
+
+  // ALL events (pageview + duration_update) used for visitor counting
+  const allEventsWhere = and(
     eq(projectAnalyticsEvents.projectId, projectId),
     gte(projectAnalyticsEvents.createdAt, since)
   )
 
-  const pageviewWhere = and(
-    baseWhere,
-    eq(projectAnalyticsEvents.type, "pageview")
+  // duration_update events for avg duration
+  const durationWhere = and(
+    eq(projectAnalyticsEvents.projectId, projectId),
+    gte(projectAnalyticsEvents.createdAt, since),
+    eq(projectAnalyticsEvents.type, "duration_update"),
+    sql`${projectAnalyticsEvents.duration} IS NOT NULL`
   )
 
   // Summary metrics
   const [{ visitors }] = await db
     .select({ visitors: countDistinct(projectAnalyticsEvents.visitorId) })
     .from(projectAnalyticsEvents)
-    .where(baseWhere)
+    .where(allEventsWhere)
 
   const [{ pageviews }] = await db
     .select({ pageviews: count() })
     .from(projectAnalyticsEvents)
     .where(pageviewWhere)
 
-  // Avg duration (seconds) — exclude nulls
+  // Avg duration from duration_update events
   const [{ avgDuration }] = await db
     .select({ avgDuration: avg(projectAnalyticsEvents.duration) })
     .from(projectAnalyticsEvents)
-    .where(and(pageviewWhere, sql`${projectAnalyticsEvents.duration} IS NOT NULL`))
+    .where(durationWhere)
 
   // Bounce rate: sessions with only 1 pageview / total sessions
   const sessionCounts = await db
@@ -106,7 +128,6 @@ export async function GET(
   const bounceRate = totalSessions > 0 ? Math.round((bounceSessions / totalSessions) * 100) : 0
 
   // Build time-series for selected metric
-  // Group by day (or hour for 24h)
   const isHourly = period === "24h"
   const truncFn = isHourly
     ? sql<string>`to_char(date_trunc('hour', ${projectAnalyticsEvents.createdAt}), 'HH24:MI')`
@@ -117,7 +138,7 @@ export async function GET(
     timeSeriesQuery = db
       .select({ label: truncFn, value: countDistinct(projectAnalyticsEvents.visitorId) })
       .from(projectAnalyticsEvents)
-      .where(baseWhere)
+      .where(allEventsWhere)
       .groupBy(truncFn)
       .orderBy(truncFn)
   } else if (metric === "pageviews") {
@@ -128,7 +149,6 @@ export async function GET(
       .groupBy(truncFn)
       .orderBy(truncFn)
   } else if (metric === "bounce_rate") {
-    // For bounce rate time series: sessions grouped by day
     timeSeriesQuery = db
       .select({ label: truncFn, value: count() })
       .from(projectAnalyticsEvents)
@@ -140,14 +160,14 @@ export async function GET(
     timeSeriesQuery = db
       .select({ label: truncFn, value: avg(projectAnalyticsEvents.duration) })
       .from(projectAnalyticsEvents)
-      .where(and(pageviewWhere, sql`${projectAnalyticsEvents.duration} IS NOT NULL`))
+      .where(durationWhere)
       .groupBy(truncFn)
       .orderBy(truncFn)
   }
 
   const timeSeries = await timeSeriesQuery
 
-  // Breakdown data
+  // Breakdown data — use pageview events for counts
   const topPages = await db
     .select({ value: projectAnalyticsEvents.page, count: count() })
     .from(projectAnalyticsEvents)
@@ -205,85 +225,98 @@ export async function GET(
       browsers: topBrowsers.map((r) => ({ value: r.value || "Unknown", count: Number(r.count) })),
       os: topOS.map((r) => ({ value: r.value || "Unknown", count: Number(r.count) })),
     },
+  }, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate",
+    }
   })
 }
 
-// POST: Record an analytics event (called from published sites)
+// POST: Record an analytics event (called from published sites — no auth required)
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id: projectId } = await params
+  try {
+    const { id: projectId } = await params
 
-  // Verify project exists and is published
-  const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId))
-  if (!project) return NextResponse.json({ error: "Not found" }, { status: 404 })
+    // Verify project exists
+    const [project] = await db.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId))
+    if (!project) return NextResponse.json({ error: "Not found" }, { status: 404, headers: CORS_HEADERS })
 
-  const [dep] = await db
-    .select({ deploymentUrl: deployments.deploymentUrl })
-    .from(deployments)
-    .where(eq(deployments.projectId, projectId))
-    .limit(1)
-
-  if (!dep?.deploymentUrl) {
-    return NextResponse.json({ error: "Not published" }, { status: 404 })
-  }
-
-  const body = await req.json()
-  const {
-    sessionId,
-    visitorId,
-    type = "pageview",
-    page,
-    referrer,
-    duration,
-  } = body
-
-  if (!sessionId) {
-    return NextResponse.json({ error: "sessionId required" }, { status: 400 })
-  }
-
-  // Parse User-Agent for browser / OS detection
-  const ua = req.headers.get("user-agent") || ""
-  const browser = detectBrowser(ua)
-  const os = detectOS(ua)
-  const device = detectDevice(ua)
-
-  // Geo from CF header or x-forwarded-for
-  const country = req.headers.get("cf-ipcountry") || req.headers.get("x-country") || null
-
-  // Is new visitor: check if visitorId was seen before for this project
-  let isNewVisitor = false
-  if (visitorId) {
-    const [prev] = await db
-      .select({ id: projectAnalyticsEvents.id })
-      .from(projectAnalyticsEvents)
-      .where(
-        and(
-          eq(projectAnalyticsEvents.projectId, projectId),
-          eq(projectAnalyticsEvents.visitorId, visitorId)
-        )
-      )
+    // Verify project is published
+    const [dep] = await db
+      .select({ deploymentUrl: deployments.deploymentUrl })
+      .from(deployments)
+      .where(eq(deployments.projectId, projectId))
       .limit(1)
-    isNewVisitor = !prev
+
+    if (!dep?.deploymentUrl) {
+      return NextResponse.json({ error: "Not published" }, { status: 404, headers: CORS_HEADERS })
+    }
+
+    const body = await req.json()
+    const {
+      sessionId,
+      visitorId,
+      type = "pageview",
+      page,
+      referrer,
+      duration,
+    } = body
+
+    if (!sessionId) {
+      return NextResponse.json({ error: "sessionId required" }, { status: 400, headers: CORS_HEADERS })
+    }
+
+    // Parse User-Agent for browser / OS detection
+    const ua = req.headers.get("user-agent") || ""
+    const browser = detectBrowser(ua)
+    const os = detectOS(ua)
+    const device = detectDevice(ua)
+
+    // Geo from CF header (Vercel/Cloudflare sets this automatically)
+    const country = req.headers.get("cf-ipcountry") ||
+      req.headers.get("x-vercel-ip-country") ||
+      req.headers.get("x-country") ||
+      null
+
+    // Is new visitor?
+    let isNewVisitor = false
+    if (visitorId) {
+      const [prev] = await db
+        .select({ id: projectAnalyticsEvents.id })
+        .from(projectAnalyticsEvents)
+        .where(
+          and(
+            eq(projectAnalyticsEvents.projectId, projectId),
+            eq(projectAnalyticsEvents.visitorId, visitorId)
+          )
+        )
+        .limit(1)
+      isNewVisitor = !prev
+    }
+
+    await db.insert(projectAnalyticsEvents).values({
+      projectId,
+      sessionId,
+      visitorId: visitorId || null,
+      type,
+      page: page || null,
+      referrer: referrer || null,
+      country,
+      browser,
+      os,
+      device,
+      duration: duration != null ? Number(duration) : null,
+      isNewVisitor,
+    })
+
+    return NextResponse.json({ ok: true }, { headers: CORS_HEADERS })
+  } catch (err) {
+    console.error("[Analytics POST error]", err)
+    return NextResponse.json({ error: "Internal error" }, { status: 500, headers: CORS_HEADERS })
   }
-
-  await db.insert(projectAnalyticsEvents).values({
-    projectId,
-    sessionId,
-    visitorId: visitorId || null,
-    type,
-    page: page || null,
-    referrer: referrer || null,
-    country,
-    browser,
-    os,
-    device,
-    duration: duration ? Number(duration) : null,
-    isNewVisitor,
-  })
-
-  return NextResponse.json({ ok: true })
 }
 
 function detectBrowser(ua: string): string {

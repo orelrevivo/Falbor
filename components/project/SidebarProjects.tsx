@@ -259,7 +259,7 @@ export default function SidebarProjects({
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
           'fixed top-[-10px] left-0 h-screen transition-all duration-300 ease-in-out z-[100] flex flex-col bg-[#FAF9F5]',
-          (isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[280px]' : 'w-[64px]'),
+          (isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[180px]' : 'w-[64px]'),
           className
         )}
       >
@@ -417,13 +417,15 @@ export default function SidebarProjects({
           <div className="flex flex-col h-full">
             {/* Header Section */}
             <div className="ml-3 mt-15 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
-              <div className={cn(
-                "flex items-center mb-4 shadow-xs rounded-lg border border-[#dddcd8] bg-white z-50 overflow-hidden",
-                effectiveHovered ? "w-full" : "w-10 mx-auto"
-              )}>
+              <div
+                className={cn(
+                  "flex items-center py-2 bg-transparent text-zinc-700 border border-[#0099ff] h-8 bg-white BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                  effectiveHovered ? "w-full" : "w-10 mx-auto"
+                )}
+              >
                 <Link href="/" className="flex-1">
-                  <Button variant="ghost" className="w-full justify-start rounded-r-none hover:bg-gray-50 h-10 p-0 flex items-center justify-center">
-                    <Plus className={cn("h-4 w-4", effectiveHovered && "ml-3 mr-3")} />
+                  <Button variant="ghost" className="w-full justify-start hover:bg-transparent h-8 p-0 flex items-center justify-center">
+                    <Plus className={cn("h-4 w-4", effectiveHovered ? "ml-3" : "ml-[-14px]")} />
                     {effectiveHovered && <span className="font-semibold text-[13px]">New Chat</span>}
                   </Button>
                 </Link>
@@ -435,8 +437,8 @@ export default function SidebarProjects({
                         <Button
                           variant="ghost"
                           className={cn(
-                            "px-2.5 rounded-l-none hover:bg-gray-50 h-10 transition-transform duration-200",
-                            isActionMenuOpen && "bg-gray-100 rotate-180"
+                            "px-2.5 rounded-l-none bg-transparent hover:bg-transparent h-8 transition-transform duration-200",
+                            isActionMenuOpen && "rotate-180"
                           )}
                         >
                           <ChevronDown className="h-4 w-4 text-gray-500" />
@@ -469,15 +471,15 @@ export default function SidebarProjects({
                   <Button
                     onClick={() => setSearchOpen(true)}
                     className={cn(
-                      "py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-all",
-                      effectiveHovered ? "w-full px-3.5" : "w-10 h-10 mx-auto justify-center"
+                      "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                      "w-full px-3.5"
                     )}
                   >
                     <Search className="h-4 w-4 shrink-0" />
                     {effectiveHovered && <span className="font-medium text-[13px]">Search</span>}
                   </Button>
                 ) : (
-                  <div className="space-y-2 p-1 bg-white/50 rounded-lg border border-zinc-100 mb-2">
+                  <div className="mb-1 p-1 bg-white/50 rounded-lg border border-zinc-100 mb-2">
                     <div className="relative flex items-center">
                       <Search className="absolute left-2.5 h-3.5 w-3.5 text-zinc-400" />
                       <Input
@@ -530,34 +532,59 @@ export default function SidebarProjects({
               </div>
 
               <Link href="/">
-                <Button className={cn("py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors", effectiveHovered ? "w-full px-3.5" : "w-10 h-10 mx-auto justify-center")}>
+                <Button
+                  className={cn(
+                    "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                    "w-full px-3.5"
+                  )}
+                >
                   <Home className="h-4 w-4 shrink-0" />
                   {effectiveHovered && <span className="font-medium text-[13px]">Home</span>}
                 </Button>
               </Link>
               <Link href="/projects">
-                <Button className={cn("py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors", effectiveHovered ? "w-full px-3.5" : "w-10 h-10 mx-auto justify-center")}>
+                <Button
+                  className={cn(
+                    "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                    "w-full px-3.5"
+                  )}
+                >
                   <MessageSquare className="h-4 w-4 shrink-0" />
                   {effectiveHovered && <span className="font-medium text-[13px]">Chats</span>}
                 </Button>
               </Link>
 
               {effectiveHovered && (
-                <div className="pt-2 space-y-1">
+                <div className="">
                   <Link href="/templates">
-                    <Button className="w-full py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors px-3.5">
+                    <Button
+                      className={cn(
+                        "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        "w-full px-3.5"
+                      )}
+                    >
                       <BookTemplate className="h-4 w-4 shrink-0" />
                       <span className="font-medium text-[13px]">Templates</span>
                     </Button>
                   </Link>
                   <Link href="/pricing">
-                    <Button className="w-full py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors px-3.5">
+                    <Button
+                      className={cn(
+                        "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        "w-full px-3.5"
+                      )}
+                    >
                       <CreditCard className="h-4 w-4 shrink-0" />
                       <span className="font-medium text-[13px]">Pricing</span>
                     </Button>
                   </Link>
                   <Link href="/settings">
-                    <Button className="w-full py-2 bg-transparent text-zinc-700 hover:bg-zinc-100 rounded-lg flex items-center gap-2 justify-start transition-colors px-3.5">
+                    <Button
+                      className={cn(
+                        "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        "w-full px-3.5"
+                      )}
+                    >
                       <Settings className="h-4 w-4 shrink-0" />
                       <span className="font-medium text-[13px]">Settings</span>
                     </Button>
