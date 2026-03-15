@@ -183,7 +183,7 @@ const EMAIL_TEMPLATES = [
   { id: "reauthentication", label: "Reauthentication" },
 ]
 const MODEL_OPTIONS: ModelOption[] = [
-  { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
+  // { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
   { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
