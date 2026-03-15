@@ -339,7 +339,7 @@ export default function SidebarProjects({
               <div className="pt-2 mt-2 border-t border-zinc-200 flex flex-col gap-1">
                 {[
                   { id: "project-settings", label: "General", icon: Settings },
-                  { id: "analytics", label: "Analytics", icon: BarChart3 },
+                  { id: "analytics", label: "Analytics", icon: BarChart3, soon: true }, // ⭐ soon feature
                   { id: "security", label: "Security", icon: Shield },
                   { id: "secrets", label: "Secrets", icon: Key },
                   { id: "automations", label: "Automations", icon: CheckSquare },
@@ -348,17 +348,33 @@ export default function SidebarProjects({
                   <Button
                     key={item.id}
                     onClick={() => {
+                      if (item.soon) return; // 🚫 block navigation
                       setActiveTab("settings");
                       setSettingsSection(item.id as any);
                     }}
                     className={cn(
                       "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
-                      activeTab === "settings" && settingsSection === item.id ? "BackgroundStyleButton text-black" : "",
+                      activeTab === "settings" && settingsSection === item.id
+                        ? "BackgroundStyleButton text-black"
+                        : "",
+                      item.soon ? "opacity-80 cursor-not-allowed" : "",
                       "w-full px-3.5"
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
-                    <span className="font-medium text-[13px]">{item.label}</span>
+                    {item.soon ? (
+                      <BarChart3 className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <item.icon className="h-4 w-4 shrink-0" />
+                    )}
+
+                    <span className="font-medium text-[13px] flex items-center gap-2">
+                      {item.label}
+                      {item.soon && (
+                        <Badge className="text-[10px] px-1.5 py-0 h-4 rounded-sm">
+                          Soon
+                        </Badge>
+                      )}
+                    </span>
                   </Button>
                 ))}
               </div>
