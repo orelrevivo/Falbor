@@ -37,6 +37,7 @@ interface EditorPaneProps {
   fetchFiles: () => void
   isSplitScreen?: boolean
   onExitSplit?: () => void
+  role?: "viewer" | "editor" | "admin"
 }
 
 interface DatabaseCredentials {
@@ -109,6 +110,7 @@ export function EditorPane({
   fetchFiles,
   isSplitScreen,
   onExitSplit,
+  role = "admin",
 }: EditorPaneProps) {
   const { isSignedIn } = useUser()
 
@@ -127,7 +129,9 @@ export function EditorPane({
   const [connectionStatus, setConnectionStatus] = React.useState<{
     connected: boolean
     connection: any
+    type?: 'supabase' | 'neon'
   } | null>(null)
+  const isReadOnly = role === "viewer"
 
   const [databaseCredentials, setDatabaseCredentials] =
     React.useState<DatabaseCredentials>({
@@ -175,6 +179,7 @@ export function EditorPane({
         if (projectData && projectData.supabaseUrl && projectData.anonKey) {
           setConnectionStatus({
             connected: true,
+            type: 'supabase',
             connection: {
               supabaseUrl: projectData.supabaseUrl,
               anonKey: projectData.anonKey,
@@ -187,6 +192,23 @@ export function EditorPane({
             anonKey: projectData.anonKey,
           })
           return
+        }
+
+        const neonRes = await fetch(`/api/projects/${projectId}/neon`)
+        if (neonRes.ok) {
+          const neonData = await neonRes.json()
+          if (neonData && neonData.databaseUrl) {
+            setConnectionStatus({
+              connected: true,
+              type: 'neon',
+              connection: {
+                neonUrl: neonData.databaseUrl,
+                projectName: "Managed Database (Neon)",
+                projectRef: neonData.projectRef,
+              }
+            })
+            return
+          }
         }
 
         // 2. Fallback to global user connection
@@ -221,7 +243,7 @@ export function EditorPane({
     setIsSidebarOpen(false)
   }
 
-  // 🚀 Push to Supabase (with UI Alert)
+  // 🚀 Push to server (with UI Alert)
   const handleApplySql = async () => {
     if (!selectedFile || !isSqlFile) return
 
@@ -229,12 +251,11 @@ export function EditorPane({
     setAlert(null)
 
     try {
-      const response = await fetch("/api/supabase/execute-sql", {
+      const response = await fetch(`/api/projects/${projectId}/execute-sql`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           sql: editedContent,
-          projectId,
           fileName: selectedFile.path
         }),
       })
@@ -248,7 +269,7 @@ export function EditorPane({
       setAlert({
         type: "success",
         title: "Pushed Successfully",
-        message: data.message || "Your SQL was pushed to Supabase.",
+        message: data.message || "Your SQL was pushed to the server.",
       })
     } catch (error: any) {
       setAlert({
@@ -355,7 +376,16 @@ export function EditorPane({
                   Exit split
                 </button>
               )}
-              {isSqlFile && (
+              {isDirty && !isReadOnly && (
+                <button
+                  onClick={handleSave}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#2b2525] hover:bg-black text-white rounded-lg cursor-pointer transition-colors shadow-sm"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  Save Changes
+                </button>
+              )}
+              {isSqlFile && !isReadOnly && (
                 <button
                   onClick={handleApplySql}
                   disabled={isApplying || !connectionStatus?.connected}
@@ -371,7 +401,7 @@ export function EditorPane({
                   ) : (
                     <Play className="w-3.5 h-3.5" />
                   )}
-                  {isApplying ? "Pushing..." : "Push to Supabase"}
+                  {isApplying ? "Pushing..." : "Push to server"}
                 </button>
               )}
             </div>
@@ -386,6 +416,30 @@ export function EditorPane({
               value={displayContent}
               onMount={(editor, monaco) => {
                 monacoRef.current = editor
+                           // Disable TypeScript/JavaScript validation to remove red squiggly lines
+                if (monaco.languages.typescript) {
+                  const diagnosticOptions = {
+                    noSemanticValidation: true,
+                    noSyntaxValidation: true,
+                  };
+                  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions);
+                  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions);
+                  
+                  // Configure JSX/TSX support
+                  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                    target: monaco.languages.typescript.ScriptTarget.Latest,
+                    allowNonTsExtensions: true,
+                    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                    module: monaco.languages.typescript.ModuleKind.CommonJS,
+                    noEmit: true,
+                    esModuleInterop: true,
+                    jsx: monaco.languages.typescript.JsxEmit.React,
+                    reactNamespace: 'React',
+                    allowJs: true,
+                    typeRoots: ["node_modules/@types"]
+                  });
+                }
+
                 editor.onDidFocusEditorWidget(() =>
                   setIsEditorFocused(true)
                 )
@@ -398,6 +452,8 @@ export function EditorPane({
                 ...editorOptions,
                 minimap: { enabled: false },
                 automaticLayout: true,
+                readOnly: isReadOnly,
+                showUnused: false, // Disable the "transparent" fading for unused variables
               }}
             />
           </div>

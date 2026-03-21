@@ -63,6 +63,12 @@ export function SecurityShell({ session, projects }: { session: SecuritySession;
   const [score, setScore] = useState<number | null>(session.scanResults?.score || null);
   const [findings, setFindings] = useState<Finding[]>(session.scanResults?.findings || []);
   const [badgeCode, setBadgeCode] = useState(session.scanResults?.badgeCode || "");
+
+  const generateBadgeFromScore = (s: number): string => {
+    const color = s >= 80 ? '#10b981' : s >= 60 ? '#f59e0b' : '#ef4444';
+    const label = s >= 80 ? 'SECURED' : s >= 60 ? 'MODERATE' : 'AT RISK';
+    return `<div style="display:inline-flex;align-items:center;gap:10px;background:${color};color:white;padding:10px 20px;border-radius:10px;font-family:system-ui,sans-serif;font-weight:700;font-size:14px;box-shadow:0 4px 14px rgba(0,0,0,0.2)"><svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"/></svg><span>Security Score: ${s}/100 · ${label}</span></div>`;
+  };
   const [activeTab, setActiveTab] = useState("chat");
   const [consoleLogs, setConsoleLogs] = useState<any[]>(session.consoleLogs || []);
   const [consoleInput, setConsoleInput] = useState("");
@@ -188,18 +194,58 @@ Format your findings with [AI-origin risk] tags.`;
     if (!cmd.trim()) return;
     setConsoleInput("");
     const timestamp = new Date().toLocaleTimeString();
-    setConsoleLogs(prev => [...prev, { type: 'INFO', text: `Executing: ${cmd}`, time: timestamp }]);
+    setConsoleLogs(prev => [...prev, { type: 'INFO', text: `$ ${cmd}`, time: timestamp }]);
 
-    const lines = [
-      { type: 'INFO', text: `Initializing ${cmd} scan...` },
-      { type: 'PASS', text: `Connection established to secure shell.` },
-      { type: 'INFO', text: `Running heuristic checks...` },
-      { type: 'PASS', text: `Completed ${cmd} audit.` }
-    ];
+    if (!selectedProjectId) {
+      setConsoleLogs(prev => [...prev, { type: 'WARN', text: 'No project selected. Select a project to run security commands.', time: new Date().toLocaleTimeString() }]);
+      return;
+    }
 
-    for (const line of lines) {
-      await new Promise(r => setTimeout(r, 800));
-      setConsoleLogs(prev => [...prev, { ...line, time: new Date().toLocaleTimeString() }]);
+    setConsoleLogs(prev => [...prev, { type: 'INFO', text: 'Connecting to Security Shell AI...', time: new Date().toLocaleTimeString() }]);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: `[SECURE SHELL] Execute this security command and respond in terminal-style output (concise, no markdown): ${cmd}`,
+          projectId: selectedProjectId,
+          securityMode: true,
+          selectedModel: selectedModel,
+          targetProjectId: selectedProjectId,
+          history: [],
+        }),
+      });
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let output = "";
+
+      while (true) {
+        const { done, value } = await reader?.read() || { done: true, value: undefined };
+        if (done) break;
+        const chunk = decoder.decode(value);
+        for (const line of chunk.split("\n")) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.text) output += data.text;
+            } catch (e) {}
+          }
+        }
+      }
+
+      // Strip scan results JSON block and display lines
+      const cleaned = output.replace(/<<SCAN_RESULTS>>[\s\S]*?<\/SCAN_RESULTS>>/g, '').trim();
+      const outputLines = cleaned.split('\n').filter(l => l.trim()).slice(0, 30);
+      outputLines.forEach(line => {
+        const type = /✓|PASS|OK|success/i.test(line) ? 'PASS' :
+                     /✗|FAIL|ERROR|critical/i.test(line) ? 'FAIL' :
+                     /⚠|WARN|warning/i.test(line) ? 'WARN' : 'INFO';
+        setConsoleLogs(prev => [...prev, { type, text: line, time: new Date().toLocaleTimeString() }]);
+      });
+    } catch (error) {
+      setConsoleLogs(prev => [...prev, { type: 'FAIL', text: 'Failed to connect to security shell.', time: new Date().toLocaleTimeString() }]);
     }
   };
 
@@ -309,7 +355,21 @@ Format your findings with [AI-origin risk] tags.`;
                     {findings.length === 0 && (
                       <div className="text-center py-20 bg-white rounded-[2rem] border-2 border-dashed border-zinc-100">
                         <ShieldCheck className="w-12 h-12 text-teal-100 mx-auto mb-4" />
-                        <p className="text-zinc-400 font-bold uppercase text-xs tracking-widest">No vulnerabilities found yet</p>
+                        <p className="text-zinc-400 font-bold uppercase text-xs tracking-widest mb-6">No vulnerabilities found yet</p>
+                        <Button
+                          onClick={() => {
+                            const project = projects.find(p => p.id === selectedProjectId);
+                            setActiveTab("chat");
+                            handleSendMessage(
+                              `Perform a full security audit of the project "${project?.title}". Analyze all files for vulnerabilities, misconfigurations, hardcoded secrets, and AI-introduced risks. Provide your complete findings in the required <<SCAN_RESULTS>> JSON format at the end.`,
+                              `System: Initiating Full Security Audit for "${project?.title}"...`
+                            );
+                          }}
+                          className="bg-teal-600 hover:bg-teal-700 text-white font-black uppercase text-xs tracking-widest px-8 py-3 rounded-xl gap-2"
+                        >
+                          <Search className="w-4 h-4" />
+                          Initiate Security Scan
+                        </Button>
                       </div>
                     )}
                   </div>
@@ -323,25 +383,59 @@ Format your findings with [AI-origin risk] tags.`;
                   <h2 className="text-4xl font-black uppercase tracking-tighter mb-4 text-center">Trust Infrastructure</h2>
                   <p className="text-zinc-500 font-medium mb-16 text-center max-w-lg">Communicate your security robustness to your customers with our verified seal.</p>
 
-                  <div className="p-16 bg-[#F9FAF6] rounded-[4rem] border-2 border-dashed border-zinc-200 mb-16 relative">
-                    <div className="scale-[1.8]" dangerouslySetInnerHTML={{ __html: badgeCode || '<div class="w-32 h-32 bg-zinc-100 rounded-full flex items-center justify-center text-zinc-300 font-black text-xs uppercase tracking-tighter">Shield.io</div>' }} />
-                    <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-white px-6 py-2 rounded-full border border-zinc-100 shadow-sm">
-                      <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Live Visual Preview</span>
+                  {score === null ? (
+                    <div className="text-center py-16 bg-zinc-50 rounded-[3rem] border-2 border-dashed border-zinc-200 mb-16 w-full">
+                      <Shield className="w-12 h-12 text-zinc-200 mx-auto mb-4" />
+                      <p className="text-zinc-400 font-bold uppercase text-xs tracking-widest mb-6">Run a security scan first to generate your badge</p>
+                      <Button
+                        onClick={() => {
+                          const project = projects.find(p => p.id === selectedProjectId);
+                          setActiveTab("chat");
+                          handleSendMessage(
+                            `Perform a full security audit of the project "${project?.title}" and provide findings in the <<SCAN_RESULTS>> JSON format.`,
+                            `System: Initiating Security Scan for badge generation...`
+                          );
+                        }}
+                        className="bg-teal-600 hover:bg-teal-700 text-white font-black uppercase text-xs tracking-widest px-8 py-3 rounded-xl gap-2"
+                      >
+                        <Search className="w-4 h-4" />
+                        Run Security Scan
+                      </Button>
                     </div>
-                  </div>
-
-                  <div className="w-full space-y-6">
-                    <div className="bg-zinc-950 rounded-[2.5rem] p-8 relative border-2 border-zinc-900 shadow-2xl">
-                      <div className="flex items-center justify-between mb-6">
-                        <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">HTML Embed Script</span>
-                        <Button variant="ghost" className="text-teal-400 font-bold hover:text-teal-300 hover:bg-white/5" onClick={() => navigator.clipboard.writeText(badgeCode)}>
-                          <Copy className="w-4 h-4 mr-2" />
-                          Copy Code
-                        </Button>
+                  ) : (
+                    <div className="p-16 bg-[#F9FAF6] rounded-[4rem] border-2 border-dashed border-zinc-200 mb-16 relative">
+                      <div className="scale-[1.8]" dangerouslySetInnerHTML={{ __html: badgeCode || generateBadgeFromScore(score) }} />
+                      <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 bg-white px-6 py-2 rounded-full border border-zinc-100 shadow-sm">
+                        <span className="text-[10px] font-black uppercase text-zinc-400 tracking-widest">Live Visual Preview</span>
                       </div>
-                      <code className="text-[12px] font-mono text-teal-200 block break-all whitespace-pre-wrap leading-relaxed">{badgeCode || "<!-- Run a scan to generate your trust badge -->"}</code>
                     </div>
-                  </div>
+                  )}
+
+                  {score !== null && (
+                    <div className="w-full space-y-6">
+                      {!badgeCode && (
+                        <div className="flex justify-center mb-2">
+                          <Button
+                            onClick={() => setBadgeCode(generateBadgeFromScore(score))}
+                            className="bg-teal-600 hover:bg-teal-700 text-white font-black uppercase text-xs tracking-widest px-8 py-3 rounded-xl gap-2"
+                          >
+                            <Shield className="w-4 h-4" />
+                            Generate Trust Badge
+                          </Button>
+                        </div>
+                      )}
+                      <div className="bg-zinc-950 rounded-[2.5rem] p-8 relative border-2 border-zinc-900 shadow-2xl">
+                        <div className="flex items-center justify-between mb-6">
+                          <span className="text-[10px] font-black uppercase text-zinc-500 tracking-widest">HTML Embed Script</span>
+                          <Button variant="ghost" className="text-teal-400 font-bold hover:text-teal-300 hover:bg-white/5" onClick={() => navigator.clipboard.writeText(badgeCode || generateBadgeFromScore(score))}>
+                            <Copy className="w-4 h-4 mr-2" />
+                            Copy Code
+                          </Button>
+                        </div>
+                        <code className="text-[12px] font-mono text-teal-200 block break-all whitespace-pre-wrap leading-relaxed">{badgeCode || generateBadgeFromScore(score)}</code>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </ScrollArea>
             </TabsContent>

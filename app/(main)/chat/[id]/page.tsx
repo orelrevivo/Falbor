@@ -66,6 +66,11 @@ export default async function ChatPage({
     .select()
     .from(userProfiles)
     .where(eq(userProfiles.userId, userId))
+    
+  const isNewProject = projectMessages.length === 1 && projectMessages[0].role === "user"
+  const initialUserMessage = isNewProject ? (projectMessages[0].content as string) : undefined
 
-  return <ChatInterface project={project} initialMessages={projectMessages} userProfile={userProfile} />
+  const role = isOwner ? "admin" : (collaborator[0]?.role || "viewer")
+
+  return <ChatInterface project={{ ...project, role } as any} initialMessages={projectMessages as any} initialUserMessage={initialUserMessage} userProfile={userProfile as any} />
 }

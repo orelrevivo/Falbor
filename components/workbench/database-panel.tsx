@@ -28,7 +28,15 @@ import {
   Sparkles,
   Save,
   Bell,
-  ShieldCheck
+  ShieldCheck,
+  Lock,
+  Github,
+  Globe,
+  FileText,
+  MessageSquare,
+  BarChart3,
+  Eye,
+  EyeOff
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -36,6 +44,7 @@ import { Badge } from "../ui/badge"
 import { SignupChart } from "./signup-chart"
 import { AuthProviders } from "./auth-providers"
 import { McpConnectModal } from "@/components/project/McpConnectModal"
+import Link from "next/link"
 import dynamic from "next/dynamic"
 
 import { useWorkbench } from "@/lib/workbench-context"
@@ -123,6 +132,7 @@ interface SQLFile {
   fileName: string
   content: string
   createdAt: string
+  source?: 'supabase' | 'neon'
 }
 
 interface ConnectionData {
@@ -131,9 +141,10 @@ interface ConnectionData {
   serviceRoleKey?: string
   projectRef?: string
   projectName?: string
+  neonUrl?: string
 }
 
-type TabType = "tables" | "users" | "sql" | "emails" | "storage" | "functions" | "credentials" | "auth_providers"
+type TabType = "tables" | "users" | "sql" | "emails" | "storage" | "functions" | "credentials" | "auth_providers" | "ai" | "usage"
 
 export function DatabasePanel({ projectId, filesOverride, onSendMessage }: DatabasePanelProps) {
   const { databaseTab: activeTab, setDatabaseTab: setActiveTab } = useWorkbench()
@@ -149,43 +160,29 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
   const [replyText, setReplyText] = useState("")
   const [sendingReply, setSendingReply] = useState(false)
   const [resendKey, setResendKey] = useState("")
+  const [aiUsage, setAiUsage] = useState<{ 
+    balance: number, 
+    totalMessages: number, 
+    totalCost: number, 
+    projectKey: string | null, 
+    tier: string 
+  } | null>(null)
+  const [loadingUsage, setLoadingUsage] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
 
-  useEffect(() => {
-    if (projectId) {
-      const savedKey = localStorage.getItem(`falbor_resend_api_key_${projectId}`)
-      if (savedKey) setResendKey(savedKey)
+  // Fetch SQL history
+  const fetchSqlHistory = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${projectId}/sql-history`)
+      if (res.ok) {
+        const data = await res.json()
+        setSqlFiles(data.history || [])
+      }
+    } catch (err) {
+      console.error("SQL History fetch error:", err)
     }
   }, [projectId])
 
-  // Listen for AI-driven email template edits from the chat
-  useEffect(() => {
-    if (!filesOverride || !authConfig) return
-
-    let updated = false
-    const newConfig = { ...authConfig }
-
-    filesOverride.forEach((file: any) => {
-      if (file.path.startsWith("email_template/")) {
-        const templateId = file.path.split("/")[1]
-        const contentKey = `mailer_templates_${templateId}_content`
-
-        if (newConfig[contentKey] !== undefined && newConfig[contentKey] !== file.content) {
-          newConfig[contentKey] = file.content
-          updated = true
-
-          // Auto-select the template if it was edited by AI
-          if (selectedEmailTemplate !== templateId) {
-            setSelectedEmailTemplate(templateId)
-            setActiveTab("emails")
-          }
-        }
-      }
-    })
-
-    if (updated) {
-      setAuthConfig(newConfig)
-    }
-  }, [filesOverride, authConfig]) // Remove selectedEmailTemplate to prevent loops
   const [aiPrompt, setAiPrompt] = useState("")
   const [isAiEditing, setIsAiEditing] = useState(false)
   const [storage, setStorage] = useState<any[]>([])
@@ -209,52 +206,80 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
   const [tableSearchTerm, setTableSearchTerm] = useState("")
   const [viewMode, setViewMode] = useState<"code" | "preview">("code")
 
-  const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; connection?: ConnectionData } | null>(null)
+  const [connectionStatus, setConnectionStatus] = useState<{ connected: boolean; connection?: ConnectionData; type?: 'supabase' | 'neon' } | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
 
   // Check connection status
-  useEffect(() => {
-    const checkConnection = async () => {
-      try {
-        setLoading(true)
-        // 1. Try to get project-specific credentials (for managed databases)
-        const projectRes = await fetch(`/api/projects/${projectId}/supabase`)
-        const projectData = await projectRes.json()
+  const checkConnection = useCallback(async () => {
+    try {
+      setLoading(true)
+      // 1. Try to get project-specific credentials (for managed databases)
+      // Check Supabase first
+      const projectRes = await fetch(`/api/projects/${projectId}/supabase`)
+      const projectData = await projectRes.json()
 
-        if (projectData && projectData.supabaseUrl && projectData.anonKey) {
+      if (projectData && projectData.supabaseUrl && projectData.anonKey) {
+        setConnectionStatus({
+          connected: true,
+          type: 'supabase',
+          connection: {
+            supabaseUrl: projectData.supabaseUrl,
+            anonKey: projectData.anonKey,
+            projectName: "Managed Database (Supabase)",
+            projectRef: projectData.supabaseUrl.split("//")[1]?.split(".")[0],
+          }
+        })
+        setConnectionError(null)
+        return
+      }
+
+      // Check Neon
+      const neonRes = await fetch(`/api/projects/${projectId}/neon`)
+      if (neonRes.ok) {
+        const neonData = await neonRes.json()
+        if (neonData && neonData.databaseUrl) {
           setConnectionStatus({
             connected: true,
+            type: 'neon',
             connection: {
-              supabaseUrl: projectData.supabaseUrl,
-              anonKey: projectData.anonKey,
-              projectName: "Managed Database",
-              projectRef: projectData.supabaseUrl.split("//")[1]?.split(".")[0],
+              supabaseUrl: "",
+              anonKey: "",
+              neonUrl: neonData.databaseUrl,
+              projectName: "Managed Database (Neon)",
+              projectRef: neonData.projectRef,
             }
           })
           setConnectionError(null)
           return
         }
-
-        // 2. Fallback to global user connection
-        const res = await fetch("/api/user/supabase-connection")
-        if (!res.ok) throw new Error("Failed to fetch connection status")
-        const data = await res.json()
-        setConnectionStatus(data)
-        setConnectionError(null)
-      } catch (error) {
-        setConnectionError("Failed to check database connection status")
-      } finally {
-        setLoading(false)
       }
+
+      // 2. Fallback to global user connection
+      const res = await fetch("/api/user/supabase-connection")
+      if (!res.ok) throw new Error("Failed to fetch connection status")
+      const data = await res.json()
+      setConnectionStatus({ ...data, type: 'supabase' })
+      setConnectionError(null)
+    } catch (error) {
+      setConnectionError("Failed to check database connection status")
+    } finally {
+      setLoading(false)
     }
-    if (projectId) checkConnection()
   }, [projectId])
+
+  useEffect(() => {
+    if (projectId) {
+      checkConnection()
+      fetchSqlHistory()
+    }
+  }, [projectId, fetchSqlHistory, checkConnection])
 
   // Fetch users
   const fetchUsers = useCallback(async () => {
     if (!connectionStatus?.connected) return;
     try {
-      const res = await fetch(`/api/projects/${projectId}/supabase/users`);
+      const type = connectionStatus.type || 'supabase';
+      const res = await fetch(`/api/projects/${projectId}/${type}/users`);
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users || []);
@@ -262,13 +287,14 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     } catch (err) {
       console.error("Users fetch error:", err);
     }
-  }, [projectId, connectionStatus?.connected]);
+  }, [projectId, connectionStatus?.connected, connectionStatus?.type]);
 
   // Fetch tables
   const fetchTables = useCallback(async () => {
     if (!connectionStatus?.connected) return;
     try {
-      const res = await fetch(`/api/projects/${projectId}/supabase/tables`);
+      const type = connectionStatus.type || 'supabase';
+      const res = await fetch(`/api/projects/${projectId}/${type}/tables`);
       if (res.ok) {
         const data = await res.json();
         setTables(data.tables || []);
@@ -276,13 +302,14 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     } catch (err) {
       console.error("Tables fetch error:", err);
     }
-  }, [projectId, connectionStatus?.connected]);
+  }, [projectId, connectionStatus?.connected, connectionStatus?.type]);
 
   // Fetch table rows
   const fetchTableRows = useCallback(async (tableName: string) => {
     setLoadingTableData(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/supabase/tables/${tableName}/data`)
+      const type = connectionStatus?.type || 'supabase';
+      const res = await fetch(`/api/projects/${projectId}/${type}/tables/${tableName}/data`)
       if (res.ok) {
         const data = await res.json()
         setTableRows(data.rows || [])
@@ -292,7 +319,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     } finally {
       setLoadingTableData(false)
     }
-  }, [projectId])
+  }, [projectId, connectionStatus?.type])
 
   useEffect(() => {
     if (selectedTable) {
@@ -315,6 +342,22 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
       console.error("Storage fetch error:", err);
     }
   }, [projectId, connectionStatus?.connected]);
+
+  // Fetch AI usage
+  const fetchAiUsage = useCallback(async () => {
+    try {
+      setLoadingUsage(true)
+      const res = await fetch(`/api/ai/usage?projectId=${projectId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAiUsage(data)
+      }
+    } catch (error) {
+      console.error("AI Usage fetch error:", error)
+    } finally {
+      setLoadingUsage(false)
+    }
+  }, [projectId])
 
   // Fetch feedback
   const fetchFeedback = useCallback(async () => {
@@ -350,7 +393,8 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
       const res = await fetch(`/api/projects/${projectId}/supabase/sql-files`);
       if (res.ok) {
         const data = await res.json();
-        setSqlFiles(data || []);
+        // Skip setting if we are using the new sqlHistory
+        // setSqlFiles(data || []);
       }
     } catch (err) {
       console.error("SQL Files fetch error:", err);
@@ -518,11 +562,16 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
         fetchStorage(),
         fetchFunctions(),
         fetchSqlFiles(),
-        fetchAuthConfig(),
-        fetchFeedback()
       ]).finally(() => setLoading(false))
     }
-  }, [connectionStatus?.connected, fetchTables, fetchUsers, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig, fetchFeedback])
+  }, [connectionStatus?.connected, fetchTables, fetchUsers, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig])
+
+  useEffect(() => {
+    if (projectId) {
+      fetchFeedback()
+      fetchAiUsage()
+    }
+  }, [projectId, fetchFeedback, fetchAiUsage])
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -533,8 +582,9 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     else if (activeTab === "sql") await fetchSqlFiles()
     else if (activeTab === "emails") await fetchAuthConfig()
     else if (activeTab === "feedback") await fetchFeedback()
+    else if (activeTab === "ai" || activeTab === "usage") await fetchAiUsage()
     setLoading(false)
-  }, [activeTab, fetchUsers, fetchTables, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig, fetchFeedback])
+  }, [activeTab, fetchUsers, fetchTables, fetchStorage, fetchFunctions, fetchSqlFiles, fetchAuthConfig, fetchFeedback, fetchAiUsage])
 
   const filteredTables = tables.filter(t =>
     t.name.toLowerCase().includes(tableSearchTerm.toLowerCase())
@@ -664,7 +714,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
     }
   }
 
-  const copyToClipboard = async (text: string | undefined, field: string) => {
+  const copyToClipboard = async (text: string | null | undefined, field: string) => {
     if (!text) return;
     await navigator.clipboard.writeText(text);
     setCopiedField(field);
@@ -1117,26 +1167,43 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                 </div>
 
                 <div className="space-y-4">
-                  {[
-                    { label: "Project URL", value: connection?.supabaseUrl, key: "url" },
-                    { label: "Anon Public Key", value: connection?.anonKey, key: "anon" },
-                    { label: "Service Role (Admin)", value: connection?.serviceRoleKey, key: "service" },
-                  ].map((cred) => (
-                    <div key={cred.key} className="p-4 border border-gray-100 rounded-2xl bg-white shadow-sm transition-all hover:bg-gray-50 group">
+                  {connectionStatus?.type === 'neon' ? (
+                    <div className="p-4 border border-gray-100 rounded-2xl bg-white shadow-sm transition-all hover:bg-gray-50 group">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cred.label}</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Neon Connection String</span>
                         <button
-                          onClick={() => copyToClipboard(cred.value, cred.key)}
+                          onClick={() => copyToClipboard(connection?.neonUrl, 'neon')}
                           className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-all"
                         >
-                          {copiedField === cred.key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          {copiedField === 'neon' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                         </button>
                       </div>
                       <div className="font-mono text-xs text-gray-600 truncate">
-                        {cred.value || "Not available"}
+                        {connection?.neonUrl}
                       </div>
                     </div>
-                  ))}
+                  ) : (
+                    [
+                      { label: "Project URL", value: connection?.supabaseUrl, key: "url" },
+                      { label: "Anon Public Key", value: connection?.anonKey, key: "anon" },
+                      { label: "Service Role (Admin)", value: connection?.serviceRoleKey, key: "service" },
+                    ].map((cred) => (
+                      <div key={cred.key} className="p-4 border border-gray-100 rounded-2xl bg-white shadow-sm transition-all hover:bg-gray-50 group">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{cred.label}</span>
+                          <button
+                            onClick={() => copyToClipboard(cred.value, cred.key)}
+                            className="opacity-0 group-hover:opacity-100 p-1 text-gray-400 hover:text-blue-600 transition-all"
+                          >
+                            {copiedField === cred.key ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                        <div className="font-mono text-xs text-gray-600 truncate">
+                          {cred.value || "Not available"}
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
@@ -1145,6 +1212,134 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                     <p className="text-[11px] text-gray-500 leading-relaxed">
                       These credentials are automatically injected into your project environment. Use the **Service Role** key only in server-side logic for administrative control.
                     </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "auth_providers" && (
+              <div className="p-6 space-y-6 overflow-y-auto h-full">
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <h3 className="text-md font-bold text-gray-900">Authentication Providers</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">Manage how your users can sign in to your application</p>
+                  </div>
+                </div>
+
+                {connectionStatus?.type === 'neon' ? (
+                  <div className="bg-blue-50/50 border border-blue-100 rounded-2xl p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-xl bg-blue-500 text-white">
+                        <Lock className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-blue-900">Manual Authentication (Neon)</h4>
+                        <p className="text-xs text-blue-700 mt-1 leading-relaxed">
+                          Since you are using a managed Neon database, authentication is handled manually in your application code.
+                          You should implement a `users` table and use libraries like `bcryptjs` and `iron-session` or `jsonwebtoken` for secure sessions.
+                        </p>
+                        <div className="mt-4 flex gap-3">
+                          <Badge className="bg-blue-100 text-blue-700 border-none">Custom Users Table</Badge>
+                          <Badge className="bg-blue-100 text-blue-700 border-none">Manual Token Management</Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { id: 'email', name: 'Email / Password', status: 'Enabled', icon: Mail },
+                      { id: 'phone', name: 'Phone Number', status: 'Disabled', icon: Cpu },
+                      { id: 'google', name: 'Google', status: 'Disabled', icon: Globe },
+                      { id: 'github', name: 'GitHub', status: 'Disabled', icon: Github },
+                      { id: 'discord', name: 'Discord', status: 'Disabled', icon: MessageSquare },
+                    ].map((provider) => (
+                      <div key={provider.id} className="p-4 bg-white border border-gray-100 rounded-2xl flex items-center justify-between group hover:border-blue-200 transition-all">
+                        <div className="flex items-center gap-4">
+                          <div className="p-2.5 rounded-xl bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <provider.icon className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-bold text-gray-900">{provider.name}</div>
+                            <div className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{provider.id}</div>
+                          </div>
+                        </div>
+                        <Badge className={cn(
+                          "text-[10px] font-bold px-2 py-0.5",
+                          provider.status === 'Enabled' ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-500 border-gray-200"
+                        )}>
+                          {provider.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 mt-6">
+                  <div className="flex items-start gap-3">
+                    <Shield className="w-4 h-4 text-emerald-500 mt-0.5" />
+                    <p className="text-[11px] text-gray-500 leading-relaxed">
+                      Provider configuration is managed through the <span className="font-bold text-gray-900">Database &gt; Authentication</span> settings in your console.
+                      Enable social providers there and they will automatically work with your Supabase Client.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "sql" && (
+              <div className="flex flex-col h-full bg-white">
+                <div className="p-6 border-b border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-md font-bold text-gray-900">SQL History & Migrations</h3>
+                      <p className="text-xs text-gray-500 mt-0.5">View and manage your database schema changes</p>
+                    </div>
+                    <Button variant="outline" className="h-8 text-xs gap-2 rounded-lg bg-white">
+                      <Terminal className="w-3.5 h-3.5" />
+                      Open SQL Editor
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="space-y-6">
+                    {sqlFiles.length > 0 ? (
+                      <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Latest Migrations</h4>
+                        <div className="space-y-2">
+                          {sqlFiles.map((migration) => (
+                            <div key={migration.id} className="p-4 bg-white border border-gray-100 rounded-2xl flex items-center justify-between hover:border-blue-100 transition-all group">
+                              <div className="flex items-center gap-4">
+                                <div className="p-2.5 rounded-xl bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                                  <FileCode className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <div className="text-sm font-medium text-gray-900">{migration.fileName}</div>
+                                  <div className="text-[10px] text-gray-400">
+                                    {new Date(migration.createdAt).toLocaleString()} • {migration.source === 'neon' ? 'Neon' : 'Supabase'}
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge className="bg-green-50 text-green-700 border-green-200 text-[10px] font-bold uppercase">Applied</Badge>
+                                <ChevronRight className="w-4 h-4 text-gray-200 group-hover:text-blue-400 transition-all" />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-gray-50 rounded-3xl">
+                        <div className="w-12 h-12 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
+                          <Terminal className="w-6 h-6 text-gray-300" />
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-900">No Recent Queries</h4>
+                        <p className="text-xs text-gray-500 mt-1 max-w-[240px] text-center px-4">
+                          Queries executed via the chat will appear in your history here.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1883,10 +2078,10 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                               className="w-full bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-10 gap-2 font-bold shadow-md shadow-blue-200/50 transition-all active:scale-[0.98]"
                             >
                               {sendingReply ? <Loader className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
-                              Send Reply via Gmail
+                              Send Reply via Resend
                             </Button>
                             <p className="text-[10px] text-gray-400 text-center px-4">
-                              Note: This will send an email to the user if your Gmail account is connected in the MCP settings.
+                              Note: This will send an email to the user using your Resend API configuration.
                             </p>
                           </div>
                         )}
@@ -1894,6 +2089,237 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                     </div>
                   </div>
                 )}
+              </div>
+            )}
+
+            {activeTab === "ai" && (
+              <div className="p-8 max-w-4xl mx-auto space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">Falbor AI Settings</h3>
+                    <p className="text-sm text-gray-500 mt-1">Configure your project's AI capabilities and API keys.</p>
+                  </div>
+                  <Sparkles className="w-8 h-8 text-blue-500 opacity-20" />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* API Key Card */}
+                  <div className="bg-white border rounded-sm p-6 shadow-xs">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                        <Key className="w-5 h-5" />
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">Project API Key</h4>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="p-3 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-2 group/key">
+                        <code className="flex-1 text-xs font-mono text-gray-600 truncate">
+                          {showApiKey ? aiUsage?.projectKey : "••••••••••••••••••••••••••••••••"}
+                        </code>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setShowApiKey(!showApiKey)}
+                            className="p-1.5 text-gray-400 hover:text-gray-900 hover:bg-white rounded-lg transition-all"
+                          >
+                            {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                          <button
+                            onClick={() => copyToClipboard(aiUsage?.projectKey, 'apikey')}
+                            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-white rounded-lg transition-all"
+                          >
+                            {copiedField === 'apikey' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-[11px] text-gray-400 leading-relaxed px-1">
+                        This key is used to authenticate requests to the Falbor AI API from your published website.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Integration Card */}
+                  <div className="bg-white border rounded-sm p-6 shadow-xs">
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                        <Terminal className="w-5 h-5" />
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900">Integration Code</h4>
+                    </div>
+
+                    <div className="space-y-3">
+                      <pre className="p-3 bg-gray-900 text-gray-100 rounded-2xl text-[10px] font-mono overflow-auto h-24">
+                        {`const res = await fetch('/api/ai/chat', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_KEY'
+  },
+  body: JSON.stringify({
+    messages: [{ role: 'user', content: '...' }]
+  })
+})`}
+                      </pre>
+                      <button className="text-[11px] text-blue-600 hover:underline inline-flex items-center gap-1 font-medium">
+                        View Documentation <ChevronRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-8">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-2xl bg-emerald-500 text-white shadow-lg shadow-emerald-200">
+                      <ShieldCheck className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-md font-bold text-emerald-900 mb-2">Automated Security</h4>
+                      <p className="text-sm text-emerald-700 leading-relaxed max-w-2xl">
+                        AI-generated sites are automatically protected by our proxy. The AI is instructed to hide sensitive API keys and only expose the Falbor AI client to your users.
+                      </p>
+                    </div>
+                  </div>
+                </div> */}
+
+                {/* Test Chat Section */}
+                <div className="bg-white border rounded-sm p-6 shadow-xs">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 rounded-2xl bg-blue-500 text-white flex items-center justify-center">
+                      <MessageSquare className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-gray-900">Test AI API <Badge className="ml-2">Beta</Badge></h4>
+                      <p className="text-[11px] text-gray-500">Type a message to instantly verify your API connection.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 border border-gray-50 rounded-2xl p-4 bg-gray-50/30">
+                    <div id="test-chat-messages" className="h-[200px] overflow-y-auto space-y-3 pr-2 custom-scrollbar flex flex-col">
+                      <div className="bg-white p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[80%] self-start border border-gray-100">
+                        <p className="text-xs text-gray-600">Connection ready. How can I help you today?</p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Send a test message..."
+                        id="test-chat-input"
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter') {
+                            const input = e.target as HTMLInputElement;
+                            const message = input.value.trim();
+                            if (!message) return;
+                            input.value = '';
+
+                            const container = document.getElementById('test-chat-messages');
+                            if (!container) return;
+
+                            // Add user message
+                            const uDiv = document.createElement('div');
+                            uDiv.className = 'bg-blue-600 text-white p-3 rounded-2xl rounded-tr-none shadow-sm max-w-[80%] self-end border border-blue-500 ml-auto mt-3';
+                            uDiv.innerHTML = `<p class="text-xs">${message}</p>`;
+                            container.appendChild(uDiv);
+                            container.scrollTop = container.scrollHeight;
+
+                            // Add loading
+                            const lDiv = document.createElement('div');
+                            lDiv.className = 'bg-white p-3 rounded-2xl rounded-tl-none shadow-sm max-w-[80%] self-start border border-gray-100 mt-3 animate-pulse';
+                            lDiv.innerHTML = `<p class="text-xs text-gray-400">Thinking...</p>`;
+                            container.appendChild(lDiv);
+                            container.scrollTop = container.scrollHeight;
+
+                            try {
+                              const res = await fetch('/api/ai/chat', {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'x-falbor-key': aiUsage?.projectKey || ''
+                                },
+                                body: JSON.stringify({
+                                  messages: [{ role: 'user', content: message }]
+                                })
+                              });
+
+                              const data = await res.json();
+                              lDiv.classList.remove('animate-pulse');
+                              if (data.content) {
+                                lDiv.innerHTML = `<p class="text-xs text-gray-700">${data.content}</p>`;
+                              } else {
+                                lDiv.innerHTML = `<p class="text-xs text-red-500">Error: ${data.error || 'No content'}</p>`;
+                              }
+                            } catch (err) {
+                              lDiv.innerHTML = `<p class="text-xs text-red-500">Failed to connect to API</p>`;
+                            }
+                            container.scrollTop = container.scrollHeight;
+                          }
+                        }}
+                        className="flex-1 bg-white border border-gray-200 rounded-xl px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "usage" && (
+              <div className="p-8 max-w-4xl mx-auto space-y-8">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900">Resource Usage</h3>
+                    <p className="text-sm text-gray-500 mt-1">Track your project's AI message consumption and limits.</p>
+                  </div>
+                  <BarChart3 className="w-8 h-8 text-blue-500 opacity-20" />
+                </div>
+
+                <div className="bg-white border rounded-sm p-8 shadow-xs">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="flex flex-col gap-2">
+                       <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Available Balance</div>
+                       <div className="text-3xl font-black text-gray-900">
+                          ${aiUsage?.balance?.toFixed(2) || "0.00"}
+                       </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                       <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Total Messages</div>
+                       <div className="text-3xl font-black text-zinc-400">
+                          {aiUsage?.totalMessages || 0}
+                       </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                       <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Accumulated Cost</div>
+                       <div className="text-3xl font-black text-zinc-400">
+                          ${aiUsage?.totalCost?.toFixed(2) || "0.00"}
+                       </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 p-4 bg-zinc-50 border border-zinc-100 rounded-xl flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-zinc-200">
+                        <Info size={14} className="text-zinc-400" />
+                    </div>
+                    <p className="text-xs text-zinc-500">
+                        Your account is currently on the <span className="font-bold text-zinc-700 capitalize">{aiUsage?.tier}</span> plan. 
+                        API usage is billed per token and deducted from your Falbor Balance.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="BackgroundStyleButton rounded-sm p-8 flex items-center justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="p-3 rounded-2xl bg-gray-600 text-white shadow-lg shadow-blue-200">
+                      <Sparkles className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h4 className="text-md font-bold text-gray-900 mb-1">Need more messages?</h4>
+                      <p className="text-sm text-gray-700 opacity-80">Upgrade your plan to increase your monthly limit and unlock advanced models.</p>
+                    </div>
+                  </div>
+                  <Link href="/pricing">
+                    <Button variant="outline" className="bg-white hover:bg-blue-600 hover:text-white transition-all rounded-xl h-11 px-6 font-bold border-blue-200 text-blue-600">
+                      Upgrade Now
+                    </Button>
+                  </Link>
+                </div>
               </div>
             )}
           </div>

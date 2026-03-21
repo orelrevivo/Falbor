@@ -22,6 +22,9 @@ import {
   AppWindow,
   ChevronDown,
   Download,
+  Lock,
+  Palette,
+  Database,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -171,6 +174,7 @@ interface NavbarProps {
   isSplitScreen?: boolean
   onEnterSplit?: () => void
   projectName?: string
+  role?: "viewer" | "editor" | "admin"
 }
 
 type OpenDropdown = "profile" | "publish" | "share" | "project" | null
@@ -246,7 +250,6 @@ function ViewTransition({
 }
 
 // ─── Main Navbar ────────────────────────────────────────────────────────────────
-
 export function Navbar({
   projectId,
   handleDownload,
@@ -255,7 +258,10 @@ export function Navbar({
   isSplitScreen,
   onEnterSplit,
   projectName,
+  role = "admin",
 }: NavbarProps) {
+  const isAdmin = role === "admin"
+  const isViewer = role === "viewer"
   const { user, isLoaded } = useUser()
   const clerk = useClerk()
   const { getToken } = useAuth()
@@ -736,50 +742,74 @@ export function Navbar({
               </div>
 
               {/* Share */}
-              <div className="relative">
-                <button
-                  onClick={() => setOpenDropdown(openDropdown === "share" ? null : "share")}
-                  className={cn(
-                    "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
-                    "BackgroundStyleButton text-black/80"
-                  )}
-                >
-                  <Share2 size={16} />
-                  Share
-                </button>
+              {isAdmin && (
+                <div className="relative">
+                  <button
+                    onClick={() => setOpenDropdown(openDropdown === "share" ? null : "share")}
+                    className={cn(
+                      "flex items-center gap-1.5 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
+                      "BackgroundStyleButton text-black/80"
+                    )}
+                  >
+                    <Share2 size={16} />
+                    Share
+                  </button>
 
-                <AnimatePresence>
-                  {openDropdown === "share" && (
-                    <>
-                      {/* <Backdrop onClick={closeDropdown} /> */}
-                      <DropdownPanel className="w-96">
-                        <ShareDialog
-                          projectId={projectId}
-                          isOpen={true}
-                          onClose={closeDropdown}
-                        />
-                      </DropdownPanel>
-                    </>
-                  )}
-                </AnimatePresence>
-              </div>
+                  <AnimatePresence>
+                    {openDropdown === "share" && (
+                      <>
+                        {/* <Backdrop onClick={closeDropdown} /> */}
+                        <DropdownPanel className="w-96">
+                          <ShareDialog
+                            projectId={projectId}
+                            isOpen={true}
+                            onClose={closeDropdown}
+                          />
+                        </DropdownPanel>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
 
               <div className="relative group">
-                <button
-                  onClick={() => setOpenDropdown(openDropdown === "publish" ? null : "publish")}
-                  className={cn(
-                    "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors cursor-pointer",
-                    isPublishing
-                      ? "bg-[#0099ff]/20 text-[#0099ff] cursor-not-allowed"
-                      : "BackgroundStyleButton text-black/80"
-                  )}
-                  disabled={isPublishing}
-                >
-                  {isPublishing ? "Publishing..." : "Publish"}
-                </button>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => {
+                          if (isAdmin) {
+                            setOpenDropdown(openDropdown === "publish" ? null : "publish")
+                          }
+                        }}
+                        className={cn(
+                          "flex items-center gap-1 text-sm px-3 py-1.5 rounded transition-colors",
+                          isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-70",
+                          isPublishing
+                            ? "bg-[#0099ff]/20 text-[#0099ff] cursor-not-allowed"
+                            : "BackgroundStyleButton text-black/80",
+                          !isAdmin && "relative"
+                        )}
+                        disabled={isPublishing}
+                      >
+                        {!isAdmin && (
+                          <div className="absolute -top-1 -right-1 bg-red-500 rounded-full p-0.5 shadow-lg z-10 animate-pulse">
+                            <Lock className="w-2.5 h-2.5 text-white" />
+                          </div>
+                        )}
+                        {isPublishing ? "Publishing..." : "Publish"}
+                      </button>
+                    </TooltipTrigger>
+                    {!isAdmin && (
+                      <TooltipContent>
+                        <p>Only project admins can publish the site</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
 
                 <AnimatePresence>
-                  {openDropdown === "publish" && (
+                  {isAdmin && openDropdown === "publish" && (
                     <>
 
                       <DropdownPanel className="w-96">

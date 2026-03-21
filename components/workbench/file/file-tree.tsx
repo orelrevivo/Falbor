@@ -13,7 +13,10 @@ import {
   Trash,
   Lock,
   Unlock,
+  Square,
+  CheckSquare,
 } from "lucide-react"
+import { useWorkbench } from "@/lib/workbench-context"
 import { cn } from "@/lib/utils"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu"
 
@@ -46,6 +49,7 @@ interface FileTreeProps {
   projectId: string
   onFilesChange?: () => void
   currentRoot?: string
+  currentlyEditingPath?: string | null
 }
 
 interface ContextMenuState {
@@ -330,6 +334,26 @@ function RenameInput({
   )
 }
 
+interface TreeNodeProps {
+  node: FileNode
+  onFileSelect: (file: { path: string; content: string; language: string }) => void
+  selectedPath?: string | null
+  level?: number
+  onContextMenu: (e: React.MouseEvent, node: FileNode) => void
+  projectId: string
+  insertInfo?: InsertInfo | null
+  renaming: string | null
+  inputValue: string
+  setInputValue: (value: string) => void
+  handleCreateNew: () => Promise<void>
+  handleRename: () => Promise<void>
+  handleCancel: () => void
+  handleCancelRename: () => void
+  selectedFiles: string[]
+  toggleFileSelection: (path: string) => void
+  currentlyEditingPath?: string | null
+}
+
 function TreeNode({
   node,
   onFileSelect,
@@ -345,24 +369,14 @@ function TreeNode({
   handleRename,
   handleCancel,
   handleCancelRename,
-}: {
-  node: FileNode
-  onFileSelect: (file: { path: string; content: string; language: string }) => void
-  selectedPath?: string | null
-  level?: number
-  onContextMenu: (e: React.MouseEvent, node: FileNode) => void
-  projectId: string
-  insertInfo?: InsertInfo | null
-  renaming: string | null
-  inputValue: string
-  setInputValue: (value: string) => void
-  handleCreateNew: () => Promise<void>
-  handleRename: () => Promise<void>
-  handleCancel: () => void
-  handleCancelRename: () => void
-}) {
+  selectedFiles,
+  toggleFileSelection,
+  currentlyEditingPath,
+}: TreeNodeProps) {
   const [isOpen, setIsOpen] = useState(false)
   const indent = level * 16
+
+  const isSelectedForTask = selectedFiles.includes(node.fullPath)
 
   useEffect(() => {
     if (insertInfo?.targetPath === node.fullPath && insertInfo.inside) {
@@ -403,8 +417,12 @@ function TreeNode({
 
     if (node.type === "folder") {
       setIsOpen(!isOpen)
-    } else if (node.content && node.language) {
-      onFileSelect({ path: node.fullPath, content: node.content, language: node.language })
+    } else if (node.type === "file") {
+      onFileSelect({ 
+        path: node.fullPath, 
+        content: node.content || "", 
+        language: node.language || "typescript" 
+      })
     }
   }
 
@@ -426,6 +444,23 @@ function TreeNode({
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
+        <div 
+          className={cn(
+            "mr-2 cursor-pointer hover:scale-110 transition-all duration-200 shrink-0",
+            !isSelectedForTask && "opacity-0 group-hover:opacity-100"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleFileSelection(node.fullPath);
+          }}
+        >
+          {isSelectedForTask ? (
+            <CheckSquare className="w-4 h-4 text-[#0099ff]" />
+          ) : (
+            <Square className="w-4 h-4 text-foreground/40" />
+          )}
+        </div>
+
         {node.type === "folder" ? (
           <>
             {isOpen ? (
@@ -446,6 +481,13 @@ function TreeNode({
           </>
         )}
         <span className="truncate flex-1">{node.name}</span>
+
+        {node.fullPath === currentlyEditingPath && (
+          <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-full bg-blue-50/50 border border-blue-100 shadow-sm animate-pulse mr-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            <span className="text-[9px] font-bold text-blue-600 uppercase tracking-tight">Live</span>
+          </div>
+        )}
 
         {node.type === "file" && ((node.additions || 0) > 0 || (node.deletions || 0) > 0) && (
           <div className="flex items-center gap-1 text-[10px] opacity-80">
@@ -476,6 +518,9 @@ function TreeNode({
               handleRename={handleRename}
               handleCancel={handleCancel}
               handleCancelRename={handleCancelRename}
+              selectedFiles={selectedFiles}
+              toggleFileSelection={toggleFileSelection}
+              currentlyEditingPath={currentlyEditingPath}
             />
           ))}
         </div>
@@ -484,7 +529,8 @@ function TreeNode({
   )
 }
 
-export function FileTree({ files, onFileSelect, selectedPath, projectId, onFilesChange, currentRoot }: FileTreeProps) {
+export function FileTree({ files, onFileSelect, selectedPath, projectId, onFilesChange, currentRoot, currentlyEditingPath }: FileTreeProps) {
+  const { selectedFiles, toggleFileSelection } = useWorkbench()
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({ show: false, x: 0, y: 0, node: null })
   const [newItem, setNewItem] = useState<{ targetPath: string; inside: boolean; type: "file" | "folder" } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
@@ -654,6 +700,9 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
           handleRename={handleRename}
           handleCancel={handleCancel}
           handleCancelRename={handleCancelRename}
+          selectedFiles={selectedFiles}
+          toggleFileSelection={toggleFileSelection}
+          currentlyEditingPath={currentlyEditingPath}
         />
       ))}
 

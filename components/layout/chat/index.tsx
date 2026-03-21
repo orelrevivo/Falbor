@@ -68,8 +68,10 @@ interface ChatInputProps {
   disabled?: boolean
   initialMessage?: string
   editingMessage?: { id: string; content: string } | null
+  sessionId?: string
   onCancelEdit?: () => void
   onSaveEdit?: (id: string, content: string) => void
+  role?: "viewer" | "editor" | "admin"
 }
 interface BalanceData {
   subscriptionTier: string
@@ -183,7 +185,7 @@ const EMAIL_TEMPLATES = [
   { id: "reauthentication", label: "Reauthentication" },
 ]
 const MODEL_OPTIONS: ModelOption[] = [
-  { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
+  // { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
   { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
@@ -206,6 +208,9 @@ const MODEL_OPTIONS: ModelOption[] = [
   { id: "qwen-3.5-27b", label: "Qwen 3.5 27B", isPremium: true, iconUrl: "/icons/qwen.png" },
   { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
   { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
+  { id: "nemotron-3-super-120b", label: "Nemotron 3 Super 120B", isPremium: true, iconUrl: "/icons/nvidia.png" },
+  { id: "gpt-oss-120b", label: "GPT OSS 120B", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "gemma-3-12b-it", label: "Gemma 3 12B IT", isPremium: false, iconUrl: "/icons/google.png" },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -323,6 +328,8 @@ const PastedContentButton: React.FC<PastedContentButtonProps> = ({ content, onCl
 interface DatabaseCredentials {
   supabaseUrl: string
   anonKey: string
+  neonUrl?: string
+  neonApiKey?: string
 }
 interface SupabaseProject {
   ref: string
@@ -336,7 +343,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     projectId,
     onNewMessage,
     placeholder = "Ask anything... to get started",
-    initialModel = "gemini",
+    initialModel = "gpt-oss-120b",
     connected = false,
     onCloseIdeas,
     isAutomated = false,
@@ -350,9 +357,12 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     editingMessage,
     onCancelEdit,
     onSaveEdit,
+    sessionId = "main",
+    role = "admin"
   },
   ref,
 ) {
+  const isViewer = role === "viewer"
   const [message, setMessage] = useState(initialMessage || "")
   const [isLoading, setIsLoading] = useState(false)
 
@@ -397,6 +407,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [showDatabaseHover, setShowDatabaseHover] = useState(false)
   const [showModelHover, setShowModelHover] = useState(false)
   const [isFalborDb, setIsFalborDb] = useState(false)
+  const [isNeonDb, setIsNeonDb] = useState(false)
   const [showDesignModal, setShowDesignModal] = useState(false)
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
   const [designConfig, setDesignConfig] = useState<DesignConfig | null>(null)
@@ -417,6 +428,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     selectedModel: string
     isAutomated: boolean
     isFalborDb: boolean
+    isNeonDb: boolean
     selectedFramework?: string
   } | null>(null)
   const [isActive, setIsActive] = useState(false)
@@ -721,7 +733,6 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     let dbPassword = ""
 
     try {
-      // Handle Falbor Database Provisioning (Synchronous wait for Keys)
       if (pendingSubmitData.isFalborDb) {
         setIsProvisioning(true)
         try {
@@ -742,6 +753,52 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           serviceRoleKey = creds.serviceRoleKey
           projectRef = creds.projectRef
           dbPassword = creds.dbPassword
+        } finally {
+          setIsProvisioning(false)
+        }
+      }
+
+      let neonUrl = ""
+      let neonPassword = ""
+      let neonProjectRef = ""
+
+      if (pendingSubmitData.isNeonDb) {
+        setIsProvisioning(true)
+        try {
+          const provRes = await fetch("/api/neon/provision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: `project-${Math.random().toString(36).slice(2, 10)}` })
+          })
+
+          if (!provRes.ok) {
+            const err = await provRes.json().catch(() => ({}))
+            throw new Error(err.error || "Failed to provision Neon database")
+          }
+
+          const creds = await provRes.json()
+
+          if (!creds.databaseUrl) {
+            throw new Error("Neon connection URL was not returned. Please try again or check your Neon console.")
+          }
+
+          neonUrl = creds.databaseUrl
+          neonPassword = creds.dbPassword
+          neonProjectRef = creds.projectRef
+
+          setDatabaseCredentials(prev => ({
+            ...prev,
+            neonUrl: creds.databaseUrl,
+            neonApiKey: creds.dbPassword
+          }))
+
+          console.log("[ChatInput] Neon provisioned successfully. Proceeding to project creation.")
+        } catch (error) {
+          console.error("[ChatInput] Neon provision failed:", error)
+          alert(error instanceof Error ? error.message : "Database setup failed. Please check your Neon configuration.")
+          setIsLoading(false)
+          setIsProvisioning(false)
+          return // STOP everything here
         } finally {
           setIsProvisioning(false)
         }
@@ -787,6 +844,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         isAutomated: pendingSubmitData.isAutomated,
         selectedModel: pendingSubmitData.selectedModel,
         isFalborDb: pendingSubmitData.isFalborDb,
+        isNeonDb: pendingSubmitData.isNeonDb,
         selectedFramework: pendingSubmitData.selectedFramework,
       }
 
@@ -800,9 +858,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
         // Also inject into the first message content so it's visible in history
         body.message += `\n\n## Database Connection (Managed by Falbor)\nDatabase provisioned successfully.\nVITE_SUPABASE_URL=${supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${anonKey}\nSUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`
+      } else if (pendingSubmitData.isNeonDb) {
+        body.neonUrl = neonUrl
+        body.neonPassword = neonPassword
+        body.neonProjectRef = neonProjectRef
+
+        // Also inject into the first message content so it's visible in history
+        body.message += `\n\n## Database Connection (Managed by Falbor Max)\nNeon project provisioned successfully.\nDATABASE_URL=${neonUrl}`
       } else if (withCredentials || credentialsSaved) {
-        body.supabaseUrl = databaseCredentials.supabaseUrl
-        body.anonKey = databaseCredentials.anonKey
+        if (databaseCredentials.supabaseUrl) {
+          body.supabaseUrl = databaseCredentials.supabaseUrl
+          body.anonKey = databaseCredentials.anonKey
+        }
+        if (databaseCredentials.neonUrl) {
+          body.neonUrl = databaseCredentials.neonUrl
+        }
       }
 
       const res = await fetch("/api/projects", {
@@ -1313,7 +1383,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
   }
   const parseAndSetPendingMigrations = (content: string) => {
     const migrations: string[] = []
-    const regex = /```sql\s*file="supabase\/migrations\/[^"]+"\s*([\s\S]*?)```/g
+    // Match both Supabase migrations and Neon schema files
+    const regex = /```sql\s*file="(?:supabase\/migrations\/|lib\/db\/)[^"]+"\s*([\s\S]*?)```/g
     let match
     while ((match = regex.exec(content)) !== null) {
       migrations.push(match[1].trim())
@@ -1321,21 +1392,26 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     setPendingMigrations(migrations)
   }
   const handleExecuteMigrations = async () => {
-    if (!tempAccessToken) return
+    const isNeon = !!databaseCredentials.neonUrl
+    if (!isNeon && !tempAccessToken) return
+
     setIsSavingCredentials(true)
     try {
       for (const sql of pendingMigrations) {
         const res = await fetch(`/api/projects/${projectId}/execute-sql`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sql, accessToken: tempAccessToken }),
+          body: JSON.stringify({
+            sql,
+            accessToken: isNeon ? "neon-handled" : tempAccessToken
+          }),
         })
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}))
           throw new Error(errData.error || "Failed to execute migration")
         }
       }
-      alert("Migrations applied successfully!")
+      alert("Database schema updated successfully!")
       setPendingMigrations([])
       setShowTokenModal(false)
       setTempAccessToken("")
@@ -1387,6 +1463,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     if (credentialsSaved && databaseCredentials.supabaseUrl && databaseCredentials.anonKey) {
       userMessage += `\n\n## Database Connection\nVITE_SUPABASE_URL=${databaseCredentials.supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${databaseCredentials.anonKey}`
     }
+    if (credentialsSaved && databaseCredentials.neonUrl) {
+      userMessage += `\n\n## Database Connection (Neon)\nDATABASE_URL=${databaseCredentials.neonUrl}`
+    }
     if (isDesignActive && designConfig && !message.includes("Capture from URL:")) {
       userMessage += `\n\n## Design System: ${selectedDesign || "Custom"}\n${JSON.stringify(designConfig, null, 2)}`
     }
@@ -1398,11 +1477,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         selectedModel,
         isAutomated,
         isFalborDb,
+        isNeonDb,
         selectedFramework,
       })
 
       // Automatically send message without asking about database
-      await createProject(isFalborDb)
+      await createProject(isFalborDb || isNeonDb)
       return
     }
 
@@ -1455,6 +1535,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           isAutomated: false,
           tokensUsed: null,
           cost: null,
+          sessionId,
+          imageData: null,
+          metadata: null,
         }
         onNewMessage(tempUser)
         const tempAssistantId = `temp-assistant-${Date.now()}`
@@ -1471,6 +1554,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           isAutomated: false,
           tokensUsed: null,
           cost: null,
+          sessionId,
+          imageData: null,
+          metadata: null,
         }
         onNewMessage(tempAssistant)
         console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
@@ -1488,6 +1574,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               isAutomated,
               selectedModel,
               selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
+              sessionId,
             }),
             signal: abortControllerRef.current.signal,
           })
@@ -1542,7 +1629,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       if (data.userMessageId) {
                         onNewMessage({
                           ...tempUser,
-                          id: data.userMessageId
+                          id: data.userMessageId,
+                          sessionId
                         })
                       }
 
@@ -1561,6 +1649,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         isAutomated: false,
                         tokensUsed: data.tokensUsed || null,
                         cost: data.cost || null,
+                        sessionId,
+                        imageData: data.imageData || null,
+                        metadata: data.metadata || null,
                       })
                       router.refresh()
                     }
@@ -1602,6 +1693,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             isAutomated,
             selectedModel,
             selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
+            sessionId,
           }),
           signal: abortControllerRef.current.signal,
         })
@@ -2061,6 +2153,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             ref={textareaRef}
             value={message}
             onChange={(e) => {
+              if (isViewer) return
               const newMessage = e.target.value
               const cursorPosition = e.target.selectionStart
               setMessage(newMessage)
@@ -2101,15 +2194,14 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               }
             }}
             placeholder={
-              isDailyLimitReached
-                ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
-                : isDiscussMode ? "Discuss anything..." : placeholder
+              isViewer
+                ? "Viewing mode - messaging is disabled"
+                : isDailyLimitReached
+                  ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
+                  : isDiscussMode ? "Discuss anything..." : placeholder
             }
-            className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground
-             px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light
-             disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ scrollbarWidth: "thin" }}
-            disabled={isLoading || isDailyLimitReached}
+            className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isLoading || isDailyLimitReached || isViewer}
           />
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
             {editingMessage && (
@@ -2132,14 +2224,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                 <div className="relative flex items-center" ref={menuRef}>
                   <Button
                     type="button"
-                    onClick={() => setShowMenu((prev) => !prev)}
-                    className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md BackgroundStyle text-black ml-1"
-                    title="More options"
-                    disabled={isLoading}
+                    onClick={() => {
+                      if (!isViewer) {
+                        setShowMenu((prev) => !prev)
+                      }
+                    }}
+                    className={cn(
+                      "h-7 w-7 p-1.5 text-sm rounded-md BackgroundStyle text-black ml-1",
+                      isViewer ? "cursor-not-allowed opacity-50 relative" : "cursor-default"
+                    )}
+                    title={isViewer ? "Viewing mode" : "More options"}
+                    disabled={isLoading || isViewer}
                     variant="ghost"
                     size="sm"
                   >
-                    <Plus className="w-4 h-4" />
+                    {isViewer ? <Lock className="w-3.5 h-3.5 text-red-500" /> : <Plus className="w-4 h-4" />}
                   </Button>
 
                   {/* Plan Mode Switch - show only on landing/new chat (no projectId) */}
@@ -2169,7 +2268,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
                   {showMenu && (
                     <div
-                      className="absolute z-50 w-56 overflow-visible bg-white shadow-xs border border-[#dbd9d965]
+                      className="absolute z-50 w-56 overflow-visible bg-[#1E1E1E]
                     animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2
                     focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
                     data-[variant=destructive]:focus:bg-destructive/10
@@ -2189,12 +2288,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               fileInputRef.current?.click()
                               setShowMenu(false)
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm text-white", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#0099ff] cursor-default")}
                           >
-                            <Link1Icon className="h-4 w-4 mr-2" />
+                            <Link1Icon className="h-4 w-4 mr-2 text-white/90" />
                             Attach images & files
                           </div>
-                          <div
+                          {/* <div
                             onClick={() => {
                               setShowGoogleDriveModal(true)
                               setShowMenu(false)
@@ -2203,20 +2302,20 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                           >
                             <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="h-4 w-4 mr-2" alt="" />
                             Add from Google Drive
-                          </div>
+                          </div> */}
                           <div
                             onClick={() => {
                               if (!message.includes("Capture from URL:")) {
                                 setMenuMode("design")
                               }
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm w-full", message.includes("Capture from URL:") ? "opacity-50 cursor-not-allowed grayscale" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm w-full text-white", message.includes("Capture from URL:") ? "opacity-50 cursor-not-allowed grayscale" : "hover:bg-[#0099ff] cursor-default")}
                           >
-                            <Palette className="h-4 w-4 mr-2" />
+                            <Palette className="h-4 w-4 mr-2 text-white/90" />
                             System Design
                           </div>
                           <div
-                            className="relative flex items-center px-2 py-1.5 text-sm rounded-sm hover:bg-[#e7e7e7] cursor-pointer w-full"
+                            className="relative flex items-center px-2 py-1.5 text-[12px] text-white rounded-sm hover:bg-[#0099ff] cursor-default w-full"
                             onMouseEnter={() => setShowDatabaseHover(true)}
                             onMouseLeave={() => setShowDatabaseHover(false)}
                             onClick={(e) => {
@@ -2225,7 +2324,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               }
                             }}
                           >
-                            <Database className="h-4 w-4 mr-2" />
+                            <Database className="h-4 w-4 mr-2 text-white/90" />
                             Database
                             {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
                             {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>}
@@ -2248,30 +2347,45 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                 onMouseLeave={() => setShowDatabaseHover(false)}
                               >
                                 <TooltipProvider>
+                                  {/* <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="flex items-center w-full px-2 h-8 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsNeonDb(true); setIsFalborDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                                      >
+                                        <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
+                                        <span className="flex-1 text-left">Falbor Database Max</span>
+                                        {isNeonDb && <Check className="h-4 w-4 text-black" />}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Use the professional Neon-powered database (Recommended)</p>
+                                    </TooltipContent>
+                                  </Tooltip> */}
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <div
-                                        className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                                        className="flex items-center w-full px-2 py-1.5 h-8 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setIsNeonDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
                                       >
-                                        <img src="/icons/falbor.png" className="w-4 h-4 mr-2" alt="" />
+                                        <img src="/icons/falbor.png" className="w-6 h-6 mr-2" alt="" />
                                         <span className="flex-1 text-left">Falbor Database</span>
                                         {isFalborDb && <Check className="h-4 w-4 text-black" />}
                                       </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
-                                      <p>Use the Falbor built-in database</p>
+                                      <p>Use the Falbor built-in database (Supabase)</p>
                                     </TooltipContent>
                                   </Tooltip>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <div
-                                        className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                                        className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
                                       >
-                                        <img src="/icons/supabase.png" className="w-4 h-4 mr-2" alt="" />
+                                        <img src="/icons/supabase.png" className="w-6 h-6 mr-2" alt="" />
                                         <span className="flex-1 text-left">Connect Supabase</span>
-                                        {!isFalborDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
+                                        {!isFalborDb && !isNeonDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
                                       </div>
                                     </TooltipTrigger>
                                     <TooltipContent>
@@ -2281,10 +2395,10 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <div
-                                        className="flex items-center w-full px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                                        className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
                                       >
-                                        <img src="/icons/database-off.png" className="w-4 h-4 mr-2" alt="" />
+                                        <img src="/icons/database-off.png" className="w-6 h-6 mr-2" alt="" />
                                         <span className="flex-1 text-left">Create without DB</span>
                                       </div>
                                     </TooltipTrigger>
@@ -2297,13 +2411,13 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                             )}
                           </div>
                           <div
-                            className="relative flex items-center px-2 py-1.5 text-sm rounded-sm hover:bg-[#e7e7e7] cursor-pointer w-full"
+                            className="relative flex items-center px-2 py-1.5 text-[12px] rounded-sm hover:bg-[#0099ff] text-white cursor-default w-full"
                             onMouseEnter={() => setShowModelHover(true)}
                             onMouseLeave={() => setShowModelHover(false)}
                           >
                             {isAutoSelected ? (
-                              <div className="w-6 h-6 mr-2 rounded BackgroundStyleButton to-purple-500 flex items-center justify-center">
-                                <Zap className="w-4 h-4 text-black" />
+                              <div className="w-10 h-5 mr-2 to-purple-500 flex items-center justify-center">
+                                <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
                               </div>
                             ) : (
                               <img src={currentModel.iconUrl || "/placeholder.svg"} className="h-4 w-4 mr-2" alt="" />
@@ -2349,14 +2463,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                     className="flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative hover:bg-[#f3f3f3]"
                                     title="Auto-select best model for your prompt"
                                   >
-                                    <div className="ml-[-3px] w-6 h-6 rounded BackgroundStyleButton to-purple-500 flex items-center justify-center">
-                                      <Zap className="w-4 h-4 text-black" />
+                                    <div className="ml-[-3px] w-10 h-6 to-purple-500 flex items-center justify-center">
+                                      <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
                                     </div>
-                                    <span className="flex-1">Auto Select</span>
-                                    {isAutoSelected ? (
-                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
-                                    ) : (
-                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">SMART</span>
+                                    <span className="flex-1 text-black">Auto Select</span>
+                                    {isAutoSelected && (
+                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold"><Check className="w-4 h-4" /></span>
                                     )}
                                   </div>
 
@@ -2374,22 +2486,17 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                         setShowMenu(false)
                                       }}
                                       className={cn(
-                                        "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative",
+                                        "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative text-black",
                                         model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "hover:bg-[#f3f3f3]"
                                       )}
                                     >
                                       <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
                                       <span className={cn("flex-1", model.isPremium && !hasSubscription ? "blur-[0.5px]" : "")}>{model.label}</span>
                                       {model.isPremium && !hasSubscription && (
-                                        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-blue-500 to-purple-500 backdrop-blur-md text-white border border-white/20 shadow-xl text-[10px] uppercase font-bold px-2 py-0.5 rounded-full z-10 flex items-center gap-1 opacity-100 grayscale-0">
-                                          <Lock className="w-2.5 h-2.5" /> Pro Plus
-                                        </span>
+                                        <Lock className="w-3 h-3 text-gray-600" />
                                       )}
                                       {selectedModel === model.id && !isAutoSelected && (
-                                        <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
-                                      )}
-                                      {model.isPremium && hasSubscription && (
-                                        <Lock className="w-3 h-3 text-gray-600" />
+                                        <span className="text-[12px] px-2 py-0.5 rounded-2xl font-bold"><Check className="w-4 h-4" /></span>
                                       )}
                                     </div>
                                   ))}
@@ -2563,12 +2670,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                 setShowMenu(false)
                               }
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
+                            className={cn("flex items-center px-2 py-1.5 text-[12px] text-white rounded-sm w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#0099ff] cursor-default")}
                           >
                             {!isImproving ? (
                               <StarsIcon className="h-4 w-4 mr-2" />
                             ) : (
-                              <Loader className="h-4 w-4 mr-2 animate-spin" />
+                              <div className="w-4 h-4 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             )}
                             Enhance Prompt
                           </div>
@@ -2650,29 +2757,46 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   <AudioLinesIcon className="w-4 h-4" />
                 </Button>
               )}
-              <Button
-                type={isListening || effectiveIsLoading ? "button" : "submit"}
-                onClick={isListening ? stopVoiceInput : undefined}
-                size={isProvisioning || editingMessage ? "default" : "icon"}
-                className={cn(
-                  "h-7 p-1.5 rounded-md mr-1 transition-colors",
-                  isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-white hover:bg-black/5 border border-black/20"),
-                  (isProvisioning || editingMessage) ? "w-7" : "w-7",
-                  (!effectiveIsLoading && !isListening &&
-                    ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
-                      !isAuthenticated)) ? "cursor-not-allowed" : "cursor-pointer"
-                )}
-              >
-                {effectiveIsLoading || isProvisioning ? (
-                  <div className="w-3 h-3 border-2 border-[#0099ff] border-t-[#0099ff]/30 rounded-full animate-spin" />
-                ) : isListening ? (
-                  <Circle className="w-4 h-4 text-white" />
-                ) : editingMessage ? (
-                  <ArrowUp className="w-6 h-6 text-black" />
-                ) : (
-                  <ArrowUp className="w-6 h-6 text-black" />
-                )}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type={isListening || effectiveIsLoading ? "button" : "submit"}
+                      onClick={isListening ? stopVoiceInput : undefined}
+                      size={isProvisioning || editingMessage ? "default" : "icon"}
+                      className={cn(
+                        "h-7 p-1.5 rounded-md mr-1 transition-colors",
+                        (isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-white hover:bg-black/5 border border-black/20")),
+                        "w-7",
+                        (!effectiveIsLoading && !isListening &&
+                          ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
+                            !isAuthenticated || isViewer)) ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                      )}
+                      disabled={isLoading || isDailyLimitReached || isViewer}
+                    >
+                      {effectiveIsLoading || isProvisioning ? (
+                        <div className="w-3 h-3 border-2 border-[#0099ff] border-t-[#0099ff]/30 rounded-full animate-spin" />
+                      ) : isListening ? (
+                        <Circle className="w-4 h-4 text-white" />
+                      ) : isViewer ? (
+                        <Lock className="w-3.5 h-3.5 text-red-500" />
+                      ) : editingMessage ? (
+                        <ArrowUp className="w-6 h-6 text-black" />
+                      ) : (
+                        <ArrowUp className="w-6 h-6 text-black" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  {isViewer && (
+                    <TooltipContent side="top" align="center" className="bg-white text-black border shadow-md font-medium">
+                      <p className="flex items-center gap-2">
+                        <Lock className="w-3 h-3 text-red-500" />
+                        You are a viewer and cannot send messages.
+                      </p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         </form >

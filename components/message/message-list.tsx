@@ -1,6 +1,7 @@
 "use client"
 
 import type React from "react"
+import { TaskChatGroup } from "./task-chat-group"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -35,6 +36,7 @@ import {
   RefreshCw,
   Edit,
   Clock,
+  FileCode,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
@@ -79,10 +81,11 @@ interface Message {
   thinking?: string | null
   searchQueries?: any[] | null
   isAutomated?: boolean
-  imageData?: Array<{ url: string; mimeType: string }> | null
+  imageData?: (string | { url: string; mimeType: string }[]) | null
   uploadedFiles?: Array<{ name: string; content: string; type: string }> | null
   tokensUsed?: number | null
   cost?: number | null
+  metadata?: Record<string, any> | null
 }
 
 interface MessageListProps {
@@ -160,6 +163,7 @@ function parseAIResponse(content: string) {
     testMessengerTools: /<TestMessengerTools>([\s\S]*?)<\/TestMessengerTools>/gi,
     compileMessengerFindings: /<CompileMessengerFindings>([\s\S]*?)<\/CompileMessengerFindings>/gi,
     scan: /<Scan>([\s\S]*?)<\/Scan>/gi,
+    workSummary: /<WorkSummary>([\s\S]*?)<\/WorkSummary>/gi,
   }
 
   // Tags that should NEVER bleed into the visible text content
@@ -171,7 +175,7 @@ function parseAIResponse(content: string) {
     "DiscoverGmailTools", "TestGmailTools", "CompileGmailFindings",
     "DiscoverDiscordTools", "TestDiscordTools", "CompileDiscordFindings",
     "DiscoverMessengerTools", "TestMessengerTools", "CompileMessengerFindings",
-    "Scan",
+    "Scan", "WorkSummary",
   ]
 
   let processedContent = content
@@ -239,6 +243,12 @@ function parseAIResponse(content: string) {
           }
         })
         parsedContent = checks
+      } else if (type === "workSummary") {
+        try {
+          parsedContent = JSON.parse(match[1].trim())
+        } catch (e) {
+          parsedContent = { summary: match[1].trim(), files: [] }
+        }
       } else if (type === "files") {
         const filesContent = match[1].trim()
         const filesList: { name: string; path: string; status: "success" | "error" | "loading"; isSql?: boolean }[] = []
@@ -294,8 +304,8 @@ function parseAIResponse(content: string) {
   }
   let finalText = processedContent.substring(lastEnd).trim()
 
-  // Live Code Block Tracking at the end
-  const openCodeRegex = /```(\w+)?\s*(?:file="([^"]+)")?\s*\n([\s\S]*?)$/g
+  // Live Code Block Tracking at the end (robust for streaming)
+  const openCodeRegex = /```(\w+)?\s*(?:file="([^"\n]*?)")?\s*\r?\n?([\s\S]*?)$/g
   const openMatch = openCodeRegex.exec(finalText)
   if (openMatch) {
     const textBefore = finalText.substring(0, openMatch.index).trim()
@@ -516,10 +526,19 @@ function parseUserContent(content: string): { parts: UserPart[]; mainText: strin
 const renderToolContent = (type: string, content: any) => {
   if (typeof content !== "string") return content
 
+  let safeContent = content
+  // Remove large code blocks from tool outputs to avoid cluttering the chat
+  if (type !== "text" && safeContent.includes("```")) {
+    safeContent = safeContent.replace(/```[\s\S]*?```/g, (match) => {
+      if (match.length > 50) return "\n[Code implementation hidden - view in code preview]\n"
+      return match
+    })
+  }
+
   // Detect if content is JSON (common for tool outputs)
-  if (content.trim().startsWith("{") || content.trim().startsWith("[")) {
+  if (safeContent.trim().startsWith("{") || safeContent.trim().startsWith("[")) {
     try {
-      const data = JSON.parse(content.trim())
+      const data = JSON.parse(safeContent.trim())
 
       // Custom rendering for Discord/Messenger messages
       if (data.messages && Array.isArray(data.messages)) {
@@ -574,7 +593,7 @@ const renderToolContent = (type: string, content: any) => {
     }
   }
 
-  return content
+  return safeContent
 }
 
 export function MessageList({
@@ -754,380 +773,55 @@ export function MessageList({
   return (
     <>
       <div className="space-y-1" role="log" aria-live="polite">
-        {messages.map((message, index) => {
-          const isStreaming = message.id.startsWith("temp-") && index === messages.length - 1
-
-          const isTerminalErrorResponse =
-            message.role === "assistant" &&
-            index > 0 &&
-            messages[index - 1].role === "user" &&
-            messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
-
-          const messageWrapperClass = cn(
-            "relative w-full rounded-lg px-1 py-2",
-            message.role === "user" ? "BackgroundStyleButton text-[15px] text-black" : "text-[15px] text-black",
-          )
-
-          const renderedMessage = (
-            <div
-              className={messageWrapperClass}
-              role={message.role === "user" ? "user-message" : "assistant-message"}
-              aria-label={`${message.role} message`}
-            >
-              {message.role === "user" ? (
-                <div className="w-full">
-                  {/* User Message Header: Timestamp + Menu */}
-                  <div className="flex items-center justify-between mb-2 px-3 absolute top-3 right-0">
-                    <div className="flex items-center gap-1 text-[10px] mr-3 text-black/30">
-                      <Clock className="w-3 h-3" />
-                      <span>{formatTimeAgo(message.createdAt)}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="link"
-                        size="sm"
-                        onClick={() => {
-                          const { mainText } = parseUserContent(message.content)
-                          onEdit?.(message.id, mainText || message.content)
-                        }}
-                        className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
-                        aria-label="User message options"
-                      >
-                        <Edit className="w-3.5 h-3.5" />
-                      </Button>
-                      {message.content.length > 200 && (
-                        <Button
-                          variant="link"
-                          size="sm"
-                          onClick={() => toggleMessageExpand(message.id)}
-                          className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
-                        >
-                          {expandedMessages[message.id] ? (
-                            <ChevronUp className="w-4 h-4" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4" />
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-2 px-1.5">
-                    {message.imageData?.map((img, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectedImage(img.url)}
-                        className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
-                        aria-label={`View image ${idx + 1}`}
-                      >
-                        <img
-                          src={img.url || "/placeholder.svg?height=200&width=300"}
-                          alt={`Uploaded image ${idx + 1}`}
-                          className="max-w-xs max-h-48 object-cover hover:opacity-80 transition-opacity"
-                        />
-                      </button>
-                    ))}
-
-                    {message.uploadedFiles?.map((file, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectedFile(file)}
-                        className="flex items-center gap-2 px-3 py-2 bg-black/5 hover:bg-black/10 rounded transition-colors text-sm w-full text-left"
-                        aria-label={`View file ${file.name}`}
-                      >
-                        <FileText className="w-4 h-4 flex-shrink-0" />
-                        <span className="truncate">{file.name}</span>
-                      </button>
-                    ))}
-
-                    {(() => {
-                      const { parts, mainText } = parseUserContent(message.content)
-                      const contextParts = parts.filter(
-                        (p) => p.type === "file" || p.type === "pasted" || p.type === "database" || p.type === "design"
-                      )
-                      const hasContext = contextParts.length > 0
-
-                      return (
-                        <div className="space-y-2">
-                          {hasContext && (
-                            <div className="flex flex-wrap gap-1 mb-2">
-                              {contextParts.map((part, partIdx) => {
-                                if (part.type === "file") {
-                                  return (
-                                    <TooltipProvider key={`file-${partIdx}`}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setContextModal({
-                                                type: "file",
-                                                name: part.content.name,
-                                                content: part.content.fileContent,
-                                              })
-                                            }
-                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                            aria-label={`View file ${part.content.name}`}
-                                          >
-                                            <FileText className="w-3 h-3 text-gray-600" />
-                                            <span className="truncate max-w-[100px]">{part.content.name}</span>
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom">
-                                          <p>Click to view full content</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )
-                                }
-
-                                if (part.type === "pasted") {
-                                  return (
-                                    <TooltipProvider key={`pasted-${partIdx}`}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setContextModal({
-                                                type: "pasted",
-                                                name: "Pasted Text",
-                                                content: part.content,
-                                              })
-                                            }
-                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                            aria-label="View pasted text"
-                                          >
-                                            <FileText className="w-3 h-3 text-gray-600" />
-                                            <span className="truncate max-w-[100px]">
-                                              {part.content.substring(0, 15)}...
-                                            </span>
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom">
-                                          <p>Click to view full content</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )
-                                }
-
-                                if (part.type === "database") {
-                                  return (
-                                    <TooltipProvider key={`db-${partIdx}`}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setContextModal({
-                                                type: "database",
-                                                name: "Database Connection",
-                                                content: `Supabase URL: ${part.content.supabaseUrl}\nAnon Key: ${part.content.anonKey}`,
-                                              })
-                                            }
-                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                            aria-label="View database connection"
-                                          >
-                                            <CheckCircle2 className="w-3 h-3" />
-                                            <span>Database Connected</span>
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom">
-                                          <p>Click to view full content</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )
-                                }
-
-                                if (part.type === "design") {
-                                  return (
-                                    <TooltipProvider key={`design-${partIdx}`}>
-                                      <Tooltip>
-                                        <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            onClick={() =>
-                                              setContextModal({
-                                                type: "design",
-                                                name: `Design: ${part.content.name}`,
-                                                content: part.content.json,
-                                              })
-                                            }
-                                            className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
-                                            aria-label={`View design system ${part.content.name}`}
-                                          >
-                                            <div
-                                              className="w-3 h-3 rounded"
-                                              style={{
-                                                backgroundColor: part.content.config?.primaryColor || "#000",
-                                              }}
-                                            />
-                                            <span>{part.content.name}</span>
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent side="bottom">
-                                          <p>Click to view full content</p>
-                                        </TooltipContent>
-                                      </Tooltip>
-                                    </TooltipProvider>
-                                  )
-                                }
-
-                                return null
-                              })}
-                            </div>
-                          )}
-
-                          {mainText && (
-                            <div
-                              className={cn(
-                                mainText.length > 200 &&
-                                !(expandedMessages[message.id] ?? false) &&
-                                "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent"
-                              )}
-                            >
-                              <ReactMarkdown
-                                remarkPlugins={[remarkGfm]}
-                                components={{
-                                  strong: ({ children }: { children?: React.ReactNode }) => (
-                                    <strong className="font-bold text-black">{children}</strong>
-                                  ),
-                                  em: ({ children }: { children?: React.ReactNode }) => (
-                                    <em className="italic text-black/80">{children}</em>
-                                  ),
-                                  p: ({ children }: { children?: React.ReactNode }) => (
-                                    <p className="text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0">
-                                      {children}
-                                    </p>
-                                  ),
-                                  ul: ({ children }: { children?: React.ReactNode }) => (
-                                    <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
-                                  ),
-                                  ol: ({ children }: { children?: React.ReactNode }) => (
-                                    <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
-                                  ),
-                                  li: ({ children }: { children?: React.ReactNode }) => (
-                                    <li className="text-sm leading-relaxed">{children}</li>
-                                  ),
-                                }}
-                              >
-                                {mainText}
-                              </ReactMarkdown>
-                            </div>
-                          )}
-                        </div>
-                      )
-                    })()}
-                  </div>
-                </div>
-              ) : (
-                <div className="w-full">
-                  {/* AI Message Header: Logo + Three-dot Menu */}
-                  <div className="flex items-center justify-between mb-2 px-1">
-                    <div className="flex items-center gap-2 ml-8 mt-3 mb-4">
-                      <img src="/logo_light.png" alt="AI" className="w-24 absolute left-0 object-contain" />
-                      <div className="flex items-center gap-1 text-[10px] text-black/30">
-                        {/* <Clock className="w-3 h-3" />
-                        <span>{formatTimeAgo(message.createdAt)}</span> */}
-                      </div>
-                    </div>
-                    {!(index === messages.length - 1 && isStreaming) && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-6 w-6 p-0 hover:bg-[#e4e4e4] cursor-pointer"
-                            aria-label="AI message options"
-                          >
-                            <MoreVertical className="h-3.5 w-3.5 text-black/40" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-[200px] p-1.5 bg-white border border-[#e4e4e4] shadow-xs rounded-lg">
-                          <DropdownMenuItem
-                            className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
-                            onClick={() => onRegenerate?.(message.id)}
-                          >
-                            <RefreshCw className="w-3.5 h-3.5" />
-                            Recreate Response
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
-                            onClick={() => {
-                              const sections = parseAIResponse(message.content)
-                              const textToCopy =
-                                sections.parts
-                                  .filter((p) => p.type === "text")
-                                  .map((p) => p.content)
-                                  .join("\n") || message.content
-                              handleCopy(textToCopy)
-                              setCopiedId(message.id)
-                              setTimeout(() => setCopiedId(null), 2000)
-                            }}
-                          >
-                            <Copy className="w-3.5 h-3.5" />
-                            {copiedId === message.id ? "Copied!" : "Copy Message"}
-                          </DropdownMenuItem>
-                          {(message.tokensUsed || message.cost) && (
-                            <div className="border-t border-gray-100 mt-1 pt-1 px-2 py-1.5">
-                              <div className="text-[10px] font-semibold text-black/30 uppercase tracking-wider mb-1">Usage</div>
-                              {message.tokensUsed && (
-                                <div className="flex items-center gap-1.5 text-[11px] text-black/50">
-                                  <Zap className="w-3 h-3" />
-                                  <span>{message.tokensUsed.toLocaleString()} tokens</span>
-                                </div>
-                              )}
-                              {message.cost && (
-                                <div className="flex items-center gap-1.5 text-[11px] text-black/50 mt-0.5">
-                                  <Database className="w-3 h-3" />
-                                  <span>${(message.cost / 100).toFixed(2)} credits</span>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                  <AIMessageContent
-                    message={message}
-                    isStreaming={index === messages.length - 1 && isStreaming}
-                    thinkingTimer={thinkingTimer}
-                    expandedSections={expandedSections[message.id] || {}}
-                    activeMessageId={activeMessageId}
-                    onActivateVersion={onActivateVersion}
-                    onToggleSection={(section) => toggleSection(message.id, section)}
-                    onArtifactClick={onArtifactClick}
-                    onCodeSelect={handleCodeSelect}
-                    onViewChanges={handleViewChanges}
-                    onOpenFullModal={() => openFullMessageModal(message)}
-                    onOpenPreview={onOpenPreview}
-                  />
-                </div>
-              )}
-            </div>
-          )
-
-          return (
-            <div
-              key={`${message.id}-${index}`}
-              className={cn("flex flex-col", message.role === "user" ? "items-end" : "items-start")}
-            >
-              {isTerminalErrorResponse ? (
-                <div className="w-full bg-red-50 border-2 border-red-400 rounded-lg p-4 mb-4">
-                  <h3 className="text-red-800 font-bold mb-3 flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5" />
-                    Terminal Error Explanation & Fix
-                  </h3>
-                  {renderedMessage}
-                </div>
-              ) : (
-                renderedMessage
-              )}
-            </div>
-          )
-        })}
+        {(() => {
+          // Group messages: detect task groups and wrap them
+          const elements: React.ReactNode[] = []
+          let i = 0
+          while (i < messages.length) {
+            const message = messages[i]
+            const taskMeta = message.metadata as any
+            
+            // Check if this message starts a task group
+            if (taskMeta?.taskGroupId && taskMeta?.taskIndex && taskMeta?.totalTasks) {
+              const groupId = taskMeta.taskGroupId
+              const taskIndex = taskMeta.taskIndex
+              const totalTasks = taskMeta.totalTasks
+              
+              // Collect this user message and its AI response (next message)
+              const groupMessages: Message[] = [message]
+              if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
+                groupMessages.push(messages[i + 1])
+                i++ // skip the assistant message in the outer loop
+              }
+              
+              const isLastAssistantStreaming = groupMessages.length > 1 && 
+                groupMessages[groupMessages.length - 1].id.startsWith("temp-") && 
+                (i === messages.length - 1 || i + 1 === messages.length)
+              
+              elements.push(
+                <TaskChatGroup
+                  key={`task-${groupId}-${taskIndex}`}
+                  taskIndex={taskIndex}
+                  totalTasks={totalTasks}
+                  isLoading={isLastAssistantStreaming}
+                  defaultExpanded={true}
+                >
+                  {groupMessages.map((gMsg, gIdx) => {
+                    const gIndex = i - groupMessages.length + 1 + gIdx
+                    const gIsStreaming = gMsg.id.startsWith("temp-") && gIndex === messages.length - 1
+                    return renderMessage(gMsg, gIndex, gIsStreaming)
+                  })}
+                </TaskChatGroup>
+              )
+            } else {
+              // Regular message — render normally
+              const isStreaming = message.id.startsWith("temp-") && i === messages.length - 1
+              elements.push(renderMessage(message, i, isStreaming))
+            }
+            i++
+          }
+          return elements
+        })()}
 
         {/* Image Modal */}
         {selectedImage && (
@@ -1323,7 +1017,7 @@ export function MessageList({
               </div>
               <div className="flex-1 overflow-y-auto p-4 space-y-3">
                 <AIMessageContent
-                  message={fullMessageModal}
+                  message={fullMessageModal as Message}
                   isStreaming={false}
                   thinkingTimer={0}
                   expandedSections={modalExpandedSections}
@@ -1456,10 +1150,507 @@ export function MessageList({
       </div>
     </>
   )
+
+  function renderMessage(message: Message, index: number, isStreaming: boolean) {
+    const isTerminalErrorResponse =
+      message.role === "assistant" &&
+      index > 0 &&
+      messages[index - 1].role === "user" &&
+      messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
+
+    const messageWrapperClass = cn(
+      "relative w-full rounded-lg px-1 py-2",
+      message.role === "user" ? "BackgroundStyleButton text-[15px] text-black" : "text-[15px] text-black",
+    )
+
+    const renderedMessage = (
+      <div
+        className={messageWrapperClass}
+        role={message.role === "user" ? "user-message" : "assistant-message"}
+        aria-label={`${message.role} message`}
+      >
+        {message.role === "user" ? (
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-2 px-3 absolute top-3 right-0">
+              <div className="flex items-center gap-1 text-[10px] mr-3 text-black/30">
+                <Clock className="w-3 h-3" />
+                <span>{formatTimeAgo(message.createdAt)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => {
+                    const { mainText } = parseUserContent(message.content)
+                    onEdit?.(message.id, mainText || message.content)
+                  }}
+                  className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
+                  aria-label="User message options"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                </Button>
+                {message.content.length > 200 && (
+                  <Button
+                    variant="link"
+                    size="sm"
+                    onClick={() => toggleMessageExpand(message.id)}
+                    className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
+                  >
+                    {expandedMessages[message.id] ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2 px-1.5">
+              {message.imageData && (
+                typeof message.imageData === "string" ? (
+                  <button
+                    onClick={() => setSelectedImage(message.imageData as string)}
+                    className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
+                    aria-label="View uploaded image"
+                  >
+                    <img
+                      src={message.imageData || "/placeholder.svg?height=200&width=300"}
+                      alt="Uploaded image"
+                      className="max-w-xs max-h-48 object-cover hover:opacity-80 transition-opacity"
+                    />
+                  </button>
+                ) : (
+                  (message.imageData as { url: string; mimeType: string }[]).map((img: any, idx: number) => (
+                    <button
+                      key={idx}
+                      onClick={() => setSelectedImage(img.url)}
+                      className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
+                      aria-label={`View image ${idx + 1}`}
+                    >
+                      <img
+                        src={img.url || "/placeholder.svg?height=200&width=300"}
+                        alt={`Uploaded image ${idx + 1}`}
+                        className="max-w-xs max-h-48 object-cover hover:opacity-80 transition-opacity"
+                      />
+                    </button>
+                  ))
+                )
+              )}
+
+              {message.uploadedFiles?.map((file: any, idx: number) => (
+                <button
+                  key={idx}
+                  onClick={() => setSelectedFile(file)}
+                  className="flex items-center gap-2 px-3 py-2 bg-black/5 hover:bg-black/10 rounded transition-colors text-sm w-full text-left"
+                  aria-label={`View file ${file.name}`}
+                >
+                  <FileText className="w-4 h-4 flex-shrink-0" />
+                  <span className="truncate">{file.name}</span>
+                </button>
+              ))}
+
+              {(() => {
+                const { parts, mainText } = parseUserContent(message.content)
+                const contextParts = parts.filter(
+                  (p) => p.type === "file" || p.type === "pasted" || p.type === "database" || p.type === "design"
+                )
+                const hasContext = contextParts.length > 0
+
+                return (
+                  <div className="space-y-2">
+                    {hasContext && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {contextParts.map((part, partIdx) => {
+                          if (part.type === "file") {
+                            return (
+                              <TooltipProvider key={`file-${partIdx}`}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setContextModal({
+                                          type: "file",
+                                          name: part.content.name,
+                                          content: part.content.fileContent,
+                                        })
+                                      }
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      aria-label={`View file ${part.content.name}`}
+                                    >
+                                      <FileText className="w-3 h-3 text-gray-600" />
+                                      <span className="truncate max-w-[100px]">{part.content.name}</span>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>Click to view full content</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )
+                          }
+                          if (part.type === "pasted") {
+                            return (
+                              <TooltipProvider key={`pasted-${partIdx}`}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setContextModal({
+                                          type: "pasted",
+                                          name: "Pasted Text",
+                                          content: part.content,
+                                        })
+                                      }
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      aria-label="View pasted text"
+                                    >
+                                      <FileText className="w-3 h-3 text-gray-600" />
+                                      <span className="truncate max-w-[100px]">
+                                        {part.content.substring(0, 15)}...
+                                      </span>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>Click to view full content</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )
+                          }
+                          if (part.type === "database") {
+                            return (
+                              <TooltipProvider key={`db-${partIdx}`}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setContextModal({
+                                          type: "database",
+                                          name: "Database Connection",
+                                          content: `Supabase URL: ${part.content.supabaseUrl}\nAnon Key: ${part.content.anonKey}`,
+                                        })
+                                      }
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      aria-label="View database connection"
+                                    >
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      <span>Database Connected</span>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>Click to view full content</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )
+                          }
+                          if (part.type === "design") {
+                            return (
+                              <TooltipProvider key={`design-${partIdx}`}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setContextModal({
+                                          type: "design",
+                                          name: `Design: ${part.content.name}`,
+                                          content: part.content.json,
+                                        })
+                                      }
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      aria-label={`View design system ${part.content.name}`}
+                                    >
+                                      <div
+                                        className="w-3 h-3 rounded"
+                                        style={{
+                                          backgroundColor: part.content.config?.primaryColor || "#000",
+                                        }}
+                                      />
+                                      <span>{part.content.name}</span>
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>Click to view full content</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )
+                          }
+                          return null
+                        })}
+                      </div>
+                    )}
+
+                    {mainText && (
+                      <div
+                        className={cn(
+                          mainText.length > 200 &&
+                          !(expandedMessages[message.id] ?? false) &&
+                          "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent"
+                        )}
+                      >
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm]}
+                          components={{
+                            strong: ({ children }: { children?: React.ReactNode }) => (
+                              <strong className="font-bold text-black">{children}</strong>
+                            ),
+                            em: ({ children }: { children?: React.ReactNode }) => (
+                              <em className="italic text-black/80">{children}</em>
+                            ),
+                            p: ({ children }: { children?: React.ReactNode }) => (
+                              <p className="text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0">
+                                {children}
+                              </p>
+                            ),
+                            ul: ({ children }: { children?: React.ReactNode }) => (
+                              <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
+                            ),
+                            ol: ({ children }: { children?: React.ReactNode }) => (
+                              <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
+                            ),
+                            li: ({ children }: { children?: React.ReactNode }) => (
+                              <li className="text-sm leading-relaxed">{children}</li>
+                            ),
+                          }}
+                        >
+                          {mainText}
+                        </ReactMarkdown>
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+          </div>
+        ) : (
+          <div className="w-full">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <div className="flex items-center gap-2 ml-8 mt-3 mb-4">
+                <img src="/logo_light.png" alt="AI" className="w-24 absolute left-0 object-contain" />
+                <div className="flex items-center gap-1 text-[10px] text-black/30" />
+              </div>
+              {!(index === messages.length - 1 && isStreaming) && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 w-6 p-0 hover:bg-[#e4e4e4] cursor-pointer"
+                      aria-label="AI message options"
+                    >
+                      <MoreVertical className="h-3.5 w-3.5 text-black/40" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-[200px] p-1.5 bg-white border border-[#e4e4e4] shadow-xs rounded-lg">
+                    <DropdownMenuItem
+                      className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
+                      onClick={() => onRegenerate?.(message.id)}
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Recreate Response
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
+                      onClick={() => {
+                        const sections = parseAIResponse(message.content)
+                        const textToCopy =
+                          sections.parts
+                            .filter((p) => p.type === "text")
+                            .map((p) => p.content)
+                            .join("\n") || message.content
+                        handleCopy(textToCopy)
+                        setCopiedId(message.id)
+                        setTimeout(() => setCopiedId(null), 2000)
+                      }}
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                      {copiedId === message.id ? "Copied!" : "Copy Message"}
+                    </DropdownMenuItem>
+                    {(message.tokensUsed || message.cost) && (
+                      <div className="border-t border-gray-100 mt-1 pt-1 px-2 py-1.5">
+                        <div className="text-[10px] font-semibold text-black/30 uppercase tracking-wider mb-1">Usage</div>
+                        {message.tokensUsed && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-black/50">
+                            <Zap className="w-3 h-3" />
+                            <span>{message.tokensUsed.toLocaleString()} tokens</span>
+                          </div>
+                        )}
+                        {message.cost && (
+                          <div className="flex items-center gap-1.5 text-[11px] text-black/50 mt-0.5">
+                            <Database className="w-3 h-3" />
+                            <span>${(message.cost / 100).toFixed(2)} credits</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+            <AIMessageContent
+              message={message}
+              index={index}
+              isStreaming={index === messages.length - 1 && isStreaming}
+              thinkingTimer={thinkingTimer}
+              expandedSections={expandedSections[message.id] || {}}
+              activeMessageId={activeMessageId}
+              onActivateVersion={onActivateVersion}
+              onToggleSection={(section) => toggleSection(message.id, section)}
+              onArtifactClick={onArtifactClick}
+              onCodeSelect={handleCodeSelect}
+              onViewChanges={handleViewChanges}
+              onOpenFullModal={() => openFullMessageModal(message)}
+              onOpenPreview={onOpenPreview}
+            />
+          </div>
+        )}
+      </div>
+    )
+
+    return (
+      <div
+        key={`${message.id}-${index}`}
+        className={cn("flex flex-col", message.role === "user" ? "items-end" : "items-start")}
+      >
+        {isTerminalErrorResponse ? (
+          <div className="w-full bg-red-50 border-2 border-red-400 rounded-lg p-4 mb-4">
+            <h3 className="text-red-800 font-bold mb-3 flex items-center gap-2">
+              <AlertCircle className="w-5 h-5" />
+              Terminal Error Explanation & Fix
+            </h3>
+            {renderedMessage}
+          </div>
+        ) : (
+          renderedMessage
+        )}
+      </div>
+    )
+  }
+}
+
+function GetFileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase()
+  if (ext === "tsx" || ext === "jsx") return <div className="w-3.5 h-3.5 flex items-center justify-center text-[#00D8FF]"><Zap className="w-full h-full fill-current" /></div>
+  if (ext === "ts" || ext === "js") return <FileCode className="w-3.5 h-3.5 text-blue-500" />
+  if (ext === "css") return <div className="w-3.5 h-3.5 text-pink-500"><FileText className="w-full h-full" /></div>
+  if (ext === "json") return <Database className="w-3.5 h-3.5 text-yellow-600" />
+  return <File className="w-3.5 h-3.5 text-gray-500" />
+}
+
+function WorkSummaryView({
+  content,
+  message,
+  versionName,
+  onActivateVersion,
+  activeMessageId,
+}: {
+  content: any
+  message: Message
+  versionName: string | null
+  onActivateVersion?: (id: string) => void
+  activeMessageId?: string | null
+}) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  
+  const summaryData = content || { summary: "", files: [] }
+  const files = summaryData.files || []
+  const summaryText = summaryData.summary || ""
+  const fileCount = files.length
+  
+  return (
+    <div className="flex flex-col gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setIsExpanded(!isExpanded)}
+        className={cn(
+          "h-8 px-3 gap-2 bg-white border border-[#e4e4e4] hover:bg-gray-50 text-gray-900 text-xs w-fit rounded-md transition-all shadow-xs",
+          isExpanded && "border-blue-500 ring-1 ring-blue-500/10"
+        )}
+      >
+        <Edit className="w-3.5 h-3.5 text-blue-500" />
+        <span className="font-medium">{fileCount} {fileCount === 1 ? 'edited file' : 'edited files'}</span>
+        <motion.div
+          animate={{ rotate: isExpanded ? 180 : 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <ChevronDown className="w-3 h-3 text-gray-400" />
+        </motion.div>
+      </Button>
+
+      <AnimatePresence>
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="overflow-hidden"
+          >
+            <div className="pt-2 pb-1 space-y-3">
+              {/* Files List */}
+              <div className="bg-gray-50/50 rounded-lg border border-gray-100 p-2 space-y-1.5">
+                {files.map((file: any, idx: number) => (
+                  <div key={idx} className="flex items-center justify-between text-[11px] px-1.5 py-1">
+                    <div className="flex items-center gap-2 max-w-[70%]">
+                      <GetFileIcon name={file.name} />
+                      <span className="truncate font-mono text-gray-700">{file.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 font-medium">
+                      {file.added > 0 && (
+                        <span className="text-green-600">+{file.added}</span>
+                      )}
+                      {file.deleted > 0 && (
+                        <span className="text-red-500">-{file.deleted}</span>
+                      )}
+                      {file.added === 0 && file.deleted === 0 && (
+                        <span className="text-gray-400">0</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Version Button */}
+              {versionName && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onActivateVersion?.(message.id)}
+                    className={cn(
+                      "h-7 px-2.5 gap-2 bg-white border border-[#e4e4e4] hover:bg-gray-50 text-gray-900 text-[10px] rounded-sm transition-all",
+                      activeMessageId === message.id ? "border-blue-500 shadow-sm" : ""
+                    )}
+                  >
+                    <HistoryIcon className="w-3 h-3 text-gray-500" />
+                    <span className="font-semibold uppercase tracking-tight">{versionName}</span>
+                  </Button>
+                </div>
+              )}
+
+              {/* Brief Summary Text */}
+              {summaryText && (
+                <div className="text-[12px] text-gray-600 leading-relaxed pl-1 italic border-l-2 border-gray-200">
+                  {summaryText}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 function AIMessageContent({
   message,
+  index,
   isStreaming,
   thinkingTimer = 0,
   expandedSections,
@@ -1488,9 +1679,10 @@ function AIMessageContent({
     project: string,
     codeBlocks: Array<{ filename: string; code: string; language: string }>,
   ) => void
+  index?: number
 }) {
   const { parts, codeBlocks, files, versionName: parsedVersionName } = parseAIResponse(message.content)
-  const versionName = message.versionName || parsedVersionName
+  const versionName = message.versionName || parsedVersionName || (index ? `Version ${Math.floor(index / 2) + 1}` : null)
 
   const markdownComponents = {
     strong: ({ children }: { children?: React.ReactNode }) => (
@@ -1507,9 +1699,17 @@ function AIMessageContent({
       <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
     ),
     li: ({ children }: { children?: React.ReactNode }) => <li className="text-sm leading-relaxed">{children}</li>,
-    code: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-      <code className={cn("bg-gray-100 px-1 py-0.5 rounded text-xs font-mono", className)}>{children}</code>
-    ),
+    code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
+      // If it has a language class but is being rendered as <code>, it's likely a block.
+      // We hide blocks in the chat per user request.
+      if (className?.startsWith("language-")) {
+        return null
+      }
+      return (
+        <code className={cn("bg-gray-100 px-1 py-0.5 rounded text-xs font-mono", className)}>{children}</code>
+      )
+    },
+    pre: () => null, // Hide all code block containers in the chat
   }
 
   const getTitle = (type: string, content: any) => {
@@ -1619,6 +1819,8 @@ function AIMessageContent({
         return Smartphone
       case "customAction":
         return Zap
+      case "workSummary":
+        return Edit
       default:
         return FileText
     }
@@ -1643,11 +1845,22 @@ function AIMessageContent({
       case "reviewedWork":
       case "finalReasoning":
       case "finalResponsive":
+      case "workSummary":
         return (
           <div className="p-3">
-            <div className="text-sm text-black/70 leading-relaxed whitespace-pre-wrap">
-              {renderToolContent(type, content)}
-            </div>
+            {type === "workSummary" ? (
+              <WorkSummaryView
+                content={content}
+                message={message}
+                versionName={versionName}
+                onActivateVersion={onActivateVersion}
+                activeMessageId={activeMessageId}
+              />
+            ) : (
+              <div className="text-sm text-black/70 leading-relaxed whitespace-pre-wrap">
+                {renderToolContent(type, content)}
+              </div>
+            )}
             {/* Historical Version Button - show at end of summary */}
             {type === "reviewedWork" && message.versionName && (
               <div className="mt-4 pt-4 border-t border-black/5">
@@ -1982,7 +2195,7 @@ function AIMessageContent({
             const sectionKey = `section-${collapsibleIndex}`;
             const isLastPart = idx === parts.length - 1;
             const isActive = isStreaming && isLastPart;
-            const isOpen = expandedSections[sectionKey] ?? (isActive ? true : false);
+            const isOpen = expandedSections[sectionKey] ?? false; 
             const title = p.type === "customAction" ? p.content.name : getTitle(p.type, p.content);
             const Icon = getIcon(p.type);
 

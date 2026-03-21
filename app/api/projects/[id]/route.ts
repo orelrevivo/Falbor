@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { db } from "@/config/db"
-import { projects, deployments } from "@/config/schema"
-import { eq, and } from "drizzle-orm"
+import { projects, deployments, projectCollaborators } from "@/config/schema"
+import { eq, and, or } from "drizzle-orm"
 
 export async function GET(
   request: Request,
@@ -19,24 +19,39 @@ export async function GET(
     const [result] = await db
       .select({
         project: projects,
-        deployment: deployments
+        deployment: deployments,
+        collaborator: projectCollaborators
       })
       .from(projects)
       .leftJoin(deployments, eq(deployments.projectId, projects.id))
-      .where(
+      .leftJoin(
+        projectCollaborators, 
         and(
-          eq(projects.id, id),
-          eq(projects.userId, userId)
+          eq(projectCollaborators.projectId, projects.id),
+          eq(projectCollaborators.userId, userId),
+          eq(projectCollaborators.status, 'accepted')
         )
       )
+      .where(eq(projects.id, id))
       .limit(1)
 
     if (!result) {
       return new NextResponse("Project not found", { status: 404 })
     }
 
+    // Check if owner or accepted collaborator
+    const isOwner = result.project.userId === userId;
+    const isCollaborator = !!result.collaborator;
+
+    if (!isOwner && !isCollaborator) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+
+    const role = isOwner ? "admin" : (result.collaborator?.role || "viewer");
+
     return NextResponse.json({
       ...result.project,
+      role, // Return the role to the client
       subdomain: result.deployment?.subdomain || id.toLowerCase().replace(/[^a-z0-9-]/g, "-"),
       deploymentUrl: result.deployment?.deploymentUrl || null
     })
@@ -59,19 +74,33 @@ export async function PATCH(
     const { id } = await params
     const body = await request.json()
 
-    const [project] = await db
-      .select()
+    // Verify admin access (Owner or Admin role)
+    const [access] = await db
+      .select({
+        project: projects,
+        collaborator: projectCollaborators
+      })
       .from(projects)
-      .where(
+      .leftJoin(
+        projectCollaborators,
         and(
-          eq(projects.id, id),
-          eq(projects.userId, userId)
+          eq(projectCollaborators.projectId, projects.id),
+          eq(projectCollaborators.userId, userId),
+          eq(projectCollaborators.status, 'accepted')
         )
       )
+      .where(eq(projects.id, id))
       .limit(1)
 
-    if (!project) {
+    if (!access) {
       return new NextResponse("Project not found", { status: 404 })
+    }
+
+    const isOwner = access.project.userId === userId;
+    const isAdmin = access.collaborator?.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return new NextResponse("Forbidden: Admin access required", { status: 403 })
     }
 
     await db

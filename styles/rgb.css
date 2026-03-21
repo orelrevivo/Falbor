@@ -1,0 +1,40 @@
+/* RGB Border Layer */
+.rgb-box::before {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 7px;
+    background: linear-gradient(45deg,
+            #0099ff,
+            #e7e5df,
+            #e7e5df,
+            #e7e5df,
+            #0099ff,
+            #0099ff,
+            #0099ff,
+            #0099ff);
+    background-size: 400%;
+    z-index: -1;
+    filter: blur(8px);
+    animation: rgbMove 6s linear infinite;
+}
+
+/* Inner background fix */
+.rgb-box::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: #ffffff;
+    border-radius: 7px;
+    z-index: -1;
+}
+
+@keyframes rgbMove {
+    0% {
+        background-position: 0%
+    }
+
+    100% {
+        background-position: 400%
+    }
+}

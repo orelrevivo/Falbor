@@ -1,6 +1,6 @@
 import { auth } from "@clerk/nextjs/server"
 import { db } from "@/config/db"
-import { projectFeedback, projects, projectSupabase } from "@/config/schema"
+import { projectFeedback, projects, projectSupabase, projectNeon } from "@/config/schema"
 import { eq, desc, and } from "drizzle-orm"
 import { NextResponse } from "next/server"
 
@@ -22,13 +22,41 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
-  // Determine if Supabase is connected for this project
+  // Determine if Supabase or Neon is connected for this project
   const [supabaseConfig] = await db
     .select()
     .from(projectSupabase)
     .where(eq(projectSupabase.projectId, projectId))
 
+  const [neonConfig] = await db
+    .select()
+    .from(projectNeon)
+    .where(eq(projectNeon.projectId, projectId))
+
   let feedbackList: any[] = []
+
+  // Try Neon
+  if (neonConfig && neonConfig.databaseUrl) {
+    try {
+      const { executeNeonSql } = await import("@/lib/neon/management-api")
+      const rows = await executeNeonSql(neonConfig.databaseUrl, "SELECT * FROM user_feedback ORDER BY created_at DESC")
+      if (Array.isArray(rows)) {
+        feedbackList = rows.map((row: any) => ({
+          id: row.id,
+          projectId: projectId,
+          userId: row.user_id,
+          email: row.email,
+          message: row.message,
+          status: row.status,
+          reply: row.reply,
+          createdAt: row.created_at,
+          updatedAt: row.created_at || new Date().toISOString()
+        }))
+      }
+    } catch (err) {
+      console.warn("Could not fetch feedback from Neon instance", err)
+    }
+  }
 
   // Try to fetch from user's managed Supabase instance if connected
   if (supabaseConfig && supabaseConfig.supabaseProjectRef && process.env.SUPABASE_ACCESS_TOKEN) {

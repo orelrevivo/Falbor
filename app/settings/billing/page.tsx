@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
-import { CreditCard, History, ArrowUpCircle } from "lucide-react"
+import { CreditCard, History, ArrowUpCircle, Wallet } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 
@@ -19,12 +19,12 @@ export default function BillingPage() {
                     fetch("/api/user/credits"),
                     fetch("/api/user/credits?type=billing")
                 ])
-                
+
                 if (creditsRes.ok) {
                     const data = await creditsRes.json()
                     setSubscription(data)
                 }
-                
+
                 if (historyRes.ok) {
                     const data = await historyRes.json()
                     setHistory(data)
@@ -42,11 +42,11 @@ export default function BillingPage() {
 
     return (
         <div className="flex flex-col gap-10 p-8 max-w-6xl mx-auto w-full min-h-screen">
-            {/* Header - Matching MCP style */}
+            {/* Header */}
             <header className="flex flex-col gap-3 relative">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#ff9900]/20 rounded-md">
-                        <CreditCard className="w-6 h-6 text-[#ff9900]" />
+                    <div className="p-2 bg-[#0099ff]/20 rounded-md">
+                        <CreditCard className="w-6 h-6 text-[#0099ff]" />
                     </div>
                     <h1 className="text-2xl font-semibold">
                         Billing & Subscriptions
@@ -58,12 +58,37 @@ export default function BillingPage() {
             </header>
 
             <div className="grid gap-6">
+                {/* Balance Section */}
+                <div className="py-4 px-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <h2 className="text-lg font-semibold text-zinc-900">Falbor Balance</h2>
+                            <p className="text-sm text-zinc-500">
+                                Your current balance available for AI and API usage.
+                            </p>
+                        </div>
+                        <div className="text-2xl font-black text-[#0099ff]">
+                            ${((subscription?.balance || 0) / 100).toFixed(2)}
+                        </div>
+                    </div>
+
+                    <div className="mt-2 p-4 bg-zinc-50 rounded-lg border border-zinc-100 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2 bg-white rounded-full border border-zinc-200">
+                                <Wallet className="w-4 h-4 text-zinc-500" />
+                            </div>
+                            <div className="text-sm text-zinc-600">
+                                Available Credit: <span className="font-bold text-zinc-900">${((subscription?.balance || 0) / 100).toFixed(2)}</span>
+                            </div>
+                        </div>
+                        <Button variant="outline" className="h-8 text-xs font-bold border-zinc-200 bg-white hover:bg-zinc-50">
+                            Add Credits
+                        </Button>
+                    </div>
+                </div>
+
                 {/* Subscription Section */}
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-6 border border-zinc-200 rounded-xl bg-white shadow-sm flex flex-col gap-4"
-                >
+                <div className="py-4 px-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <h2 className="text-lg font-semibold text-zinc-900">Current Subscription</h2>
@@ -88,15 +113,10 @@ export default function BillingPage() {
                             `Registered: Active ${subscription.subscriptionTier} Subscription`
                         )}
                     </div>
-                </motion.div>
+                </div>
 
                 {/* Billing History Section */}
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.1 }}
-                    className="p-6 border border-zinc-200 rounded-xl bg-white shadow-sm"
-                >
+                <div className="py-4 px-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col gap-4">
                     <div className="flex items-center gap-2 mb-6">
                         <History className="w-5 h-5 text-zinc-400" />
                         <h2 className="text-lg font-semibold text-zinc-900">Billing History</h2>
@@ -132,9 +152,7 @@ export default function BillingPage() {
                                                 ${(item.amount / 100).toFixed(2)}
                                             </td>
                                             <td className="py-4 pl-4 text-right">
-                                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                                                    item.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-zinc-100 text-zinc-500'
-                                                }`}>
+                                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${item.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-zinc-100 text-zinc-500'}`}>
                                                     {item.status}
                                                 </span>
                                             </td>
@@ -144,7 +162,7 @@ export default function BillingPage() {
                             </table>
                         </div>
                     )}
-                </motion.div>
+                </div>
             </div>
         </div>
     )

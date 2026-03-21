@@ -28,11 +28,31 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
     const [newValue, setNewValue] = useState("")
     const [showValues, setShowValues] = useState<Record<string, boolean>>({})
     const [supabaseConnected, setSupabaseConnected] = useState(false)
+    const [neonConnected, setNeonConnected] = useState(false)
+
+    const [usage, setUsage] = useState<{ apiKey: string; count: number; limit: number; percentage: number; tier: string } | null>(null)
+    const [loadingUsage, setLoadingUsage] = useState(true)
 
     useEffect(() => {
         fetchSecrets()
-        checkSupabaseConnection()
+        checkConnections()
+        fetchUsage()
     }, [projectId])
+
+    const fetchUsage = async () => {
+        try {
+            setLoadingUsage(true)
+            const res = await fetch(`/api/ai/usage`)
+            if (res.ok) {
+                const data = await res.json()
+                setUsage(data)
+            }
+        } catch (error) {
+            console.error("Failed to fetch usage:", error)
+        } finally {
+            setLoadingUsage(false)
+        }
+    }
 
     const fetchSecrets = async () => {
         try {
@@ -49,7 +69,7 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
         }
     }
 
-    const checkSupabaseConnection = async () => {
+    const checkConnections = async () => {
         try {
             const res = await fetch(`/api/projects/${projectId}/supabase`)
             if (res.ok) {
@@ -58,8 +78,15 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
                     setSupabaseConnected(true)
                 }
             }
+            const neonRes = await fetch(`/api/projects/${projectId}/neon`)
+            if (neonRes.ok) {
+                const data = await neonRes.json()
+                if (data && data.databaseUrl) {
+                    setNeonConnected(true)
+                }
+            }
         } catch (error) {
-            console.error("Failed to check Supabase connection:", error)
+            console.error("Failed to check database connections:", error)
         }
     }
 
@@ -124,7 +151,7 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
                 </div>
             </div>
 
-            {supabaseConnected && (
+            {/* {supabaseConnected && (
                 <Alert className="bg-green-50/50 border-green-200">
                     <Database className="h-4 w-4 text-green-600" />
                     <AlertTitle className="text-green-800 flex items-center gap-2">
@@ -137,7 +164,21 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
                 </Alert>
             )}
 
-            <Card className="border-dashed">
+            {neonConnected && (
+                <Alert className="bg-green-50/50 border-green-200">
+                    <Database className="h-4 w-4 text-green-600" />
+                    <AlertTitle className="text-green-800 flex items-center gap-2">
+                        Automatic Database Connected (Neon)
+                        <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">Enabled</Badge>
+                    </AlertTitle>
+                    <AlertDescription className="text-green-700">
+                        This project is automatically connected to a Neon Postgres database. Database credentials (DATABASE_URL, etc.) are managed automatically.
+                    </AlertDescription>
+                </Alert>
+            )} */}
+
+
+            <Card className="border rounded-sm shadow-xs">
                 <CardHeader className="pb-3">
                     <CardTitle className="text-sm font-medium">Add New Secret</CardTitle>
                     <CardDescription>Enter a name and value for the new environment variable.</CardDescription>
@@ -175,16 +216,56 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
                 </CardContent>
             </Card>
 
+            {/* Environment Variables Table */}
             <div className="space-y-3">
-                <h3 className="text-sm font-semibold ml-1">Environment Variables</h3>
-                {secrets.length === 0 ? (
-                    <div className="text-center py-12 border rounded-md bg-muted/20 text-muted-foreground flex flex-col items-center gap-2">
-                        <Key className="h-8 w-8 opacity-20" />
-                        <p className="text-sm">No custom secrets added yet.</p>
-                    </div>
-                ) : (
-                    <div className="grid gap-3">
-                        {secrets.map((secret) => (
+                <div className="flex items-center justify-between ml-1">
+                    <h3 className="text-sm font-semibold">Environment Variables</h3>
+                    <Badge variant="outline" className="text-[10px] text-zinc-400 font-normal">
+                        {secrets.length + (usage?.apiKey ? 1 : 0)} Total
+                    </Badge>
+                </div>
+                
+                <div className="grid gap-3">
+                    {/* Falbor AI System Managed Secret */}
+                    {usage?.apiKey && (
+                        <div className="flex items-center justify-between p-3 border rounded-md bg-zinc-50/50 border-blue-100 hover:border-blue-300 transition-colors group relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-1">
+                                <Badge className="bg-blue-600 text-[8px] h-3 px-1 hover:bg-blue-600 border-none">System</Badge>
+                            </div>
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <div className="bg-blue-100 p-2 rounded-md">
+                                    <Database className="h-4 w-4 text-blue-600" />
+                                </div>
+                                <div className="flex flex-col">
+                                    <div className="flex items-center gap-2">
+                                        <span className="font-mono text-sm font-bold text-blue-900 truncate">VITE_FALBOR_AI_API_KEY</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-blue-600/70 font-mono">
+                                            {showValues['falbor_system_key'] ? usage.apiKey : "••••••••••••••••••••••••••••••••"}
+                                        </span>
+                                        <button
+                                            onClick={() => toggleShowValue('falbor_system_key')}
+                                            className="text-blue-400 hover:text-blue-600 transition-colors"
+                                        >
+                                            {showValues['falbor_system_key'] ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-[10px] text-zinc-400 italic pr-2">
+                                Auto-managed
+                            </div>
+                        </div>
+                    )}
+
+                    {secrets.length === 0 && !usage?.apiKey ? (
+                        <div className="text-center py-12 border rounded-md bg-muted/20 text-muted-foreground flex flex-col items-center gap-2">
+                            <Key className="h-8 w-8 opacity-20" />
+                            <p className="text-sm">No environment variables yet.</p>
+                        </div>
+                    ) : (
+                        secrets.map((secret) => (
                             <div
                                 key={secret.id}
                                 className="flex items-center justify-between p-3 border rounded-md bg-white hover:border-primary/50 transition-colors group"
@@ -217,9 +298,9 @@ export function SecretsSection({ projectId }: SecretsSectionProps) {
                                     <Trash2 className="h-4 w-4" />
                                 </Button>
                             </div>
-                        ))}
-                    </div>
-                )}
+                        ))
+                    )}
+                </div>
             </div>
 
             <div className="mt-8 pt-6 border-t">

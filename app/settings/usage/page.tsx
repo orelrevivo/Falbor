@@ -58,7 +58,7 @@ export default function UsagePage() {
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div
-                        className="p-6 border border-zinc-200 rounded-xl bg-white shadow-sm"
+                        className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
                     >
                         <h3 className="text-sm font-medium text-zinc-500 mb-2">Active Plan</h3>
                         <p className="text-2xl font-bold text-zinc-900 capitalize">
@@ -67,7 +67,7 @@ export default function UsagePage() {
                     </div>
 
                     <div
-                        className="p-6 border border-zinc-200 rounded-xl bg-white shadow-sm"
+                        className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
                     >
                         <h3 className="text-sm font-medium text-zinc-500 mb-2">Total Credits</h3>
                         <div className="flex items-center gap-2">
@@ -79,11 +79,11 @@ export default function UsagePage() {
                     </div>
 
                     <div
-                        className="p-6 border border-zinc-200 rounded-xl bg-white shadow-sm"
+                        className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
                     >
                         <h3 className="text-sm font-medium text-zinc-500 mb-2">Free Monthly Credits</h3>
                         <p className="text-2xl font-bold text-zinc-900">
-                            $5.00
+                            $1.50
                         </p>
                         <p className="text-xs text-zinc-400 mt-1">Included in every account</p>
                     </div>
@@ -91,7 +91,7 @@ export default function UsagePage() {
 
                 {/* Usage History Table */}
                 <div
-                    className="p-6 border border-zinc-200 rounded-xl bg-white shadow-sm"
+                    className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
                 >
                     <div className="flex items-center gap-2 mb-6">
                         <Database className="w-5 h-5 text-zinc-400" />

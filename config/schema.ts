@@ -113,6 +113,9 @@ export const messages = pgTable("messages", {
   isAutomated: boolean("is_automated").default(false).notNull(),
   tokensUsed: integer("tokens_used"),
   cost: integer("cost"), // in cents
+  sessionId: text("session_id").default("main").notNull(),
+  imageData: text("image_data"),
+  metadata: jsonb("metadata").$type<Record<string, any> | null>(),
 })
 
 export const files = pgTable("files", {
@@ -542,6 +545,49 @@ export const userSupabaseConnections = pgTable("user_supabase_connections", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 })
 
+export const projectNeon = pgTable("project_neon", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .unique()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  neonProjectRef: text("neon_project_ref").notNull(),
+  databaseUrl: text("database_url").notNull(),
+  dbPassword: text("db_password").notNull(),
+  region: text("region").notNull().default("aws-us-east-1"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export const projectNeonSqlFiles = pgTable("project_neon_sql_files", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  fileName: text("file_name").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+})
+
+export const userNeonConnections = pgTable("user_neon_connections", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  apiKey: text("api_key").notNull(),
+  selectedProjectRef: text("selected_project_ref"),
+  selectedProjectName: text("selected_project_name"),
+  databaseUrl: text("database_url"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type ProjectNeon = typeof projectNeon.$inferSelect
+export type NewProjectNeon = typeof projectNeon.$inferInsert
+
+export type UserNeonConnection = typeof userNeonConnections.$inferSelect
+export type NewUserNeonConnection = typeof userNeonConnections.$inferInsert
+
 export const userGithubConnections = pgTable("user_github_connections", {
   id: uuid("id").defaultRandom().primaryKey(),
   userId: text("user_id").notNull().unique(),
@@ -746,6 +792,31 @@ export const userSkills = pgTable("user_skills", {
   uniqueUserSkill: sql`UNIQUE(${table.userId}, ${table.skillId})`,
 }))
 
+export const userApiUsage = pgTable("user_api_usage", {
+  userId: text("user_id").primaryKey(),
+  messageCount: integer("message_count").default(0).notNull(),
+  totalCost: integer("total_cost").default(0).notNull(), // in cents
+  lastReset: timestamp("last_reset").defaultNow().notNull(),
+  subscriptionTier: text("subscription_tier").default("free").notNull(),
+})
+
+export const userApiKeys = pgTable("user_api_keys", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "cascade" }), // for "chat" managed keys
+  name: text("name").notNull(),
+  key: text("key").notNull().unique(),
+  type: text("type").notNull().default("custom"), // "custom" | "chat"
+  messageCount: integer("message_count").default(0).notNull(),
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type UserApiUsage = typeof userApiUsage.$inferSelect
+export type NewUserApiUsage = typeof userApiUsage.$inferInsert
+export type UserApiKey = typeof userApiKeys.$inferSelect
+export type NewUserApiKey = typeof userApiKeys.$inferInsert
 export type Skill = typeof skills.$inferSelect
 export type NewSkill = typeof skills.$inferInsert
 export type UserSkill = typeof userSkills.$inferSelect
@@ -816,5 +887,7 @@ export const projectAnalyticsEvents = pgTable("project_analytics_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
+export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
+export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert
 export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
 export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert

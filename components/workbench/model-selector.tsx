@@ -54,7 +54,9 @@ export function ModelSelector({ currentModel, onModelChange, disabled = false }:
     setShowWarning(false)
   }
 
-  const currentModelName = MODEL_OPTIONS.find((m) => m.id === currentModel)?.name || "Select Model"
+  const selectedModel = MODEL_OPTIONS.find((m: any) => m.id === currentModel)
+  const currentModelName = selectedModel?.name || "Select Model"
+  const currentModelIcon = selectedModel?.iconUrl
 
   // NEW: Dropdown styles based on position
   const dropdownStyles = {
@@ -85,15 +87,25 @@ export function ModelSelector({ currentModel, onModelChange, disabled = false }:
   const dropdownContent = isOpen && (
     <div style={dropdownStyles}>
       <div className="p-2 space-y-1">
-        {MODEL_OPTIONS.map((model) => (
+        {MODEL_OPTIONS.map((model: any) => (
           <button
             key={model.id}
             onClick={() => handleModelChange(model.id)}
-            className={`w-full text-left px-3 py-2 rounded transition-colors ${
-              currentModel === model.id ? "bg-blue-600 text-white" : "hover:bg-[#2A2A2E] text-white/75"
+            className={`w-full text-left px-3 py-2 rounded transition-colors flex items-center justify-between ${
+              currentModel === model.id ? "bg-blue-600/10 text-blue-400 border border-blue-600/20" : "hover:bg-[#2A2A2E] text-white/75"
             }`}
           >
-            {model.name}
+            <div className="flex items-center gap-2">
+              {model.iconUrl && (
+                <img src={model.iconUrl} alt="" className="w-4 h-4 object-contain opacity-80" />
+              )}
+              <span className="text-sm">{model.name}</span>
+            </div>
+            {model.isPremium && (
+              <span className="text-[10px] bg-yellow-500/10 text-yellow-500 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">
+                Pro
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -128,17 +140,15 @@ export function ModelSelector({ currentModel, onModelChange, disabled = false }:
 
   return (
     <div className="relative">
-      <Button 
+      <button
         ref={buttonRef}
-        variant="outline" 
-        size="sm" 
-        onClick={() => setIsOpen(!isOpen)} 
-        disabled={disabled} 
-        className="gap-2"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#2A2A2E] border border-white/10 hover:border-white/20 transition-all text-white/90"
       >
-        {currentModelName}
-        <ChevronDown className="w-4 h-4" />
-      </Button>
+        {currentModelIcon && <img src={currentModelIcon} alt="" className="w-4 h-4 object-contain" />}
+        <span className="text-sm font-medium">{currentModelName}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? "rotate-180" : ""}`} />
+      </button>
 
       {/* Portal dropdown to body for no clipping */}
       {typeof window !== 'undefined' && isOpen && createPortal(dropdownContent, document.body)}

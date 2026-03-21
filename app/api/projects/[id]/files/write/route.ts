@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { db } from "@/config/db"
-import { projects, files } from "@/config/schema"
-import { eq } from "drizzle-orm"
+import { projects, files, projectCollaborators } from "@/config/schema"
+import { eq, and, or } from "drizzle-orm"
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -15,10 +15,32 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const { id: projectId } = await params
     const { filesData } = await req.json()
 
-    const [project] = await db.select().from(projects).where(eq(projects.id, projectId))
+    const [access] = await db
+      .select({
+        project: projects,
+        collaborator: projectCollaborators
+      })
+      .from(projects)
+      .leftJoin(
+        projectCollaborators,
+        and(
+          eq(projectCollaborators.projectId, projects.id),
+          eq(projectCollaborators.userId, userId),
+          eq(projectCollaborators.status, 'accepted')
+        )
+      )
+      .where(eq(projects.id, projectId))
+      .limit(1)
 
-    if (!project || project.userId !== userId) {
-      return NextResponse.json({ error: "Project not found" }, { status: 403 })
+    if (!access) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 })
+    }
+
+    const isOwner = access.project.userId === userId;
+    const isEditorOrAdmin = access.collaborator && (access.collaborator.role === 'editor' || access.collaborator.role === 'admin');
+
+    if (!isOwner && !isEditorOrAdmin) {
+      return NextResponse.json({ error: "Forbidden: Edit access required" }, { status: 403 })
     }
 
     // Delete existing files and insert new ones

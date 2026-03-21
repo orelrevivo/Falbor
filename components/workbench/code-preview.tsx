@@ -24,6 +24,7 @@ import {
 } from "@codesandbox/sandpack-react"
 import { DatabasePanel } from "./database-panel"
 import FeatureShowcaseDark from "../auth/FeatureShowcaseDark"
+import { PREDEFINED_UI_COMPONENTS } from "@/lib/common/predefined-ui"
 
 // Removed redundant TSX and CSS auto-injection contents
 interface CodePreviewProps {
@@ -44,6 +45,7 @@ interface CodePreviewProps {
   tabValue?: string
   isHistoryView?: boolean
   onSendMessage?: (message: string) => void
+  role?: "viewer" | "editor" | "admin"
 }
 interface TerminalTab {
   id: number
@@ -329,7 +331,12 @@ export function CodePreview({
   tabValue: tabValueProp,
   isHistoryView = false,
   onSendMessage,
+  role,
 }: CodePreviewProps) {
+  const isAdmin = role === "admin"
+  const isEditor = role === "admin" || role === "editor"
+  const isViewer = role === "viewer"
+
   const [files, setFiles] = useState<
     Array<{ path: string; content: string; language: string; type?: string; isLocked?: boolean }>
   >([])
@@ -481,14 +488,38 @@ export function CodePreview({
       ? filesOverride
       : (files.length > 0 ? files : (filesOverride || []));
 
-    if (!isGitHubImport) return sourceFiles;
+    // Force inject UI components for React projects
+    // We only add them if they don't already exist in the sourceFiles to avoid duplicates
+    // and to allow the AI to potentially override them if explicitly requested (though prompt says not to)
+    const uiFiles = Object.entries(PREDEFINED_UI_COMPONENTS).map(([path, content]) => ({
+      path: `src/${path}`,
+      content,
+      language: path.endsWith('.ts') ? 'typescript' : 'typescript', // Both are ts/tsx
+      isLocked: false // Mark as NOT locked so user can edit them
+    }));
+
+    // Merge only those that don't exist
+    const existingPaths = new Set(sourceFiles.map(f => f.path));
+    const finalFiles = [...sourceFiles];
+    
+    uiFiles.forEach(uiFile => {
+      if (!existingPaths.has(uiFile.path)) {
+        finalFiles.push(uiFile as any);
+      }
+    });
+
+    if (!isGitHubImport) return finalFiles;
 
     // Filter out auto-generated files for GitHub imports
-    const filtered = sourceFiles.filter((file: any) => !shouldHideFile(file.path, isGitHubImport))
-    console.log("[v0] GitHub Import detected: filtering auto-generated files")
-    console.log("[v0] Original files:", sourceFiles.length, "Filtered files:", filtered.length)
+    const filtered = finalFiles.filter((file: any) => !shouldHideFile(file.path, isGitHubImport))
     return filtered
   }, [filesOverride, files, isGitHubImport, projectType, isCodeGenerating, isHistoryView])
+
+  const currentlyEditingPath = useMemo(() => {
+     if (!isCodeGenerating || !filesOverride || filesOverride.length === 0) return null;
+     // The last file in filesOverride is the one currently being streamed (based on extractFilesFromStreamingContent logic)
+     return filesOverride[filesOverride.length - 1].path;
+  }, [isCodeGenerating, filesOverride]);
   const sandpackFiles = useMemo(() => {
     if (projectType !== "react" || effectiveFiles.length === 0) return {}
     const filesMap: Record<string, string> = {}
@@ -797,14 +828,34 @@ class StdoutRedirect:
   useEffect(() => {
     if (isCodeGenerating) {
       wasGenerating.current = true
+      // Auto-switch to code tab during generation so user sees files being written
+      if (tabValue !== "code") {
+        setInternalTabValue("code")
+        onTabChange?.("code")
+      }
     } else if (wasGenerating.current && !isCodeGenerating) {
       // Generation just finished!
       wasGenerating.current = false
 
       // 1. Sync files with server immediately
       fetchFiles()
+
+      // Stay on code tab (user's request: "code tab will actually be open")
     }
   }, [isCodeGenerating, fetchFiles])
+
+  // ─── Auto-select the latest file being written during generation ──────
+  const lastAutoSelectedFile = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isCodeGenerating || !filesOverride || filesOverride.length === 0) return
+    // Select the last file in the override list (the one currently being written)
+    const latestFile = filesOverride[filesOverride.length - 1]
+    if (latestFile && latestFile.path !== lastAutoSelectedFile.current) {
+      lastAutoSelectedFile.current = latestFile.path
+      setSelectedFile(latestFile)
+      setEditedContent(latestFile.content)
+    }
+  }, [isCodeGenerating, filesOverride])
 
 
   useEffect(() => {
@@ -945,7 +996,6 @@ class StdoutRedirect:
 
   // Shared CodeTab render for both normal and split screen
   const DATABASE_ENABLED = true;
-  const [activeTab, setActiveTab] = useState("preview")
 
   const renderCodeTab = () => (
     <CodeTab
@@ -973,6 +1023,8 @@ class StdoutRedirect:
       loading={!pyodideReady && projectType === "python"}
       isSplitScreen={isSplitScreen}
       onExitSplit={onExitSplit}
+      currentlyEditingPath={currentlyEditingPath}
+      role={role}
     />
   )
 
@@ -1071,31 +1123,36 @@ class StdoutRedirect:
                 <Code2 className="w-4 h-4" />
               </TabsTrigger>
 
-              <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
-
-              <TabsTrigger
-                value="database"
-                className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-              >
-                <Database className="w-4 h-4" />
-              </TabsTrigger>
+              {isEditor && (
+                <>
+                  <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
+                  <TabsTrigger
+                    value="database"
+                    className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+                  >
+                    <Database className="w-4 h-4" />
+                  </TabsTrigger>
+                </>
+              )}
 
 
             </TabsList>
 
-            <button
-              className={cn(
-                "ml-3 cursor-pointer",
-                activeTab === "settings"
-                  ? "text-[#0099ff]"
-                  : "text-gray-700 hover:text-gray-900"
-              )}
-              onClick={() => handleTabChange("settings")}
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            {isAdmin && (
+              <button
+                className={cn(
+                  "ml-3 cursor-pointer",
+                  tabValue === "settings"
+                    ? "text-[#0099ff]"
+                    : "text-gray-700 hover:text-gray-900"
+                )}
+                onClick={() => handleTabChange("settings")}
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
 
-            {isGitHubImport && (
+            {isGitHubImport && isEditor && (
               <div className="ml-4 flex items-center gap-2">
                 <div className="h-4 w-[1px] bg-gray-300 mx-1" />
                 {projectMetadata?.isGitAdopted ? (

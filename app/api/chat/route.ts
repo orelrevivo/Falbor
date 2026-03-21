@@ -1,10 +1,11 @@
 import { auth } from "@clerk/nextjs/server"
 import { GoogleGenerativeAI } from "@google/generative-ai"
 import { db } from "@/config/db"
-import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, userCredits, projectSecrets, userMcpConnections } from "@/config/schema"
-import { eq, asc } from "drizzle-orm"
+import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, projectNeon, userCredits, projectSecrets, userMcpConnections, userApiUsage, projectCollaborators } from "@/config/schema"
+import { eq, asc, and } from "drizzle-orm"
 import { getSystemPrompt } from "@/lib/common/prompts/prompt"
 import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
+import { pusherServer } from "@/lib/pusher"
 import { SECURITY_SYSTEM_PROMPT } from "@/lib/common/prompts/security-prompt"
 import { discordActions, gmailActions, githubActions, linkedinActions, twitterActions, slackActions, spotifyActions } from "@/lib/mcp/actions"
 import { getUserSkillsForAIContext } from "@/app/actions/skills"
@@ -56,8 +57,12 @@ const OPENROUTER_MODELS = {
   "grok-4": "x-ai/grok-4",
   "grok-3-mini": "x-ai/grok-3-mini",
   "gemini-3.1-flash-lite": "google/gemini-3.1-flash-lite-preview",
+  "gemini-2.0-flash": "google/gemini-2.0-flash-001",
   "qwen-3.5-35b": "qwen/qwen3.5-35b-a3b",
   "qwen-3.5-27b": "qwen/qwen3.5-27b",
+  "nemotron-3-super-120b": "nvidia/nemotron-3-super-120b-a12b:free",
+  "gpt-oss-120b": "openai/gpt-oss-120b",
+  "gemma-3-12b-it": "google/gemma-3-12b-it:free",
 }
 
 async function dispatchMcpTool(name: string, args: any, userId: string): Promise<any> {
@@ -191,6 +196,10 @@ export async function POST(request: Request) {
     selectedMcps = [],
     securityMode = false,
     targetProjectId = null,
+    sessionId = "main",
+    userMessageId: incomingUserMessageId = null,
+    saveOnly = false,
+    metadata: incomingMetadata = null,
   } = body
 
   if (!message) {
@@ -235,13 +244,39 @@ export async function POST(request: Request) {
   }
 
   if (!project || project.userId !== userId) {
-    return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 })
+    // Check if user is an authorized collaborator
+    const [collaborator] = await db
+      .select()
+      .from(projectCollaborators)
+      .where(
+        and(
+          eq(projectCollaborators.projectId, projectId),
+          eq(projectCollaborators.userId, userId),
+          eq(projectCollaborators.status, "accepted")
+        )
+      )
+
+    if (!collaborator) {
+      // If project is public, we still allow viewing, but NOT posting (POST requests are for sending messages)
+      console.warn(`[API/Chat] Unauthorized access attempt by user ${userId} to project ${projectId}`)
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 })
+    }
+
+    // Role-based post restriction (POST handler is for sending messages)
+    if (collaborator.role === "viewer") {
+      console.warn(`[API/Chat] Viewer role attempt to send message by user ${userId} in project ${projectId}`)
+      return new Response(JSON.stringify({ error: "Permission denied: Viewers cannot send messages" }), { status: 403 })
+    }
   }
 
   let history: any[]
   try {
-    history =
-      (await db.select().from(messagesTable).where(eq(messagesTable.projectId, projectId)).orderBy(asc(messagesTable.createdAt))) ?? []
+    history = (await db.select().from(messagesTable).where(
+      and(
+        eq(messagesTable.projectId, projectId),
+        eq(messagesTable.sessionId, sessionId)
+      )
+    ).orderBy(asc(messagesTable.createdAt))) ?? []
   } catch (e) {
     console.error("[API/Chat] History fetch error:", e)
     return new Response(JSON.stringify({ error: "Database error" }), { status: 500 })
@@ -253,12 +288,34 @@ export async function POST(request: Request) {
     try {
       const [inserted] = await db.insert(messagesTable).values({
         projectId,
+        sessionId,
         role: "user",
         content: message,
         isAutomated,
+        imageData: imageData?.data || null,
+        metadata: {
+          ...(incomingMetadata || {}),
+          ...(uploadedFiles ? { uploadedFiles } : {}),
+        },
       }).returning({ id: messagesTable.id })
       userMessageId = inserted.id
-      history.push({ role: "user", content: message, id: userMessageId })
+      history.push({ role: "user", content: message, id: userMessageId, sessionId })
+
+      // Broadcast user message to Pusher so other collaborators see it
+      try {
+        await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
+          type: 'MSG_USER',
+          message: {
+            id: userMessageId,
+            role: "user",
+            content: message,
+            createdAt: new Date().toISOString()
+          },
+          projectId
+        })
+      } catch (err) {
+        console.warn("[Pusher] Failed to broadcast user message:", err)
+      }
     } catch (e) {
       console.error("[API/Chat] User insert error:", e)
       return new Response(JSON.stringify({ error: "Failed to save message" }), { status: 500 })
@@ -266,6 +323,14 @@ export async function POST(request: Request) {
   } else {
     userMessageId = lastMsg.id
     console.log("[API/Chat] Skipping duplicate user message insert")
+  }
+
+  if (saveOnly) {
+    return new Response(JSON.stringify({ 
+      success: true, 
+      messageId: userMessageId,
+      sessionId 
+    }), { status: 200 })
   }
 
   const responseStream = await handleModelRequest(
@@ -284,6 +349,7 @@ export async function POST(request: Request) {
     userMessageId,
     securityMode,
     targetProjectId,
+    sessionId,
   )
 
   return new Response(responseStream, {
@@ -298,20 +364,24 @@ export async function POST(request: Request) {
 function detectMessageType(message: string): "greeting" | "question" | "build" {
   const lowerMessage = message.toLowerCase().trim()
 
-  // Check if it's a simple greeting (short and matches greeting keywords)
+  // 1. CODE_KEYWORDS always take priority — if ANY code keyword is present, it's a build request.
+  // This prevents messages like "Hi, build me a website" from being classified as a greeting.
+  const hasCodeKeyword = CODE_KEYWORDS.some((kw) => lowerMessage.includes(kw))
+  if (hasCodeKeyword) {
+    return "build"
+  }
+
+  // 2. Check if it's a simple greeting (short and matches greeting keywords, AND no code keywords)
   if (lowerMessage.length < 50 && GREETING_KEYWORDS.some((kw) => lowerMessage.includes(kw))) {
     return "greeting"
   }
 
-  // Check if it's a question
-  if (
-    QUESTION_KEYWORDS.some((kw) => lowerMessage.includes(kw)) &&
-    !CODE_KEYWORDS.some((kw) => lowerMessage.includes(kw))
-  ) {
+  // 3. Check if it's a question
+  if (QUESTION_KEYWORDS.some((kw) => lowerMessage.includes(kw))) {
     return "question"
   }
 
-  // Default to build request
+  // 4. Default to build request for unknown intents that aren't greetings or simple questions
   return "build"
 }
 
@@ -331,6 +401,7 @@ async function handleModelRequest(
   userMessageId?: string,
   securityMode = false,
   targetProjectId?: string | null,
+  sessionId = "main",
 ) {
 
   const messageType = detectMessageType(message)
@@ -343,6 +414,7 @@ async function handleModelRequest(
 
   let effectiveMessage = message
   let supabaseConfig: any = undefined
+  let neonConfig: any = undefined
 
   // Always fetch Supabase credentials so the AI always knows the DB is connected
   try {
@@ -360,6 +432,24 @@ async function handleModelRequest(
     }
   } catch (err) {
     console.error("Failed to fetch database credentials:", err)
+  }
+
+  // Handle Neon credentials
+  try {
+    const contextId = targetProjectId || projectId
+    const [fetchedNeonConfig] = await db
+      .select()
+      .from(projectNeon)
+      .where(eq(projectNeon.projectId, contextId))
+
+    if (fetchedNeonConfig) {
+      neonConfig = fetchedNeonConfig
+      const { databaseUrl: url } = neonConfig
+      console.log(`[Chat] Injecting Neon credentials for project ${projectId}`)
+      effectiveMessage += `\n\n## Neon Database Connection (Managed by Falbor Max)\nThis project uses a managed Neon database. Use this connection string for ALL database operations in your code:\nDATABASE_URL=${url}\nVITE_DATABASE_URL=${url}\n\nIMPORTANT: Always use this exact value. Never use placeholder or example values.`
+    }
+  } catch (err) {
+    console.error("Failed to fetch Neon database credentials:", err)
   }
 
   // Fetch Project Secrets (Environment Variables)
@@ -392,9 +482,15 @@ async function handleModelRequest(
     }
   } : undefined
 
+  // Prepare Neon Context for System Prompt
+  const neonContext = neonConfig ? {
+    isConnected: true,
+    databaseUrl: neonConfig.databaseUrl
+  } : undefined
+
   let systemPrompt = securityMode
     ? SECURITY_SYSTEM_PROMPT
-    : (discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext))
+    : (discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext, neonContext))
 
   const contextId = targetProjectId || projectId
 
@@ -445,7 +541,7 @@ This project is connected to a GitHub repository: ${project.githubUrl}
     try {
       const projectFiles = await db.select().from(files).where(eq(files.projectId, contextId))
       const domain = project.deploymentConfig?.deploymentUrl || "Not deployed yet"
-      
+
       // Basic framework detection from files
       let framework = "Unknown"
       if (projectFiles.some(f => f.path.includes("next.config"))) framework = "Next.js"
@@ -556,6 +652,22 @@ When editing an email template, focus ONLY on the template content.
     console.error("Failed to fetch all MCP connections:", err)
   }
 
+  // Inject Falbor AI API Key Context (Hidden from User)
+  try {
+    let apiUsage = await db.select().from(userApiUsage).where(eq(userApiUsage.userId, userId)).then(r => r[0])
+    if (!apiUsage) {
+      const [newUsage] = await db.insert(userApiUsage).values({
+        userId,
+        subscriptionTier: 'free',
+        messageCount: 0,
+        lastReset: new Date(),
+      }).returning()
+      apiUsage = newUsage
+    }
+  } catch (err) {
+    console.error("Failed to inject Falbor AI API key:", err)
+  }
+
   if (selectedModel === "gemini") {
     return handleGeminiRequest(
       history,
@@ -617,6 +729,7 @@ async function handleGeminiRequest(
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId?: string,
+  sessionId = "main",
 ) {
   const googleKey = process.env.GOOGLE_API_KEY
 
@@ -977,7 +1090,11 @@ async function handleGeminiRequest(
             type: "OBJECT",
             properties: {
               playlistId: { type: "STRING", description: "Playlist ID." },
-              trackUris: { type: "ARRAY", description: "Array of Spotify track URIs to add." }
+              trackUris: {
+                type: "ARRAY",
+                description: "Array of Spotify track URIs to add.",
+                items: { type: "STRING" }
+              }
             },
             required: ["playlistId", "trackUris"]
           }
@@ -1015,7 +1132,7 @@ async function handleGeminiRequest(
     let inCodeBlock = false
 
     const geminiModel = genAI.getGenerativeModel({
-      model: "gemini-3-flash-preview",
+      model: "gemini-2.5-pro",
       systemInstruction: systemPrompt,
       generationConfig: { maxOutputTokens: 32768 },
       tools: geminiTools,
@@ -1050,6 +1167,7 @@ async function handleGeminiRequest(
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
             projectId,
+            sessionId,
             role: "assistant",
             content: "",
             isAutomated,
@@ -1171,6 +1289,8 @@ async function handleGeminiRequest(
               isAutomated,
               tokensUsed,
               cost,
+              userMessageId,
+              sessionId,
             )
           } else {
             await saveAssistantMessage(
@@ -1186,6 +1306,8 @@ async function handleGeminiRequest(
               isAutomated,
               tokensUsed,
               cost,
+              userMessageId,
+              sessionId,
             )
           }
         } catch (error) {
@@ -1223,6 +1345,7 @@ async function handleOpenRouterRequest(
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId?: string,
+  sessionId = "main",
 ) {
   const openRouterKey = process.env.OPENROUTER_API_KEY
 
@@ -1273,6 +1396,7 @@ async function handleOpenRouterRequest(
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
             projectId,
+            sessionId,
             role: "assistant",
             content: "",
             isAutomated,
@@ -1443,6 +1567,8 @@ async function handleOpenRouterRequest(
               isAutomated,
               tokensUsed,
               cost,
+              userMessageId,
+              sessionId,
             )
           } else {
             await saveAssistantMessage(
@@ -1458,6 +1584,8 @@ async function handleOpenRouterRequest(
               isAutomated,
               tokensUsed,
               cost,
+              userMessageId,
+              sessionId,
             )
           }
         } catch (error) {
@@ -1489,6 +1617,7 @@ async function handleZaiRequest(
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId?: string,
+  sessionId = "main",
 ) {
   const zaiKey = process.env.ZAI_API_KEY
 
@@ -1539,6 +1668,7 @@ async function handleZaiRequest(
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
             projectId,
+            sessionId,
             role: "assistant",
             content: "",
             isAutomated,
@@ -1706,6 +1836,8 @@ async function handleZaiRequest(
               isAutomated,
               tokensUsed,
               cost,
+              userMessageId,
+              sessionId,
             )
           } else {
             await saveAssistantMessage(
@@ -1721,6 +1853,8 @@ async function handleZaiRequest(
               isAutomated,
               tokensUsed,
               cost,
+              userMessageId,
+              sessionId,
             )
           }
         } catch (error) {
@@ -1799,6 +1933,7 @@ async function saveAssistantMessage(
   tokensUsed: number | null = null,
   cost: number | null = null,
   userMessageId?: string,
+  sessionId = "main",
 ) {
   try {
     console.log("[Save] Extracting code blocks from response...")
@@ -1836,6 +1971,7 @@ async function saveAssistantMessage(
         .insert(messagesTable)
         .values({
           projectId,
+          sessionId,
           role: "assistant",
           content: cleanContent,
           hasArtifact,
@@ -1903,18 +2039,28 @@ async function saveAssistantMessage(
 
     console.log("[Save] Sending done signal to client")
     controller.enqueue(
-      encoder.encode(`data: ${JSON.stringify({ 
-        done: true, 
-        messageId: newMessage.id, 
+      encoder.encode(`data: ${JSON.stringify({
+        done: true,
+        messageId: newMessage.id,
         userMessageId,
-        content: cleanContent, 
-        hasArtifact, 
-        projectId, 
-        tokensUsed, 
-        cost, 
-        versionName: newMessage.versionName 
+        content: cleanContent,
+        hasArtifact,
+        projectId,
+        tokensUsed,
+        cost,
+        versionName: newMessage.versionName
       })}\n\n`),
     )
+    // Broadcast to Pusher
+    try {
+      await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
+        type: 'MSG_AI_COMPLETE',
+        finalMessage: newMessage,
+        projectId
+      })
+    } catch (err) {
+      console.warn("[Pusher] Failed to broadcast message in saveAssistantMessage:", err)
+    }
   } catch (e) {
     console.error("[Save] Assistant error:", e)
     try {
@@ -1940,6 +2086,7 @@ async function saveAssistantMessageWithParallelGeneration(
   tokensUsed: number | null = null,
   cost: number | null = null,
   userMessageId?: string,
+  sessionId = "main",
 ) {
   try {
     console.log("[ParallelGen] Extracting code blocks from response...")
@@ -1971,11 +2118,11 @@ async function saveAssistantMessageWithParallelGeneration(
         .returning()
       newMessage = updatedMessage
     } else {
-      console.log("[ParallelGen] Inserting message into database...")
       const [insertedMessage] = await db
         .insert(messagesTable)
         .values({
           projectId,
+          sessionId,
           role: "assistant",
           content: cleanContent,
           hasArtifact,
@@ -2051,18 +2198,29 @@ async function saveAssistantMessageWithParallelGeneration(
 
     console.log("[ParallelGen] Sending done signal to client")
     controller.enqueue(
-      encoder.encode(`data: ${JSON.stringify({ 
-        done: true, 
-        messageId: newMessage.id, 
+      encoder.encode(`data: ${JSON.stringify({
+        done: true,
+        messageId: newMessage.id,
         userMessageId,
-        content: cleanContent, 
-        hasArtifact, 
-        projectId, 
-        tokensUsed, 
-        cost, 
-        versionName: newMessage.versionName 
+        content: cleanContent,
+        hasArtifact,
+        projectId,
+        tokensUsed,
+        cost,
+        versionName: newMessage.versionName
       })}\n\n`),
     )
+
+    // Broadcast to Pusher
+    try {
+      await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
+        type: 'MSG_AI_COMPLETE',
+        finalMessage: newMessage,
+        projectId
+      })
+    } catch (err) {
+      console.warn("[Pusher] Failed to broadcast message in parallel gen:", err)
+    }
   } catch (e) {
     console.error("[ParallelGen] Error:", e)
     try {

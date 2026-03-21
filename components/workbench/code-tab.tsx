@@ -32,6 +32,8 @@ interface CodeTabProps {
   loading?: boolean // For no files message
   isSplitScreen?: boolean
   onExitSplit?: () => void
+  currentlyEditingPath?: string | null
+  role?: "viewer" | "editor" | "admin"
 }
 export function CodeTab({
   sidebarView,
@@ -58,6 +60,8 @@ export function CodeTab({
   loading,
   isSplitScreen,
   onExitSplit,
+  currentlyEditingPath,
+  role,
 }: CodeTabProps) {
   const handleFileSelect = (file: any) => {
     console.log("[v0] User selected file:", file.path)
@@ -78,6 +82,7 @@ export function CodeTab({
             selectedPath={selectedFile?.path ?? null}
             projectId={projectId}
             onFilesChange={fetchFiles}
+            currentlyEditingPath={currentlyEditingPath}
           />
         )}
         {sidebarView === "search" && (
@@ -116,6 +121,7 @@ export function CodeTab({
         fetchFiles={fetchFiles} // Added
         isSplitScreen={isSplitScreen}
         onExitSplit={onExitSplit}
+        role={role}
       />
     </div>
   )

@@ -17,6 +17,11 @@ export default function Shell({
   const { user, isLoaded } = useUser()
   const pathname = usePathname()
   const { activeTab } = useWorkbench()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   const [sidebarHovered, setSidebarHovered] = useState(false)
   const isChatPage = pathname?.startsWith("/chat/")
@@ -24,20 +29,23 @@ export default function Shell({
   const effectiveSidebarHovered = isChatPage || isSettingsPage ? true : sidebarHovered
   const currentSidebarWidth = (isChatPage || isSettingsPage) ? 160 : (effectiveSidebarHovered ? 170 : 64)
 
-  // Manage body scrollbar visibility
+  // Manage body and html scrollbar visibility
   useEffect(() => {
     if (isLoaded && user) {
       document.body.classList.add('no-scrollbar', 'overflow-hidden')
+      document.documentElement.classList.add('no-scrollbar', 'overflow-hidden')
     } else {
       document.body.classList.remove('no-scrollbar', 'overflow-hidden')
+      document.documentElement.classList.remove('no-scrollbar', 'overflow-hidden')
     }
     return () => {
       document.body.classList.remove('no-scrollbar', 'overflow-hidden')
+      document.documentElement.classList.remove('no-scrollbar', 'overflow-hidden')
     }
   }, [isLoaded, user])
 
   // Don't wrap if not loaded or not signed in
-  if (!isLoaded || !user) {
+  if (!mounted || !isLoaded || !user) {
     return <>{children}</>
   }
 
@@ -85,7 +93,7 @@ export default function Shell({
       <div
         className={cn(
           "absolute z-10 backdrop-blur-md border border-[#dddcd8] rounded-sm shadow-xs overflow-x-hidden bg-white transition-all duration-300 no-scrollbar",
-          pathname?.startsWith("/super-security") ? "overflow-hidden" : "overflow-y-auto"
+          (pathname === "/" || pathname?.startsWith("/super-security")) ? "overflow-hidden" : "overflow-y-auto"
         )}
         style={{
           top: "50px",
@@ -107,16 +115,12 @@ export default function Shell({
           </div>
         ) : (
           <AnimatePresence mode="wait">
-            <motion.div
+            <div
               key={pathname}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.3, ease: "easeInOut" }}
               className="w-full h-full"
             >
               {children}
-            </motion.div>
+            </div>
           </AnimatePresence>
         )}
       </div>

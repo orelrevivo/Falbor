@@ -40,7 +40,8 @@ import {
   Shield,
   Key,
   CheckSquare,
-  Github
+  Github,
+  Terminal
 } from 'lucide-react';
 import { useWorkbench } from '@/lib/workbench-context';
 import { cn } from '@/lib/utils';
@@ -304,6 +305,10 @@ export default function SidebarProjects({
                 {[
                   { id: "tables", icon: Database, label: "Tables" },
                   { id: "users", icon: Users, label: "Users" },
+                  { id: "ai", icon: Sparkles, label: "AI" },
+                  { id: "usage", icon: BarChart3, label: "Usage" },
+                  { id: "auth_providers", icon: ShieldCheck, label: "Auth Providers" },
+                  // { id: "credentials", icon: Key, label: "Credentials" },
                   { id: "feedback", icon: MessageSquare, label: "Feedback", isNew: true },
                   { id: "emails", icon: Mail, label: "Emails" },
                   { id: "storage", icon: HardDrive, label: "Storage" },
@@ -399,6 +404,7 @@ export default function SidebarProjects({
                   { id: "/settings/billing", label: "Billing", icon: CreditCard },
                   { id: "/settings/usage", label: "Usage", icon: BarChart3 },
                   { id: "/settings/mcp", label: "MCP", icon: Cpu },
+                  { id: "/settings/api-keys", label: "API Keys", icon: Key },
                   { id: "/settings/skills", label: "Skills", icon: Sparkles },
                 ].map((item) => (
                   <Link href={item.id} key={item.id}>
