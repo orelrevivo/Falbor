@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
@@ -106,7 +106,7 @@ export function SecurityShell({ session, projects }: { session: SecuritySession;
     }
   }, [messages, score, findings, badgeCode, selectedProjectId, selectedModel, consoleLogs, mounted, session.id]);
 
-  const handleSendMessage = async (customMessage?: string, displayMessage?: string) => {
+  const handleSendMessage = useCallback(async (customMessage?: string, displayMessage?: string) => {
     const userMsg = customMessage || input;
     if (!userMsg.trim()) return;
     if (!customMessage) setInput("");
@@ -173,7 +173,18 @@ export function SecurityShell({ session, projects }: { session: SecuritySession;
     } catch (error) {
       console.error(error);
     }
-  };
+  }, [input, messages, selectedProjectId, selectedModel]);
+
+  // Handle events from MessageList buttons
+  useEffect(() => {
+    const handleActionClick = (e: any) => {
+      if (e.detail) {
+        handleSendMessage(e.detail);
+      }
+    };
+    window.addEventListener('security-action-click', handleActionClick);
+    return () => window.removeEventListener('security-action-click', handleActionClick);
+  }, [handleSendMessage]);
 
   const handleAIRiskScan = async () => {
     if (!selectedProjectId) return;
@@ -230,7 +241,7 @@ Format your findings with [AI-origin risk] tags.`;
             try {
               const data = JSON.parse(line.slice(6));
               if (data.text) output += data.text;
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       }
@@ -240,8 +251,8 @@ Format your findings with [AI-origin risk] tags.`;
       const outputLines = cleaned.split('\n').filter(l => l.trim()).slice(0, 30);
       outputLines.forEach(line => {
         const type = /✓|PASS|OK|success/i.test(line) ? 'PASS' :
-                     /✗|FAIL|ERROR|critical/i.test(line) ? 'FAIL' :
-                     /⚠|WARN|warning/i.test(line) ? 'WARN' : 'INFO';
+          /✗|FAIL|ERROR|critical/i.test(line) ? 'FAIL' :
+            /⚠|WARN|warning/i.test(line) ? 'WARN' : 'INFO';
         setConsoleLogs(prev => [...prev, { type, text: line, time: new Date().toLocaleTimeString() }]);
       });
     } catch (error) {
@@ -281,13 +292,40 @@ Format your findings with [AI-origin risk] tags.`;
             <p className="text-xs text-zinc-400 mt-2 uppercase font-bold tracking-widest">Select a target from the header to begin auditing</p>
           </div>
         ) : (
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-            <div className="px-8 border-b bg-zinc-50/50">
-              <TabsList className="h-12 bg-transparent gap-8 p-0">
-                <TabsTrigger value="chat" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-teal-500 data-[state=active]:bg-transparent data-[state=active]:shadow-none font-bold text-xs uppercase tracking-widest">Security Console</TabsTrigger>
-                <TabsTrigger value="results" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-teal-500 data-[state=active]:bg-transparent data-[state=active]:shadow-none font-bold text-xs uppercase tracking-widest">Scan Report</TabsTrigger>
-                <TabsTrigger value="badge" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-teal-500 data-[state=active]:bg-transparent data-[state=active]:shadow-none font-bold text-xs uppercase tracking-widest">Trust Badge</TabsTrigger>
-                <TabsTrigger value="console" className="h-12 rounded-none border-b-2 border-transparent data-[state=active]:border-teal-500 data-[state=active]:bg-transparent data-[state=active]:shadow-none font-bold text-xs uppercase tracking-widest">Secure Shell</TabsTrigger>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0 p-1 mb-1 p-1">
+            <div className="">
+              <TabsList className="h-6 bg-transparent gap-1 p-0 border-none">
+                <TabsTrigger value="chat" className="h-6 text-gray-800 rounded-sm">Security Console</TabsTrigger>
+                <TabsTrigger
+                  value="results"
+                  onClick={() => {
+                    if (findings.length === 0 && selectedProjectId) {
+                      const project = projects.find(p => p.id === selectedProjectId);
+                      handleSendMessage(
+                        `Perform a full security audit of the project "${project?.title}". Analyze for vulnerabilities and provide results in <<SCAN_RESULTS>> JSON.`,
+                        `System: Initializing Full Security Scan...`
+                      );
+                    }
+                  }}
+                  className="h-6 text-gray-800 rounded-sm"
+                >
+                  Scan Report
+                </TabsTrigger>
+                <TabsTrigger
+                  value="badge"
+                  onClick={() => {
+                    if (score === null && selectedProjectId) {
+                      const project = projects.find(p => p.id === selectedProjectId);
+                      handleSendMessage(
+                        `Assess project security for trust badge generation. Provide results in <<SCAN_RESULTS>> JSON.`,
+                        `System: Assessing Security Score for Trust Badge...`
+                      );
+                    }
+                  }}
+                  className="h-6 text-gray-800 rounded-sm"
+                >
+                  Trust Badge
+                </TabsTrigger>
               </TabsList>
             </div>
 

@@ -14,7 +14,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { HomeTabs } from "@/components/home/home-tabs";
 
 export default function SecurityLandingPage() {
   const router = useRouter();
@@ -47,9 +46,6 @@ export default function SecurityLandingPage() {
       }}
     >
       <div className="">
-        <HomeTabs />
-      </div>
-      <div className="mt-[-90px]">
         {/* ⭐ BIG FLOATING IMAGE */}
         <img
           src="/SuperSecurityAgent.png"

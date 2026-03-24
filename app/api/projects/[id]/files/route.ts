@@ -58,6 +58,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         isLocked: f.isLocked,
         additions: f.additions,
         deletions: f.deletions,
+        imageData: f.imageData,
       })),
     })
   } catch (error) {
@@ -75,7 +76,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const { id: projectId } = await params
     const body = await req.json()
-    const { path, content, language, type } = body
+    const { path, content, language, type, imageData } = body
 
     // Only allow owner or collaborator to create files
     const [project] = await db
@@ -110,6 +111,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         content: content || "",
         language: language || "typescript",
         type: type || "file",
+        imageData: imageData || null,
       })
       .returning()
 
@@ -225,7 +227,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     const { id: projectId } = await params
     const body = await req.json()
-    const { path, content } = body
+    const { path, content, imageData } = body
 
     // Only owner or collaborator can update content
     const [project] = await db
@@ -254,7 +256,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
     await db
       .update(files)
-      .set({ content, updatedAt: new Date() })
+      .set({ content: content || "", imageData: imageData || null, updatedAt: new Date() })
       .where(and(eq(files.projectId, projectId), eq(files.path, path)))
 
     return NextResponse.json({ success: true })

@@ -26,8 +26,16 @@ export default function Shell({
   const [sidebarHovered, setSidebarHovered] = useState(false)
   const isChatPage = pathname?.startsWith("/chat/")
   const isSettingsPage = pathname?.startsWith("/settings")
-  const effectiveSidebarHovered = isChatPage || isSettingsPage ? true : sidebarHovered
-  const currentSidebarWidth = (isChatPage || isSettingsPage) ? 160 : (effectiveSidebarHovered ? 170 : 64)
+  const isHomePage = pathname === '/' || pathname === ''
+  const isTemplatesPage = pathname?.startsWith('/templates')
+  const isPricingPage = pathname?.startsWith('/pricing')
+  const isProjectsPage = pathname?.startsWith('/projects')
+  const isSecurityPage = pathname?.startsWith('/super-security')
+  const isProfilePage = pathname?.startsWith('/profile')
+  const isAlwaysOpenPage = isHomePage || isTemplatesPage || isPricingPage || isProjectsPage || isSecurityPage || isProfilePage
+
+  const effectiveSidebarHovered = isAlwaysOpenPage || isChatPage || isSettingsPage || sidebarHovered
+  const currentSidebarWidth = isAlwaysOpenPage ? 180 : ((isChatPage || isSettingsPage) ? 160 : (effectiveSidebarHovered ? 180 : 64))
 
   // Manage body and html scrollbar visibility
   useEffect(() => {
@@ -92,7 +100,8 @@ export default function Shell({
       </div>
       <div
         className={cn(
-          "absolute z-10 backdrop-blur-md border border-[#dddcd8] rounded-sm shadow-xs overflow-x-hidden bg-white transition-all duration-300 no-scrollbar",
+          "absolute z-10 backdrop-blur-md border border-[#dddcd8] rounded-sm shadow-xs overflow-x-hidden bg-white no-scrollbar",
+          isAlwaysOpenPage ? "transition-none" : "transition-all duration-300",
           (pathname === "/" || pathname?.startsWith("/super-security")) ? "overflow-hidden" : "overflow-y-auto"
         )}
         style={{

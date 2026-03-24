@@ -6,7 +6,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import React from "react"
 import { createPortal } from "react-dom"
 
-import { Github, GitCommit, TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database } from "lucide-react"
+import { Github, GitCommit, TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database, Zap } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -24,7 +24,6 @@ import {
 } from "@codesandbox/sandpack-react"
 import { DatabasePanel } from "./database-panel"
 import FeatureShowcaseDark from "../auth/FeatureShowcaseDark"
-import { PREDEFINED_UI_COMPONENTS } from "@/lib/common/predefined-ui"
 
 // Removed redundant TSX and CSS auto-injection contents
 interface CodePreviewProps {
@@ -34,7 +33,7 @@ interface CodePreviewProps {
   isOpen?: boolean
   onClose?: () => void
   currentVersion?: string
-  filesOverride?: Array<{ path: string; content: string; language: string }>
+  filesOverride?: Array<{ path: string; content: string; imageData?: string; language: string }>
   isGitHubImport?: boolean
   initialTab?: string
   onTabChange?: (tab: string) => void
@@ -45,7 +44,7 @@ interface CodePreviewProps {
   tabValue?: string
   isHistoryView?: boolean
   onSendMessage?: (message: string) => void
-  role?: "viewer" | "editor" | "admin"
+  role?: "admin" | "editor" | "viewer"
 }
 interface TerminalTab {
   id: number
@@ -70,7 +69,6 @@ const AUTO_GENERATED_FILES = [
   "vite.config.js",
   "vite.config.ts",
   "package.json",
-  ".gitignore",
   "package-lock.json",
   "yarn.lock",
 ]
@@ -96,6 +94,7 @@ function CustomPreviewToolbar({
   setSelectedDevice,
   availableRoutes,
   onRunTerminal,
+  onCheckPackages,
 }: {
   currentUrl: string
   setCurrentUrl: (url: string) => void
@@ -108,6 +107,7 @@ function CustomPreviewToolbar({
   setSelectedDevice: (device: DeviceSize) => void
   availableRoutes: string[]
   onRunTerminal?: () => void
+  onCheckPackages?: () => void
 }) {
   const [showDeviceMenu, setShowDeviceMenu] = useState(false)
   const [inputValue, setInputValue] = useState(currentUrl)
@@ -183,6 +183,14 @@ function CustomPreviewToolbar({
           title="Run in Terminal"
         >
           <TerminalIcon className="w-4 h-4" />
+        </button>
+        <button
+          onClick={onCheckPackages}
+          className="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-all shadow-sm active:scale-95"
+          title="Check & Install Missing Packages"
+        >
+          <Zap className="w-3.5 h-3.5 fill-current" />
+          <span className="text-[11px] font-bold uppercase tracking-tight">Check Packages</span>
         </button>
       </div>
 
@@ -331,18 +339,19 @@ export function CodePreview({
   tabValue: tabValueProp,
   isHistoryView = false,
   onSendMessage,
-  role,
 }: CodePreviewProps) {
-  const isAdmin = role === "admin"
-  const isEditor = role === "admin" || role === "editor"
-  const isViewer = role === "viewer"
-
   const [files, setFiles] = useState<
-    Array<{ path: string; content: string; language: string; type?: string; isLocked?: boolean }>
+    Array<{ path: string; content: string; imageData?: string; language: string; type?: string; isLocked?: boolean }>
   >([])
   const [projectType, setProjectType] = useState<"python" | "react" | null>(null)
-  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; language: string } | null>(null)
+  const [selectedFile, setSelectedFile] = useState<{ path: string; content: string; imageData?: string; language: string } | null>(null)
   const [editedContent, setEditedContent] = useState("")
+  const [editedImageData, setEditedImageData] = useState<string | undefined>(undefined)
+
+  const handleSetEditedContent = (content: string, imageData?: string) => {
+    setEditedContent(content)
+    setEditedImageData(imageData)
+  }
   const [isEditorFocused, setIsEditorFocused] = useState(false)
   const [sidebarView, setSidebarView] = useState<"files" | "search" | "locks">("files")
   const [searchQuery, setSearchQuery] = useState("")
@@ -488,44 +497,20 @@ export function CodePreview({
       ? filesOverride
       : (files.length > 0 ? files : (filesOverride || []));
 
-    // Force inject UI components for React projects
-    // We only add them if they don't already exist in the sourceFiles to avoid duplicates
-    // and to allow the AI to potentially override them if explicitly requested (though prompt says not to)
-    const uiFiles = Object.entries(PREDEFINED_UI_COMPONENTS).map(([path, content]) => ({
-      path: `src/${path}`,
-      content,
-      language: path.endsWith('.ts') ? 'typescript' : 'typescript', // Both are ts/tsx
-      isLocked: false // Mark as NOT locked so user can edit them
-    }));
-
-    // Merge only those that don't exist
-    const existingPaths = new Set(sourceFiles.map(f => f.path));
-    const finalFiles = [...sourceFiles];
-    
-    uiFiles.forEach(uiFile => {
-      if (!existingPaths.has(uiFile.path)) {
-        finalFiles.push(uiFile as any);
-      }
-    });
-
-    if (!isGitHubImport) return finalFiles;
+    if (!isGitHubImport) return sourceFiles;
 
     // Filter out auto-generated files for GitHub imports
-    const filtered = finalFiles.filter((file: any) => !shouldHideFile(file.path, isGitHubImport))
+    const filtered = sourceFiles.filter((file: any) => !shouldHideFile(file.path, isGitHubImport))
+    console.log("[v0] GitHub Import detected: filtering auto-generated files")
+    console.log("[v0] Original files:", sourceFiles.length, "Filtered files:", filtered.length)
     return filtered
   }, [filesOverride, files, isGitHubImport, projectType, isCodeGenerating, isHistoryView])
-
-  const currentlyEditingPath = useMemo(() => {
-     if (!isCodeGenerating || !filesOverride || filesOverride.length === 0) return null;
-     // The last file in filesOverride is the one currently being streamed (based on extractFilesFromStreamingContent logic)
-     return filesOverride[filesOverride.length - 1].path;
-  }, [isCodeGenerating, filesOverride]);
   const sandpackFiles = useMemo(() => {
     if (projectType !== "react" || effectiveFiles.length === 0) return {}
     const filesMap: Record<string, string> = {}
     effectiveFiles.forEach((file) => {
       const key = `/${file.path.startsWith("/") ? file.path.slice(1) : file.path}`
-      let content = (selectedFile?.path === file.path) ? editedContent : file.content
+      let content = (selectedFile?.path === file.path) ? editedContent : (file.imageData || file.content)
       // Special handling for package.json: validate as JSON, skip if invalid to prevent parse errors
       if (file.path.endsWith("package.json")) {
         const trimmedContent = content.trim();
@@ -784,26 +769,32 @@ class StdoutRedirect:
     }
   }, [projectId, getToken, selectedFile, currentVersion, isGitHubImport])
   const handleSave = useCallback(async () => {
-    if (!selectedFile || editedContent === selectedFile.content) return
+    if (!selectedFile) return
+    if (editedContent === selectedFile.content && editedImageData === selectedFile.imageData) return
+    
     try {
       const token = await getToken()
       await fetch(`/api/projects/${projectId}/files`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ path: selectedFile.path, content: editedContent }),
+        body: JSON.stringify({ 
+          path: selectedFile.path, 
+          content: editedContent,
+          imageData: editedImageData || null
+        }),
       })
       // Update local files state optimistically
       setFiles((prevFiles) =>
         prevFiles.map((f) =>
-          f.path === selectedFile.path ? { ...f, content: editedContent } : f
+          f.path === selectedFile.path ? { ...f, content: editedContent, imageData: editedImageData } : f
         )
       )
-      setSelectedFile((prev) => prev ? { ...prev, content: editedContent } : prev)
+      setSelectedFile((prev) => prev ? { ...prev, content: editedContent, imageData: editedImageData } : prev)
       await fetchFiles() // Refresh from server
     } catch (error) {
       console.error("[Code Preview] Save error:", error)
     }
-  }, [selectedFile, editedContent, projectId, getToken, fetchFiles])
+  }, [selectedFile, editedContent, editedImageData, projectId, getToken, fetchFiles])
   const handleDownload = useCallback(async () => {
     const JSZip = (await import("jszip")).default
     const zip = new JSZip()
@@ -828,38 +819,21 @@ class StdoutRedirect:
   useEffect(() => {
     if (isCodeGenerating) {
       wasGenerating.current = true
-      // Auto-switch to code tab during generation so user sees files being written
-      if (tabValue !== "code") {
-        setInternalTabValue("code")
-        onTabChange?.("code")
-      }
     } else if (wasGenerating.current && !isCodeGenerating) {
       // Generation just finished!
       wasGenerating.current = false
 
       // 1. Sync files with server immediately
       fetchFiles()
-
-      // Stay on code tab (user's request: "code tab will actually be open")
     }
   }, [isCodeGenerating, fetchFiles])
 
-  // ─── Auto-select the latest file being written during generation ──────
-  const lastAutoSelectedFile = useRef<string | null>(null)
+
   useEffect(() => {
-    if (!isCodeGenerating || !filesOverride || filesOverride.length === 0) return
-    // Select the last file in the override list (the one currently being written)
-    const latestFile = filesOverride[filesOverride.length - 1]
-    if (latestFile && latestFile.path !== lastAutoSelectedFile.current) {
-      lastAutoSelectedFile.current = latestFile.path
-      setSelectedFile(latestFile)
-      setEditedContent(latestFile.content)
+    if (selectedFile) {
+      setEditedContent(selectedFile.content)
+      setEditedImageData(selectedFile.imageData)
     }
-  }, [isCodeGenerating, filesOverride])
-
-
-  useEffect(() => {
-    if (selectedFile) setEditedContent(selectedFile.content)
   }, [selectedFile])
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -996,6 +970,7 @@ class StdoutRedirect:
 
   // Shared CodeTab render for both normal and split screen
   const DATABASE_ENABLED = true;
+  const [activeTab, setActiveTab] = useState("preview")
 
   const renderCodeTab = () => (
     <CodeTab
@@ -1003,9 +978,9 @@ class StdoutRedirect:
       setSidebarView={setSidebarView}
       files={effectiveFiles}
       selectedFile={selectedFile}
-      setSelectedFile={handleFileSelect} // Updated to use auto-save version
+      setSelectedFile={handleFileSelect}
       editedContent={editedContent}
-      setEditedContent={setEditedContent}
+      setEditedContent={handleSetEditedContent}
       isEditorFocused={isEditorFocused}
       setIsEditorFocused={setIsEditorFocused}
       searchQuery={searchQuery}
@@ -1023,8 +998,6 @@ class StdoutRedirect:
       loading={!pyodideReady && projectType === "python"}
       isSplitScreen={isSplitScreen}
       onExitSplit={onExitSplit}
-      currentlyEditingPath={currentlyEditingPath}
-      role={role}
     />
   )
 
@@ -1123,36 +1096,31 @@ class StdoutRedirect:
                 <Code2 className="w-4 h-4" />
               </TabsTrigger>
 
-              {isEditor && (
-                <>
-                  <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
-                  <TabsTrigger
-                    value="database"
-                    className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-                  >
-                    <Database className="w-4 h-4" />
-                  </TabsTrigger>
-                </>
-              )}
+              <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
+
+              <TabsTrigger
+                value="database"
+                className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+              >
+                <Database className="w-4 h-4" />
+              </TabsTrigger>
 
 
             </TabsList>
 
-            {isAdmin && (
-              <button
-                className={cn(
-                  "ml-3 cursor-pointer",
-                  tabValue === "settings"
-                    ? "text-[#0099ff]"
-                    : "text-gray-700 hover:text-gray-900"
-                )}
-                onClick={() => handleTabChange("settings")}
-              >
-                <Settings className="w-4 h-4" />
-              </button>
-            )}
+            <button
+              className={cn(
+                "ml-3 cursor-pointer",
+                activeTab === "settings"
+                  ? "text-[#0099ff]"
+                  : "text-gray-700 hover:text-gray-900"
+              )}
+              onClick={() => handleTabChange("settings")}
+            >
+              <Settings className="w-4 h-4" />
+            </button>
 
-            {isGitHubImport && isEditor && (
+            {isGitHubImport && (
               <div className="ml-4 flex items-center gap-2">
                 <div className="h-4 w-[1px] bg-gray-300 mx-1" />
                 {projectMetadata?.isGitAdopted ? (

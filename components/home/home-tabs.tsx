@@ -2,13 +2,13 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Shield, Globe } from "lucide-react";
-import { motion } from "framer-motion";
+import { Sparkles, Monitor, Globe } from "lucide-react"; // Matching the visual style of your icons
 
 export function HomeTabs() {
   const pathname = usePathname();
   const router = useRouter();
-  
+
+  // Mapping the UI labels to your routes
   const isSecurity = pathname?.startsWith("/super-security");
   const activeTab = isSecurity ? "security" : "websites";
 
@@ -21,27 +21,35 @@ export function HomeTabs() {
   };
 
   return (
-    <div className="flex items-center justify-center mb-8">
-      <div className="flex p-1 bg-[#F1F1EF] border border-[#E2E2E0] rounded-2xl w-fit">
+    <div className="flex flex-col w-full">
+      {/* The Main Container: Dark, rounded, and compact */}
+      <div className="flex flex-col p-1 bg-[#e7e5df] border border-[#e7e5df] rounded-md min-w-[140px]">
+
+        {/* Search / Super Security Button */}
         <button
           onClick={() => handleTabChange("websites")}
           className={cn(
-            "relative flex items-center gap-2 px-6 py-2 text-sm font-medium transition-all duration-200 rounded-xl",
-            activeTab === "websites" ? "bg-white text-black shadow-sm" : "text-[#878782] hover:text-[#5C5C57]"
+            "flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium rounded-sm w-full",
+            activeTab === "websites"
+              ? "bg-white text-gray-800 shadow-xs" // Active state
+              : "text-[#878782]" // Inactive state
           )}
         >
-          <Globe className="relative z-10 w-4 h-4" />
-          <span className="relative z-10">Websites</span>
+          <Globe className={cn("w-3.5 h-3.5", activeTab === "websites" ? "text-gray-800" : "text-[#878782]")} />
+          <span>Websites</span>
         </button>
+        {/* Computer / Websites Button */}
         <button
           onClick={() => handleTabChange("security")}
           className={cn(
-            "relative flex items-center gap-2 px-6 py-2 text-sm font-medium transition-all duration-200 rounded-xl",
-            activeTab === "security" ? "bg-white text-black shadow-sm" : "text-[#878782] hover:text-[#5C5C57]"
+            "flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium rounded-sm w-full",
+            activeTab === "security"
+              ? "bg-white text-gray-800 shadow-xs" // Active state
+              : "text-[#878782]" // Inactive state
           )}
         >
-          <Shield className="relative z-10 w-4 h-4" />
-          <span className="relative z-10">Super Security Agent</span>
+          <Monitor className={cn("w-3.5 h-3.5", activeTab === "security" ? "text-gray-800" : "text-[#878782]")} />
+          <span>Super Security</span>
         </button>
       </div>
     </div>

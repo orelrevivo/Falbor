@@ -10,11 +10,11 @@ import { Input } from "@/components/ui/input" // If needed elsewhere
 interface CodeTabProps {
   sidebarView: "files" | "search" | "locks"
   setSidebarView: (view: "files" | "search" | "locks") => void
-  files: Array<{ path: string; content: string; language: string; type?: string; isLocked?: boolean }>
-  selectedFile: { path: string; content: string; language: string } | null
-  setSelectedFile: (file: { path: string; content: string; language: string } | null) => void
+  files: Array<{ path: string; content: string; imageData?: string; language: string; type?: string; isLocked?: boolean }>
+  selectedFile: { path: string; content: string; imageData?: string; language: string } | null
+  setSelectedFile: (file: { path: string; content: string; imageData?: string; language: string } | null) => void
   editedContent: string
-  setEditedContent: (content: string) => void
+  setEditedContent: (content: string, imageData?: string) => void
   isEditorFocused: boolean
   setIsEditorFocused: (focused: boolean) => void
   searchQuery: string

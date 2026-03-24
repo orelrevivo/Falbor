@@ -6,7 +6,7 @@ import { ChatInput } from "@/components/layout/chat"
 import { CodePreview } from "@/components/workbench/code-preview"
 import type { Project, Message as SchemaMessage, UserProfile } from "@/config/schema"
 import { Navbar } from "./chat/navbar"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth, useUser } from "@clerk/nextjs"
 import { usePathname, useSearchParams, useRouter } from "next/navigation"
 import Link from "next/link"
 import { createPortal } from "react-dom"
@@ -101,6 +101,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   const abortControllerRef = useRef<AbortController | null>(null)
   const isStreamingRef = useRef(false)  // Always-current ref for isStreaming, avoids stale closure
   const { getToken } = useAuth()
+  const { user } = useUser()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -277,7 +278,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
               // Broadcast AI chunk for live collaboration
               window.dispatchEvent(new CustomEvent(`broadcast:${project.id}`, {
-                detail: { type: 'MSG_AI_STREAM', tempId, chunk: accumulated }
+                detail: { type: 'MSG_AI_STREAM', tempId, chunk: accumulated, senderId: user?.id }
               }))
 
               // Live file extraction: parse streaming content for file blocks
@@ -318,6 +319,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                 detail: { type: 'MSG_AI_COMPLETE', tempId, finalMessage: finalAssistantMsg }
               }))
 
+              // Synchronize state with final result
               setMessages((prev) => {
                 const updated = [...prev]
                 const assistantIdx = updated.findIndex((m) => m.id === tempId)
@@ -338,6 +340,11 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                 }
                 return updated
               })
+
+              // Broadcast final message
+              window.dispatchEvent(new CustomEvent(`broadcast:${project.id}`, {
+                detail: { type: 'MSG_AI_COMPLETE', tempId, finalMessage: finalAssistantMsg, senderId: user?.id }
+              }))
 
               if (data.hasArtifact) {
                 setHasProjectFiles(true)
@@ -427,27 +434,21 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
     setMessages((prev) => {
       const validPrev = prev.filter((m) => m && m.id)
 
-      // 1. If the incoming message already exists by ID, just update it.
-      const existingIdx = validPrev.findIndex((m) => m.id === safeMessage.id)
-      if (existingIdx !== -1) {
+      // 3. Smart Deduplication: If a message with same content/role arrives (e.g. from Pusher or SSE)
+      const duplicateIdx = validPrev.findIndex(
+        (m) => m.id === safeMessage.id || (
+          m.role === safeMessage.role && 
+          m.content === safeMessage.content && 
+          m.id.startsWith("temp-")
+        )
+      )
+      if (duplicateIdx !== -1) {
         const newMessages = [...validPrev]
-        newMessages[existingIdx] = safeMessage
+        newMessages[duplicateIdx] = safeMessage
         return newMessages
       }
 
-      // 2. ID Swapping: If it's a permanent ID but replaces a temp one
-      if (!safeMessage.id.startsWith("temp-")) {
-        const tempIdx = validPrev.findIndex(
-          (m) => m.id.startsWith("temp-") && m.role === safeMessage.role && m.content === safeMessage.content
-        )
-        if (tempIdx !== -1) {
-          const newMessages = [...validPrev]
-          newMessages[tempIdx] = safeMessage
-          return newMessages
-        }
-      }
-
-      // 3. Fallback: Append
+      // 4. Fallback: Append
       return [...validPrev, safeMessage]
     })
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 0)
@@ -614,24 +615,34 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       imageData: null,
       metadata: null,
     }
-    setMessages((prev) => [...prev, newUserMsg])
+    // Update local state first
+    setMessages((prev) => {
+      if (prev.some((m) => m.id === newUserMsg.id)) return prev
+      return [...prev, newUserMsg]
+    })
     
-    // Broadcast this new message to others
+    // Broadcast user message to collaborators
     window.dispatchEvent(new CustomEvent(`broadcast:${project.id}`, {
-      detail: { type: 'MSG_USER', message: newUserMsg }
+      detail: { type: 'MSG_USER', message: newUserMsg, senderId: user?.id }
     }))
 
     handleAutoGenerate(content)
-  }, [project.id, handleAutoGenerate])
+  }, [project.id, handleAutoGenerate, user?.id])
 
   // ─── Real-time Collaboration Listeners ────────────────────────────────────
   const handleRealtimeMessage = useCallback((data: any) => {
-    const { type, message, chunk, tempId, finalMessage } = data
+    const { type, message, chunk, tempId, finalMessage, senderId } = data
+
+    // Ignore messages originating from this client to prevent duplication
+    if (senderId === user?.id) {
+      return
+    }
 
     switch (type) {
       case 'MSG_USER':
         setMessages((prev) => {
-          if (prev.some(m => m.id === message.id)) return prev
+          // If we already have this message (by ID or by content/role for temp/optimistic match)
+          if (prev.some(m => m.id === message.id || (m.role === message.role && m.content === message.content))) return prev
           return [...prev, { ...message, createdAt: new Date(message.createdAt) }]
         })
         break
@@ -639,8 +650,11 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       case 'MSG_AI_STREAM':
         // Show streaming for a collaborator's AI
         setMessages((prev) => {
+          // If we are the sender or already have this message by ID match
           const existing = prev.find(m => m.id === tempId)
           if (existing) {
+            // Only update if content changed
+            if (existing.content === chunk) return prev
             return prev.map(m => m.id === tempId ? { ...m, content: chunk } : m)
           } else {
             // Create a temp collaborator AI message
@@ -668,9 +682,19 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
       case 'MSG_AI_COMPLETE':
         setMessages((prev) => {
+          // If we already have this assistant message by ID or content/role match
+          const existing = prev.find(m => 
+            m.id === finalMessage.id || 
+            (m.role === 'assistant' && m.content === finalMessage.content && (m.id.startsWith("temp-") || finalMessage.id.startsWith("temp-")))
+          )
+          
+          if (existing) {
+            return prev.map(m => m.id === existing.id ? { ...finalMessage, createdAt: new Date(finalMessage.createdAt) } : m)
+          }
+
           const updated = prev.map(m => m.id === tempId ? { ...finalMessage, createdAt: new Date(finalMessage.createdAt) } : m)
           // If not found (maybe joined mid-stream), just append the final message
-          if (!prev.some(m => m.id === tempId)) {
+          if (!prev.some(m => m.id === tempId) && !prev.some(m => m.id === finalMessage.id)) {
              return [...prev, { ...finalMessage, createdAt: new Date(finalMessage.createdAt) }]
           }
           return updated
@@ -681,7 +705,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         }
         break
     }
-  }, [project.id])
+  }, [project.id, user?.id])
 
   useEffect(() => {
     const handleSendDirect = (e: any) => {
@@ -852,10 +876,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
         {isPreviewOpen && !isSplitScreen && (
           <div
-            className={cn(
-                "w-1 cursor-col-resize hover:bg-primary/50 transition-colors z-[60] bg-border/40",
-                isResizingState && "bg-primary"
-            )}
+            className="w-1 cursor-col-resize hover:bg-primary/50 transition-colors z-[60] bg-border/40"
             onMouseDown={handleMouseDown}
           />
         )}

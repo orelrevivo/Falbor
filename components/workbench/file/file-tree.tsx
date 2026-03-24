@@ -15,6 +15,9 @@ import {
   Unlock,
   Square,
   CheckSquare,
+  Upload,
+  Image as ImageIcon,
+  Crop,
 } from "lucide-react"
 import { useWorkbench } from "@/lib/workbench-context"
 import { cn } from "@/lib/utils"
@@ -30,6 +33,7 @@ interface FileNode {
   deletions?: number
   children?: FileNode[]
   content?: string
+  imageData?: string
   language?: string
   isInput?: boolean
 }
@@ -38,6 +42,7 @@ interface FileTreeProps {
   files: Array<{
     path: string
     content: string
+    imageData?: string
     language: string
     type?: string
     isLocked?: boolean
@@ -78,6 +83,7 @@ function buildFileTree(
   files: Array<{
     path: string
     content: string
+    imageData?: string
     language: string
     type?: string
     isLocked?: boolean
@@ -114,6 +120,7 @@ function buildFileTree(
           deletions: isLast ? file.deletions : undefined,
           children: isFile ? undefined : [],
           content: isLast ? file.content : undefined,
+          imageData: isLast ? file.imageData : undefined,
           language: isLast ? file.language : undefined,
         }
         currentLevel.push(existingNode)
@@ -122,6 +129,7 @@ function buildFileTree(
         existingNode.additions = file.additions
         existingNode.deletions = file.deletions
         existingNode.content = file.content
+        existingNode.imageData = file.imageData
         existingNode.language = file.language
       }
 
@@ -535,6 +543,12 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
   const [newItem, setNewItem] = useState<{ targetPath: string; inside: boolean; type: "file" | "folder" } | null>(null)
   const [renaming, setRenaming] = useState<string | null>(null)
   const [inputValue, setInputValue] = useState("")
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const isImageFile = (filename: string) => {
+    const extensions = [".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]
+    return extensions.some((ext) => filename.toLowerCase().endsWith(ext))
+  }
 
   let prefix = ""
   if (currentRoot) {
@@ -646,6 +660,73 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
     setInputValue("")
   }
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !contextMenu.node) return
+
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      let base64Content = event.target?.result as string
+      
+      // Image Compression Logic
+      const img = new Image()
+      img.src = base64Content
+      img.onload = async () => {
+        const canvas = document.createElement("canvas")
+        let width = img.width
+        let height = img.height
+
+        // Max dimension 1200px
+        const MAX_DIM = 1200
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width > height) {
+            height = (height / width) * MAX_DIM
+            width = MAX_DIM
+          } else {
+            width = (width / height) * MAX_DIM
+            height = MAX_DIM
+          }
+        }
+
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext("2d")
+        ctx?.drawImage(img, 0, 0, width, height)
+        
+        // Compress to 0.7 quality to stay under limits
+        const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7)
+        
+        const basePath =
+          contextMenu.node!.type === "folder" ? `${contextMenu.node!.fullPath}/` : `${getParentPath(contextMenu.node!.fullPath)}/`
+        const newPath = `${basePath}${file.name.replace(/\.[^/.]+$/, "")}.jpg`
+
+        try {
+          const response = await fetch(`/api/projects/${projectId}/files`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              path: newPath,
+              content: "", // Content can be empty for images
+              imageData: compressedBase64,
+              language: "image",
+              type: "file",
+            }),
+          })
+
+          if (response.ok) {
+            onFilesChange?.()
+          } else {
+            console.error("Failed to upload image:", await response.text())
+          }
+        } catch (error) {
+          console.error("Upload error:", error)
+        }
+      }
+    }
+    reader.readAsDataURL(file)
+    setContextMenu({ show: false, x: 0, y: 0, node: null })
+  }
+
   const handleDelete = async () => {
     if (!contextMenu.node) return
 
@@ -741,9 +822,31 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
             >
               <Folder className="w-4 h-4 mr-2 text-black" /> New Folder
             </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                fileInputRef.current?.click()
+              }}
+            >
+              <Upload className="w-4 h-4 mr-2 text-black" /> Upload Image
+            </DropdownMenuItem>
             </div>
             <hr className="text-[#e4e4e4f1]"/>
             <div className="p-2">
+            {isImageFile(contextMenu.node.name) && (
+              <DropdownMenuItem
+                onSelect={() => {
+                  onFileSelect?.({
+                    path: contextMenu.node!.fullPath,
+                    content: contextMenu.node!.content || "",
+                    imageData: contextMenu.node!.imageData,
+                    language: "image",
+                  } as any)
+                  setContextMenu({ show: false, x: 0, y: 0, node: null })
+                }}
+              >
+                <Crop className="w-4 h-4 mr-2 text-black" /> Edit Image (Crop)
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem
               onSelect={() => {
                 setInputValue(contextMenu.node!.name)
@@ -769,6 +872,15 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
           </DropdownMenuContent>
         </DropdownMenu>
       )}
+
+      {/* Hidden File Input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept="image/*"
+        onChange={handleImageUpload}
+      />
     </div>
   )
 }

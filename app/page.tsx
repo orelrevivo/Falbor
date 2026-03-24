@@ -126,9 +126,6 @@ export default async function HomePage() {
               overflowY: "hidden"
             }}
           >
-            <div className="">
-              <HomeTabs />
-            </div>
             <div
               className="flex flex-col items-center h-full justify-center top-[-170px] relative w-full"
             >
@@ -139,7 +136,7 @@ export default async function HomePage() {
               <div className="w-full flex justify-center mt-6 z-10">
                 <InputArea isAuthenticated />
               </div>
-              <div className="absolute bottom-[-50px] flex justify-center w-full z-10">
+              <div className="absolute bottom-[-130px] flex justify-center w-full z-10">
                 <FeatureCards />
               </div>
             </div>

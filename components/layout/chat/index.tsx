@@ -189,28 +189,30 @@ const MODEL_OPTIONS: ModelOption[] = [
   { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
   { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  { id: "claude-opus-4", label: "Claude Opus 4", isPremium: false, iconUrl: "/icons/claude.png" },
-  { id: "claude-3.5-haiku", label: "Claude 3.5 Haiku", isPremium: false, iconUrl: "/icons/claude.png" },
-  { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", isPremium: false, iconUrl: "/icons/claude.png" },
+  // { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
+  // { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
+  // { id: "claude-opus-4", label: "Claude Opus 4", isPremium: false, iconUrl: "/icons/claude.png" },
+  // { id: "claude-3.5-haiku", label: "Claude 3.5 Haiku", isPremium: false, iconUrl: "/icons/claude.png" },
+  // { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", isPremium: false, iconUrl: "/icons/claude.png" },
   { id: "gpt-5.4-pro", label: "GPT-5.4 Pro", isPremium: true, iconUrl: "/icons/openai.png" },
   { id: "gpt-5.4", label: "GPT-5.4", isPremium: true, iconUrl: "/icons/openai.png" },
-  { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
-  { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "gpt-oss-120b", label: "GPT OSS 120B", isPremium: true, iconUrl: "/icons/openai.png" },
+  // { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
+  // { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
   { id: "grok-4.1-fast", label: "Grok 4.1 Fast", isPremium: true, iconUrl: "/icons/grok-light.png" },
   { id: "grok-4-fast", label: "Grok 4 Fast", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  { id: "grok-code-fast-1", label: "Grok Code Fast 1", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  { id: "grok-4", label: "Grok 4", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  { id: "grok-3-mini", label: "Grok 3 Mini", isPremium: false, iconUrl: "/icons/grok-light.png" },
-  { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", isPremium: false, iconUrl: "/icons/gemini.png" },
-  { id: "qwen-3.5-35b", label: "Qwen 3.5 35B", isPremium: true, iconUrl: "/icons/qwen.png" },
-  { id: "qwen-3.5-27b", label: "Qwen 3.5 27B", isPremium: true, iconUrl: "/icons/qwen.png" },
+  // { id: "grok-code-fast-1", label: "Grok Code Fast 1", isPremium: true, iconUrl: "/icons/grok-light.png" },
+  // { id: "grok-4", label: "Grok 4", isPremium: true, iconUrl: "/icons/grok-light.png" },
+  // { id: "grok-3-mini", label: "Grok 3 Mini", isPremium: false, iconUrl: "/icons/grok-light.png" },
+  // { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", isPremium: false, iconUrl: "/icons/gemini.png" },
+  // { id: "qwen-3.5-35b", label: "Qwen 3.5 35B", isPremium: true, iconUrl: "/icons/qwen.png" },
+  // { id: "qwen-3.5-27b", label: "Qwen 3.5 27B", isPremium: true, iconUrl: "/icons/qwen.png" },
   { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
+  { id: "glm-4.6v", label: "GLM 4.6V", isPremium: false, iconUrl: "/icons/zAI.png" },
+  { id: "glm-5-turbo", label: "GLM 5 Turbo", isPremium: true, iconUrl: "/icons/zAI.png" },
   { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
-  { id: "nemotron-3-super-120b", label: "Nemotron 3 Super 120B", isPremium: true, iconUrl: "/icons/nvidia.png" },
-  { id: "gpt-oss-120b", label: "GPT OSS 120B", isPremium: true, iconUrl: "/icons/openai.png" },
-  { id: "gemma-3-12b-it", label: "Gemma 3 12B IT", isPremium: false, iconUrl: "/icons/google.png" },
+  // { id: "nemotron-3-super-120b", label: "Nemotron 3 Super 120B", isPremium: true, iconUrl: "/icons/nvidia.png" },
+  // { id: "gemma-3-12b-it", label: "Gemma 3 12B IT", isPremium: false, iconUrl: "/icons/google.png" },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -2268,7 +2270,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
                   {showMenu && (
                     <div
-                      className="absolute z-50 w-56 overflow-visible bg-[#1E1E1E]
+                      className="absolute z-50 w-56 overflow-visible bg-white shadow-md border border-[#cfcfd1]
                     animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2
                     focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
                     data-[variant=destructive]:focus:bg-destructive/10
@@ -2288,9 +2290,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               fileInputRef.current?.click()
                               setShowMenu(false)
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm text-white", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#0099ff] cursor-default")}
+                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm text-black", isLoading ? "opacity-50 cursor-not-allowed" : "BackgroundStyle cursor-default")}
                           >
-                            <Link1Icon className="h-4 w-4 mr-2 text-white/90" />
+                            <Link1Icon className="h-4 w-4 mr-2 text-black/90" />
                             Attach images & files
                           </div>
                           {/* <div
@@ -2309,13 +2311,13 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                 setMenuMode("design")
                               }
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm w-full text-white", message.includes("Capture from URL:") ? "opacity-50 cursor-not-allowed grayscale" : "hover:bg-[#0099ff] cursor-default")}
+                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm w-full text-black", message.includes("Capture from URL:") ? "opacity-50 cursor-not-allowed grayscale" : "BackgroundStyle cursor-default")}
                           >
-                            <Palette className="h-4 w-4 mr-2 text-white/90" />
+                            <Palette className="h-4 w-4 mr-2 text-black/90" />
                             System Design
                           </div>
                           <div
-                            className="relative flex items-center px-2 py-1.5 text-[12px] text-white rounded-sm hover:bg-[#0099ff] cursor-default w-full"
+                            className="relative flex items-center px-2 py-1.5 text-[12px] text-black rounded-sm BackgroundStyle cursor-default w-full"
                             onMouseEnter={() => setShowDatabaseHover(true)}
                             onMouseLeave={() => setShowDatabaseHover(false)}
                             onClick={(e) => {
@@ -2324,7 +2326,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               }
                             }}
                           >
-                            <Database className="h-4 w-4 mr-2 text-white/90" />
+                            <Database className="h-4 w-4 mr-2 text-black/90" />
                             Database
                             {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
                             {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>}
@@ -2411,7 +2413,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                             )}
                           </div>
                           <div
-                            className="relative flex items-center px-2 py-1.5 text-[12px] rounded-sm hover:bg-[#0099ff] text-white cursor-default w-full"
+                            className="relative flex items-center px-2 py-1.5 text-[12px] rounded-sm BackgroundStyle text-black cursor-default w-full"
                             onMouseEnter={() => setShowModelHover(true)}
                             onMouseLeave={() => setShowModelHover(false)}
                           >
@@ -2433,7 +2435,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                bg-white
                                focus:bg-accent focus:text-accent-foreground
                                items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
-                               outline-hidden select-none border shadow-xs"
+                               outline-hidden select-none shadow-md border border-[#cfcfd1]"
                                 style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
                                 onMouseEnter={() => setShowModelHover(true)}
                                 onMouseLeave={() => setShowModelHover(false)}
@@ -2455,12 +2457,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                 </div> */}
                                 <div className="max-h-[500px] overflow-y-auto space-y-0.5">
                                   {/* Auto Select Option - First in list */}
-                                  <div
+                                  {/* <div
                                     onClick={(e) => {
                                       e.stopPropagation()
                                       handleAutoModelSelect()
                                     }}
-                                    className="flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative hover:bg-[#f3f3f3]"
+                                    className="flex items-center gap-3 px-3 py-1.5 rounded-md cursor-default relative BackgroundStyle"
                                     title="Auto-select best model for your prompt"
                                   >
                                     <div className="ml-[-3px] w-10 h-6 to-purple-500 flex items-center justify-center">
@@ -2470,7 +2472,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                     {isAutoSelected && (
                                       <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold"><Check className="w-4 h-4" /></span>
                                     )}
-                                  </div>
+                                  </div> */}
 
                                   {MODEL_OPTIONS.slice(0, 23).map((model) => (
                                     <div
@@ -2486,8 +2488,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                         setShowMenu(false)
                                       }}
                                       className={cn(
-                                        "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative text-black",
-                                        model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "hover:bg-[#f3f3f3]"
+                                        "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-default relative text-black",
+                                        model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "BackgroundStyle"
                                       )}
                                     >
                                       <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
@@ -2670,7 +2672,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                 setShowMenu(false)
                               }
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-[12px] text-white rounded-sm w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#0099ff] cursor-default")}
+                            className={cn("flex items-center px-2 py-1.5 text-[12px] text-black rounded-sm w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "BackgroundStyle cursor-default")}
                           >
                             {!isImproving ? (
                               <StarsIcon className="h-4 w-4 mr-2" />

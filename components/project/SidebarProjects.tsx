@@ -63,6 +63,7 @@ import { Input } from "@/components/ui/input"
 import { GithubCloneDialog } from '../models/github-clone';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
+import { HomeTabs } from '../home/home-tabs';
 
 interface ProjectItem {
   id: string;
@@ -86,6 +87,72 @@ const menuVariants: Variants = {
   open: { x: 0, opacity: 1, transition: { type: "spring", stiffness: 300, damping: 30 } },
 };
 
+const ProjectItemRow = ({
+  project,
+  handleToggleFavorite,
+  handleCopyId,
+  handleDeleteProject,
+  setIsProjectMenuOpen
+}: {
+  project: ProjectItem;
+  handleToggleFavorite: (id: string, e: React.MouseEvent) => void;
+  handleCopyId: (id: string, e: React.MouseEvent) => void;
+  handleDeleteProject: (id: string, e: React.MouseEvent) => void;
+  setIsProjectMenuOpen: (open: boolean) => void;
+}) => (
+  <div className="group flex items-center gap-2 px-1 z-[50] rounded-sm BackgroundStyle relative">
+    <Link href={`/chat/${project.id}`} className="flex items-center gap-3 flex-1 min-w-0 py-0.5">
+      <div className={cn(
+        "flex-shrink-0 h-6 w-6 rounded-md flex items-center justify-center transition-colors",
+        project.is_owner ? "text-gray-900" : "text-gray-900"
+      )}>
+        {project.is_github_clone && project.github_url ? (
+          <GitBranch className="h-3.5 w-3.5" />
+        ) : project.is_owner ? (
+          <Circle className="h-3 w-3" />
+        ) : (
+          <Users className="h-3.5 w-3.5" />
+        )}
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+        <span className="text-[12px] font-medium text-zinc-700 truncate group-hover:text-zinc-900 transition-colors">
+          {project.title || 'Untitled Project'}
+        </span>
+      </div>
+    </Link>
+    <DropdownMenu onOpenChange={setIsProjectMenuOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="cursor-pointer h-5 w-5 p-0 hover:bg-zinc-200 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 top-1/2 -translate-y-1/2"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
+          <MoreHorizontal className="h-3 w-3 text-zinc-500" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-52 z-[200] absolute left-0">
+        <DropdownMenuItem onClick={(e) => handleToggleFavorite(project.id, e)}>
+          <Star className={cn("mr-2 h-4 w-4", project.is_favorite && "fill-yellow-400 text-yellow-400")} />
+          {project.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={(e) => handleCopyId(project.id, e)}>
+          <Copy className="mr-2 h-4 w-4" />
+          Copy ID
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {project.is_owner && (
+          <DropdownMenuItem onClick={(e) => handleDeleteProject(project.id, e)} className="text-red-600 focus:text-red-600">
+            <Trash2 className="mr-2 h-4 w-4" />
+            Delete Project
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </div>
+);
+
 export default function SidebarProjects({
   userId,
   initialProjects,
@@ -106,6 +173,7 @@ export default function SidebarProjects({
   const [searchOpen, setSearchOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -153,7 +221,15 @@ export default function SidebarProjects({
   const pathname = usePathname();
   const isSettingsPage = pathname?.startsWith('/settings');
   const isChatPage = pathname?.startsWith('/chat/');
-  const effectiveHovered = isChatPage ? true : (isSettingsPage ? true : (isHovered || searchOpen || isActionMenuOpen));
+  const isHomePage = pathname === '/' || pathname === '';
+  const isTemplatesPage = pathname?.startsWith('/templates');
+  const isPricingPage = pathname?.startsWith('/pricing');
+  const isProjectsPage = pathname?.startsWith('/projects');
+  const isSecurityPage = pathname?.startsWith('/super-security');
+  const isProfilePage = pathname?.startsWith('/profile');
+  const isAlwaysOpenPage = isHomePage || isTemplatesPage || isPricingPage || isProjectsPage || isSecurityPage || isProfilePage;
+
+  const effectiveHovered = isAlwaysOpenPage ? true : (isChatPage ? true : (isSettingsPage ? true : (isHovered || searchOpen || isActionMenuOpen || isProjectMenuOpen)));
 
   const favoriteProjects = projects.filter(p => p.is_favorite);
   const recentProjects = projects.filter(p => !p.is_favorite);
@@ -204,53 +280,6 @@ export default function SidebarProjects({
     toast.success("Project ID copied to clipboard");
   };
 
-  const ProjectItemRow = ({ project }: { project: ProjectItem }) => (
-    <div className="group flex items-center gap-2 px-1 rounded-sm BackgroundStyle relative">
-      <Link href={`/chat/${project.id}`} className="flex items-center gap-3 flex-1 min-w-0 py-0.5">
-        <div className={cn(
-          "flex-shrink-0 h-6 w-6 rounded-md flex items-center justify-center transition-colors",
-          project.is_owner ? "text-gray-900" : "text-gray-900"
-        )}>
-          {project.is_github_clone && project.github_url ? (
-            <GitBranch className="h-3.5 w-3.5" />
-          ) : project.is_owner ? (
-            <Circle className="h-3 w-3" />
-          ) : (
-            <Users className="h-3.5 w-3.5" />
-          )}
-        </div>
-        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-          <span className="text-[12px] font-medium text-zinc-700 truncate group-hover:text-zinc-900 transition-colors">
-            {project.title || 'Untitled Project'}
-          </span>
-        </div>
-      </Link>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="cursor-pointer h-5 w-5 p-0 hover:bg-zinc-200 rounded-sm opacity-0 group-hover:opacity-100 transition-opacity absolute right-1 top-1/2 -translate-y-1/2">
-            <MoreHorizontal className="h-3 w-3 text-zinc-500" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-52">
-          <DropdownMenuItem onClick={(e) => handleToggleFavorite(project.id, e)}>
-            <Star className={cn("mr-2 h-4 w-4", project.is_favorite && "fill-yellow-400 text-yellow-400")} />
-            {project.is_favorite ? "Remove from Favorites" : "Add to Favorites"}
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={(e) => handleCopyId(project.id, e)}>
-            <Copy className="mr-2 h-4 w-4" />
-            Copy ID
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          {project.is_owner && (
-            <DropdownMenuItem onClick={(e) => handleDeleteProject(project.id, e)} className="text-red-600 focus:text-red-600">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete Project
-            </DropdownMenuItem>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-  );
 
   return (
     <>
@@ -260,7 +289,7 @@ export default function SidebarProjects({
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
           'fixed top-[-10px] left-0 h-screen transition-all duration-300 ease-in-out z-[100] flex flex-col bg-[#FAF9F5]',
-          (isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[180px]' : 'w-[64px]'),
+          isAlwaysOpenPage ? 'w-[180px] transition-none' : ((isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[180px]' : 'w-[64px]')),
           className
         )}
       >
@@ -439,7 +468,12 @@ export default function SidebarProjects({
           <div className="flex flex-col h-full">
             {/* Header Section */}
             <div className="ml-3 mt-15 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
-              <div
+              {effectiveHovered && (
+                <div className="mb-2">
+                  <HomeTabs />
+                </div>
+              )}
+              {/* <div
                 className={cn(
                   "flex items-center py-2 bg-transparent text-zinc-700 border border-[#0099ff] h-8 bg-white BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
                   effectiveHovered ? "w-full" : "w-10 mx-auto"
@@ -485,7 +519,7 @@ export default function SidebarProjects({
                     </DropdownMenu>
                   </>
                 )}
-              </div>
+              </div> */}
 
               {/* Search Section - Integrated Inline */}
               <div className="space-y-1">
@@ -619,13 +653,31 @@ export default function SidebarProjects({
                 <div className="mt-4 space-y-4">
                   {favoriteProjects.length > 0 && (
                     <div>
-                      <div className="px-2 py-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Favorites</div>
-                      {favoriteProjects.map(project => <ProjectItemRow key={project.id} project={project} />)}
+                      <div className="px-2 py-1 text-[13px] text-gray-800">Favorites</div>
+                      {favoriteProjects.map(project => (
+                        <ProjectItemRow
+                          key={project.id}
+                          project={project}
+                          handleToggleFavorite={handleToggleFavorite}
+                          handleCopyId={handleCopyId}
+                          handleDeleteProject={handleDeleteProject}
+                          setIsProjectMenuOpen={setIsProjectMenuOpen}
+                        />
+                      ))}
                     </div>
                   )}
                   <div>
-                    <div className="px-2 py-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Recent Projects</div>
-                    {recentProjects.map(project => <ProjectItemRow key={project.id} project={project} />)}
+                    <div className="px-2 py-1 text-[13px] text-gray-800">Recent Projects</div>
+                    {recentProjects.map(project => (
+                      <ProjectItemRow
+                        key={project.id}
+                        project={project}
+                        handleToggleFavorite={handleToggleFavorite}
+                        handleCopyId={handleCopyId}
+                        handleDeleteProject={handleDeleteProject}
+                        setIsProjectMenuOpen={setIsProjectMenuOpen}
+                      />
+                    ))}
                   </div>
                 </div>
               )}

@@ -2,8 +2,9 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Save, Play, Loader2, ChevronRight, Database, X, AppWindow } from "lucide-react"
+import { Save, Play, Loader2, ChevronRight, Database, X, AppWindow, Crop, Check, RotateCcw } from "lucide-react"
 import * as React from "react"
+import { motion, AnimatePresence } from "framer-motion"
 import { FileSidebar } from "./file-sidebar"
 import { useUser } from "@clerk/nextjs"
 import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
@@ -21,9 +22,9 @@ const Editor = dynamic(
 )
 
 interface EditorPaneProps {
-  selectedFile: { path: string; content: string } | null
+  selectedFile: { path: string; content: string; imageData?: string } | null
   editedContent: string
-  setEditedContent: (content: string) => void
+  setEditedContent: (content: string, imageData?: string) => void
   isEditorFocused: boolean
   setIsEditorFocused: (focused: boolean) => void
   isDirty: boolean
@@ -31,8 +32,8 @@ interface EditorPaneProps {
   scrollRef: React.RefObject<HTMLDivElement | null>
   monacoRef: React.RefObject<any>
   editorOptions: any
-  files: Array<{ path: string; content: string; language: string; type?: string; isLocked?: boolean }>
-  setSelectedFile: (file: { path: string; content: string; language: string } | null) => void
+  files: Array<{ path: string; content: string; imageData?: string; language: string; type?: string; isLocked?: boolean }>
+  setSelectedFile: (file: { path: string; content: string; imageData?: string; language: string } | null) => void
   projectId: string
   fetchFiles: () => void
   isSplitScreen?: boolean
@@ -72,6 +73,13 @@ const getLanguage = (filePath: string): string => {
       return "sql"
     case "env":
       return "properties"
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "svg":
+    case "webp":
+      return "image"
     default:
       return "html"
   }
@@ -91,6 +99,201 @@ const maskEnv = (content: string): string => {
       return key + maskedValue
     })
     .join("\n")
+}
+
+function ImageEditor({
+  src,
+  onSave,
+  fileName,
+}: {
+  src: string
+  onSave: (newContent: string, newImageData?: string) => void
+  fileName: string
+}) {
+  const [isCropping, setIsCropping] = React.useState(false)
+  const [crop, setCrop] = React.useState({ x: 10, y: 10, width: 80, height: 80 }) // in percentage
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const imageRef = React.useRef<HTMLImageElement>(null)
+
+  const handleCrop = () => {
+    if (!imageRef.current) return
+
+    const canvas = document.createElement("canvas")
+    const img = imageRef.current
+    const scaleX = img.naturalWidth / img.width
+    const scaleY = img.naturalHeight / img.height
+
+    canvas.width = (crop.width / 100) * img.width * scaleX
+    canvas.height = (crop.height / 100) * img.height * scaleY
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    ctx.drawImage(
+      img,
+      (crop.x / 100) * img.width * scaleX,
+      (crop.y / 100) * img.height * scaleY,
+      (crop.width / 100) * img.width * scaleX,
+      (crop.height / 100) * img.height * scaleY,
+      0,
+      0,
+      canvas.width,
+      canvas.height,
+    )
+
+    const croppedBase64 = canvas.toDataURL("image/jpeg", 0.8)
+    onSave("", croppedBase64)
+    setIsCropping(false)
+  }
+
+  return (
+    <div className="h-full w-full flex flex-col bg-[#fafafa] overflow-hidden">
+      {/* Tool Bar */}
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+        <div className="flex flex-col">
+          <span className="text-sm font-medium text-black">{fileName}</span>
+          <span className="text-xs text-gray-400 font-mono">Image Preview</span>
+        </div>
+        <div className="flex items-center gap-3">
+          {isCropping ? (
+            <>
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={() => setIsCropping(false)}
+                className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full transition-all"
+              >
+                Cancel
+              </motion.button>
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleCrop}
+                className="flex items-center gap-2 px-6 py-2 text-xs font-medium text-white bg-black rounded-full shadow-lg shadow-black/10 transition-all hover:bg-zinc-800"
+              >
+                <Check className="w-3.5 h-3.5" />
+                Apply Crop
+              </motion.button>
+            </>
+          ) : (
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={() => setIsCropping(true)}
+              className="flex items-center gap-2 px-6 py-2 text-xs font-medium text-white bg-[#0070f3] rounded-full shadow-lg shadow-[#0070f3]/20 transition-all hover:bg-[#0061d5]"
+            >
+              <Crop className="w-3.5 h-3.5" />
+              Enter Crop Mode
+            </motion.button>
+          )}
+        </div>
+      </div>
+
+      {/* Image Container */}
+      <div className="flex-1 relative flex items-center justify-center p-12 overflow-auto">
+        <div className="relative group max-w-full max-h-full transition-all duration-500 hover:shadow-2xl rounded-xl overflow-hidden border border-black/5 bg-white p-2">
+          {/* Main Image */}
+          <img
+            ref={imageRef}
+            src={src}
+            alt={fileName}
+            className={cn("max-w-full max-h-full object-contain pointer-events-none rounded-lg", isCropping && "opacity-40")}
+          />
+
+          {/* Crop Overlay */}
+          <AnimatePresence>
+            {isCropping && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 cursor-crosshair z-10 p-2"
+                onMouseDown={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect()
+                  const startX = ((e.clientX - rect.left) / rect.width) * 100
+                  const startY = ((e.clientY - rect.top) / rect.height) * 100
+
+                  const onMouseMove = (moveEvent: MouseEvent) => {
+                    const currentX = ((moveEvent.clientX - rect.left) / rect.width) * 100
+                    const currentY = ((moveEvent.clientY - rect.top) / rect.height) * 100
+
+                    setCrop({
+                      x: Math.min(startX, currentX),
+                      y: Math.min(startY, currentY),
+                      width: Math.abs(currentX - startX),
+                      height: Math.abs(currentY - startY),
+                    })
+                  }
+
+                  const onMouseUp = () => {
+                    window.removeEventListener("mousemove", onMouseMove)
+                    window.removeEventListener("mouseup", onMouseUp)
+                  }
+
+                  window.addEventListener("mousemove", onMouseMove)
+                  window.addEventListener("mouseup", onMouseUp)
+                }}
+              >
+                {/* Crop Box Area */}
+                <motion.div
+                  className="absolute border-2 border-[#0070f3] shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] z-20 overflow-hidden"
+                  style={{
+                    left: `${crop.x}%`,
+                    top: `${crop.y}%`,
+                    width: `${crop.width}%`,
+                    height: `${crop.height}%`,
+                    borderRadius: "4px",
+                  }}
+                >
+                  {/* The visible part of the image */}
+                  <div className="absolute inset-0 overflow-hidden">
+                    <img
+                      src={src}
+                      alt="Crop selection"
+                      className="absolute max-w-none rounded-lg"
+                      style={{
+                        width: `${10000 / crop.width}%`,
+                        height: `${10000 / crop.height}%`,
+                        left: `${-crop.x * (100 / crop.width)}%`,
+                        top: `${-crop.y * (100 / crop.height)}%`,
+                        objectFit: "contain",
+                      }}
+                    />
+                  </div>
+                  
+                  {/* Resizable handles could be added here for even better UI */}
+                  <div className="absolute inset-0 border border-white/20 pointer-events-none" />
+                </motion.div>
+
+                {/* Grid Lines for crop box */}
+                <div 
+                  className="absolute pointer-events-none z-30 flex flex-col justify-between"
+                  style={{
+                    left: `${crop.x}%`,
+                    top: `${crop.y}%`,
+                    width: `${crop.width}%`,
+                    height: `${crop.height}%`,
+                  }}
+                >
+                  <div className="h-full w-full grid grid-cols-3 grid-rows-3 opacity-30">
+                    {[...Array(8)].map((_, i) => (
+                      <div key={i} className="border border-white/40 border-dashed" />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-black/80 text-white text-[10px] px-3 py-1 rounded-full backdrop-blur-md shadow-lg pointer-events-none">
+                  Drag to select area to crop
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function EditorPane({
@@ -409,53 +612,61 @@ export function EditorPane({
 
           {/* Editor */}
           <div ref={scrollRef} className="flex-1 overflow-hidden">
-            <Editor
-              key={selectedFile.path}
-              height="100%"
-              language={language}
-              value={displayContent}
-              onMount={(editor, monaco) => {
-                monacoRef.current = editor
-                           // Disable TypeScript/JavaScript validation to remove red squiggly lines
-                if (monaco.languages.typescript) {
-                  const diagnosticOptions = {
-                    noSemanticValidation: true,
-                    noSyntaxValidation: true,
-                  };
-                  monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions);
-                  monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions);
-                  
-                  // Configure JSX/TSX support
-                  monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                    target: monaco.languages.typescript.ScriptTarget.Latest,
-                    allowNonTsExtensions: true,
-                    moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                    module: monaco.languages.typescript.ModuleKind.CommonJS,
-                    noEmit: true,
-                    esModuleInterop: true,
-                    jsx: monaco.languages.typescript.JsxEmit.React,
-                    reactNamespace: 'React',
-                    allowJs: true,
-                    typeRoots: ["node_modules/@types"]
-                  });
-                }
+            {language === "image" ? (
+              <ImageEditor
+                src={selectedFile.imageData || selectedFile.content}
+                fileName={selectedFile.path.split("/").pop() || "Image"}
+                onSave={(newContent, newImageData) => {
+                  setEditedContent(newContent, newImageData)
+                  // Trigger save with new data
+                  handleSave()
+                }}
+              />
+            ) : (
+              <Editor
+                key={selectedFile.path}
+                height="100%"
+                language={language}
+                value={displayContent}
+                onMount={(editor, monaco) => {
+                  monacoRef.current = editor
+                  // Disable TypeScript/JavaScript validation to remove red squiggly lines
+                  if (monaco.languages.typescript) {
+                    const diagnosticOptions = {
+                      noSemanticValidation: true,
+                      noSyntaxValidation: true,
+                    }
+                    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions)
+                    monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions)
 
-                editor.onDidFocusEditorWidget(() =>
-                  setIsEditorFocused(true)
-                )
-                editor.onDidBlurEditorWidget(() =>
-                  setIsEditorFocused(false)
-                )
-              }}
-              onChange={(value) => setEditedContent(value || "")}
-              options={{
-                ...editorOptions,
-                minimap: { enabled: false },
-                automaticLayout: true,
-                readOnly: isReadOnly,
-                showUnused: false, // Disable the "transparent" fading for unused variables
-              }}
-            />
+                    // Configure JSX/TSX support
+                    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
+                      target: monaco.languages.typescript.ScriptTarget.Latest,
+                      allowNonTsExtensions: true,
+                      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+                      module: monaco.languages.typescript.ModuleKind.CommonJS,
+                      noEmit: true,
+                      esModuleInterop: true,
+                      jsx: monaco.languages.typescript.JsxEmit.React,
+                      reactNamespace: "React",
+                      allowJs: true,
+                      typeRoots: ["node_modules/@types"],
+                    })
+                  }
+
+                  editor.onDidFocusEditorWidget(() => setIsEditorFocused(true))
+                  editor.onDidBlurEditorWidget(() => setIsEditorFocused(false))
+                }}
+                onChange={(value) => setEditedContent(value || "")}
+                options={{
+                  ...editorOptions,
+                  minimap: { enabled: false },
+                  automaticLayout: true,
+                  readOnly: isReadOnly,
+                  showUnused: false, // Disable the "transparent" fading for unused variables
+                }}
+              />
+            )}
           </div>
         </>
       ) : (

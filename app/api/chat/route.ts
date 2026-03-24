@@ -31,10 +31,16 @@ const CODE_KEYWORDS = [
   "develop",
   "generate code",
   "write code",
+  "install",
+  "npm",
+  "package",
+  "dependency",
 ]
 
 const ZAI_MODELS = {
   "glm-4.7-flash": "glm-4.7-flash",
+  "glm-4.6v": "glm-4.6v",
+  "glm-5-turbo": "glm-5-turbo",
   "glm-4.5-flash": "glm-4.5-flash",
 }
 
@@ -326,10 +332,10 @@ export async function POST(request: Request) {
   }
 
   if (saveOnly) {
-    return new Response(JSON.stringify({ 
-      success: true, 
+    return new Response(JSON.stringify({
+      success: true,
       messageId: userMessageId,
-      sessionId 
+      sessionId
     }), { status: 200 })
   }
 
@@ -692,7 +698,7 @@ When editing an email template, focus ONLY on the template content.
       discussMode,
       isAutomated,
       isCodeRequest,
-      selectedModel,
+      selectedModel as string,
       messageType as any,
       systemPrompt,
       (text: string) => executeActionTags(text, userId),
@@ -707,7 +713,7 @@ When editing an email template, focus ONLY on the template content.
       discussMode,
       isAutomated,
       isCodeRequest,
-      selectedModel,
+      selectedModel as string,
       messageType as any,
       systemPrompt,
       (text: string) => executeActionTags(text, userId),
@@ -1291,6 +1297,7 @@ async function handleGeminiRequest(
               cost,
               userMessageId,
               sessionId,
+              userId
             )
           } else {
             await saveAssistantMessage(
@@ -1308,6 +1315,7 @@ async function handleGeminiRequest(
               cost,
               userMessageId,
               sessionId,
+              userId
             )
           }
         } catch (error) {
@@ -1569,6 +1577,7 @@ async function handleOpenRouterRequest(
               cost,
               userMessageId,
               sessionId,
+              userId
             )
           } else {
             await saveAssistantMessage(
@@ -1586,6 +1595,7 @@ async function handleOpenRouterRequest(
               cost,
               userMessageId,
               sessionId,
+              userId
             )
           }
         } catch (error) {
@@ -1838,6 +1848,7 @@ async function handleZaiRequest(
               cost,
               userMessageId,
               sessionId,
+              userId
             )
           } else {
             await saveAssistantMessage(
@@ -1855,6 +1866,7 @@ async function handleZaiRequest(
               cost,
               userMessageId,
               sessionId,
+              userId
             )
           }
         } catch (error) {
@@ -1934,6 +1946,7 @@ async function saveAssistantMessage(
   cost: number | null = null,
   userMessageId?: string,
   sessionId = "main",
+  userId?: string,
 ) {
   try {
     console.log("[Save] Extracting code blocks from response...")
@@ -2056,7 +2069,8 @@ async function saveAssistantMessage(
       await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
         type: 'MSG_AI_COMPLETE',
         finalMessage: newMessage,
-        projectId
+        projectId,
+        senderId: userId
       })
     } catch (err) {
       console.warn("[Pusher] Failed to broadcast message in saveAssistantMessage:", err)
@@ -2087,6 +2101,7 @@ async function saveAssistantMessageWithParallelGeneration(
   cost: number | null = null,
   userMessageId?: string,
   sessionId = "main",
+  userId?: string,
 ) {
   try {
     console.log("[ParallelGen] Extracting code blocks from response...")
@@ -2216,7 +2231,8 @@ async function saveAssistantMessageWithParallelGeneration(
       await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
         type: 'MSG_AI_COMPLETE',
         finalMessage: newMessage,
-        projectId
+        projectId,
+        senderId: userId
       })
     } catch (err) {
       console.warn("[Pusher] Failed to broadcast message in parallel gen:", err)

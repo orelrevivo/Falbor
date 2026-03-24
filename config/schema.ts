@@ -132,6 +132,7 @@ export const files = pgTable("files", {
   parentPath: text("parent_path"),
   additions: integer("additions").default(0).notNull(),
   deletions: integer("deletions").default(0).notNull(),
+  imageData: text("image_data"),
   metadata: jsonb("metadata").$type<{
     size?: number
     lastModifiedBy?: string
@@ -887,7 +888,5 @@ export const projectAnalyticsEvents = pgTable("project_analytics_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
-export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
-export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert
 export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
 export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert

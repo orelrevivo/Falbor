@@ -19,7 +19,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { HomeTabs } from "@/components/home/home-tabs";
 import { cn } from "@/lib/utils";
 
 interface Project {
@@ -51,12 +50,11 @@ export function ChatNavbar({
   const selectedProject = projects.find((p) => p.id === selectedProjectId);
 
   return (
-    <div className="h-20 border-b bg-white flex items-center justify-between px-8 z-30 shrink-0">
+    <div className="h-20 border-b bg-white flex items-center justify-between px-4 z-30 shrink-0">
       <div className="flex items-center gap-6">
         <div className="flex flex-col">
           <div className="flex items-center gap-2">
-            <div className="w-2.5 h-2.5 rounded-full bg-teal-500" />
-            <h1 className="font-black text-lg tracking-tight uppercase">Security Agent</h1>
+            <h1 className="text-md">Security Agent</h1>
           </div>
         </div>
 
@@ -69,8 +67,7 @@ export function ChatNavbar({
             <PopoverTrigger asChild>
               <Button
                 variant="outline"
-                className="h-10 px-4 rounded-xl border-zinc-200 bg-zinc-50 hover:bg-zinc-100 font-bold text-xs gap-2 min-w-[180px] justify-between"
-              >
+                className="h-7 px-4 cursor-pointer rounded-sm bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 shadow-xs text-[12px] font-medium transition-all flex items-center gap-2">
                 <div className="flex items-center gap-2 truncate">
                   <LayoutDashboard className="w-4 h-4 text-gray-800" />
                   <span className="truncate text-gray-800">
@@ -80,20 +77,21 @@ export function ChatNavbar({
                 <ChevronDown className="w-4 h-4 opacity-50" />
               </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[300px] p-0 rounded-2xl border-zinc-200 shadow-2xl overflow-hidden" align="start">
+            <PopoverContent className="w-[300px] p-0 rounded-md border-zinc-200 shadow-xs overflow-hidden" align="start">
               <Command className="rounded-2xl">
                 <CommandInput placeholder="Search projects..." className="h-10 text-xs" />
                 <CommandList className="max-h-[200px] no-scrollbar">
                   <CommandEmpty className="py-6 text-xs text-zinc-500">No projects found.</CommandEmpty>
-                  <CommandGroup className="p-2">
+                  <CommandGroup className="p-1">
                     {projects.map((project) => (
                       <CommandItem
                         key={project.id}
+                        value={project.id}
                         onSelect={() => {
                           onProjectSelect(project.id);
                           setIsProjectPopoverOpen(false);
                         }}
-                        className="rounded-xl flex items-center py-2.5 px-3 cursor-pointer"
+                        className="rounded-sm BackgroundStyle flex items-center py-2.5 px-3 cursor-pointer"
                       >
                         <LayoutDashboard className="w-3.5 h-3.5 mr-2 text-zinc-400" />
                         <span className={cn(
@@ -110,23 +108,44 @@ export function ChatNavbar({
             </PopoverContent>
           </Popover>
         </div>
-
-        <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-100 px-3 py-1.5 rounded-xl ml-2">
-          <span className="text-[9px] font-black text-zinc-400 uppercase tracking-wider">Engine:</span>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-wider">Engine:</span>
           <Select value={selectedModel} onValueChange={onModelSelect}>
-            <SelectTrigger className="w-[110px] h-5 text-[10px] p-0 bg-transparent border-none shadow-none focus:ring-0 font-black uppercase">
+            <SelectTrigger className="h-72 px-4 cursor-pointer rounded-sm bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 shadow-xs text-[12px] font-medium transition-all flex items-center gap-2">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="glm-4.7-flash" className="text-xs">GLM-4.7 Flash</SelectItem>
-              <SelectItem value="glm-4.5-flash" className="text-xs">GLM-4.5 Flash</SelectItem>
+            <SelectContent className="p-1 rounded-md border-zinc-200 shadow-xs overflow-hidden">
+              {/* ZAI Models */}
+              <SelectItem value="glm-4.7-flash" className="text-xs BackgroundStyle rounded-sm">GLM-4.7 Flash</SelectItem>
+              <SelectItem value="glm-4.5-flash" className="text-xs BackgroundStyle rounded-sm">GLM-4.5 Flash</SelectItem>
+
+              {/* OpenAI Models */}
+              <SelectItem value="gpt-5.4" className="text-xs BackgroundStyle rounded-sm">GPT-5.4</SelectItem>
+              <SelectItem value="gpt-5.4-pro" className="text-xs BackgroundStyle rounded-sm">GPT-5.4 Pro</SelectItem>
+              <SelectItem value="gpt-5.1-codex" className="text-xs BackgroundStyle rounded-sm">GPT-5.1 Codex</SelectItem>
+
+              {/* Anthropic Models */}
+              <SelectItem value="claude-3.5-sonnet" className="text-xs BackgroundStyle rounded-sm">Claude 3.5 Sonnet</SelectItem>
+              <SelectItem value="claude-3.5-haiku" className="text-xs BackgroundStyle rounded-sm">Claude 3.5 Haiku</SelectItem>
+              <SelectItem value="claude-sonnet-4.6" className="text-xs BackgroundStyle rounded-sm">Claude 4.6 Sonnet</SelectItem>
+
+              {/* Google Models */}
+              <SelectItem value="gemini-2.0-flash" className="text-xs BackgroundStyle rounded-sm">Gemini 2.0 Flash</SelectItem>
+
+              {/* X.AI Models */}
+              <SelectItem value="grok-4" className="text-xs BackgroundStyle rounded-sm">Grok-4</SelectItem>
+              <SelectItem value="grok-3-mini" className="text-xs BackgroundStyle rounded-sm">Grok-3 Mini</SelectItem>
+
+              {/* Specialized Models */}
+              <SelectItem value="qwen-3.5-35b" className="text-xs BackgroundStyle rounded-sm">Qwen 3.5</SelectItem>
+              <SelectItem value="nemotron-3-super-120b" className="text-xs BackgroundStyle rounded-sm">Nemotron-3 (Free)</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
       <div className="flex items-center gap-4 top-4 relative">
-        <HomeTabs />
+
       </div>
     </div>
   );

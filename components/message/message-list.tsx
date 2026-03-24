@@ -164,6 +164,7 @@ function parseAIResponse(content: string) {
     compileMessengerFindings: /<CompileMessengerFindings>([\s\S]*?)<\/CompileMessengerFindings>/gi,
     scan: /<Scan>([\s\S]*?)<\/Scan>/gi,
     workSummary: /<WorkSummary>([\s\S]*?)<\/WorkSummary>/gi,
+    checkPackages: /<CheckPackages\s*\/?>/gi,
   }
 
   // Tags that should NEVER bleed into the visible text content
@@ -175,7 +176,7 @@ function parseAIResponse(content: string) {
     "DiscoverGmailTools", "TestGmailTools", "CompileGmailFindings",
     "DiscoverDiscordTools", "TestDiscordTools", "CompileDiscordFindings",
     "DiscoverMessengerTools", "TestMessengerTools", "CompileMessengerFindings",
-    "Scan", "WorkSummary",
+    "Scan", "WorkSummary", "CheckPackages",
   ]
 
   let processedContent = content
@@ -267,8 +268,10 @@ function parseAIResponse(content: string) {
         parsedContent = { query: match[1], results: match[2].trim() }
       } else if (type === "customAction") {
         parsedContent = { name: match[1], content: match[2].trim() }
+      } else if (type === "checkPackages") {
+        parsedContent = true
       } else {
-        parsedContent = match[1].trim()
+        parsedContent = match[1]?.trim() ?? ""
       }
       matches.push({ type, start: match.index!, fullMatch: match[0], content: parsedContent })
     }
@@ -324,7 +327,7 @@ function parseAIResponse(content: string) {
       "thinking", "commentary", "userMessage", "planning", "search",
       "fileChecks", "files", "testing", "fileSearch", "reviewedWork",
       "finalReasoning", "finalResponsive", "mobileReview", "deepConclusion",
-      "internalThought", "customAction", "tasks"
+      "internalThought", "customAction", "tasks", "checkPackages"
     ]
 
     let firstOpenTagMatch: { type: string; start: number; content: string } | null = null
@@ -1758,6 +1761,8 @@ function AIMessageContent({
         return "Architectural Decisions"
       case "finalResponsive":
         return "Multi-Device Optimization"
+      case "checkPackages":
+        return "Dependency Sync"
       default:
         return type.charAt(0).toUpperCase() + type.slice(1)
     }
@@ -1819,6 +1824,8 @@ function AIMessageContent({
         return Smartphone
       case "customAction":
         return Zap
+      case "checkPackages":
+        return ClipboardCheck
       case "workSummary":
         return Edit
       default:
@@ -2097,6 +2104,61 @@ function AIMessageContent({
           </div>
         )
       }
+      case "checkPackages":
+        return (
+          <div className="mt-4 mb-6">
+            <div className="bg-blue-50/50 rounded-xl border border-blue-100 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="w-5 h-5 text-blue-600" />
+                <h4 className="text-sm font-bold text-blue-900 uppercase tracking-wide">Missing Packages Detector</h4>
+              </div>
+              <p className="text-xs text-blue-800 leading-relaxed">
+                Scan all generated code for required external dependencies (libraries, SDKs, UI kits) and install them automatically.
+              </p>
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 px-4 shadow-sm"
+                onClick={() => {
+                  const importsFound = new Set<string>();
+                  codeBlocks.forEach(block => {
+                    const importRegex = /(?:import\s+(?:[\w\s{},*]+)\s+from\s+['"]([^'"]+)['"])|(?:import\(['"]([^'"]+)['"]\))/g;
+                    let m;
+                    while ((m = importRegex.exec(block.code)) !== null) {
+                      const pkg = m[1] || m[2];
+                      if (!pkg.startsWith(".") && !pkg.startsWith("/") && !pkg.startsWith("@/") && !["path", "fs", "os", "http", "https"].includes(pkg)) {
+                        // Extract base package name (e.g., @supabase/supabase-js -> @supabase/supabase-js or lodash/chunk -> lodash)
+                        let basePkg = pkg;
+                        if (pkg.startsWith("@")) {
+                          const parts = pkg.split("/");
+                          if (parts.length >= 2) basePkg = `${parts[0]}/${parts[1]}`;
+                        } else {
+                          basePkg = pkg.split("/")[0];
+                        }
+                        
+                        // Ignore common base packages that are likely already present
+                        const commonPks = ["react", "react-dom", "lucide-react", "framer-motion", "clsx", "tailwind-merge", "react-router-dom", "next"];
+                        if (!commonPks.includes(basePkg)) {
+                           importsFound.add(basePkg);
+                        }
+                      }
+                    }
+                  });
+
+                  if (importsFound.size > 0) {
+                    const command = `npm i ${Array.from(importsFound).join(" ")}`;
+                    window.dispatchEvent(new CustomEvent('terminal-run-command', { detail: { command } }));
+                  } else {
+                    // Alert or toast that no missing packages were found
+                    console.log("No missing packages detected.");
+                  }
+                }}
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span className="font-bold text-xs">CHECK PACKAGES</span>
+              </Button>
+            </div>
+          </div>
+        )
       default:
         return null
     }
