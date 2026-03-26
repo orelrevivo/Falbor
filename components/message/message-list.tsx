@@ -43,7 +43,7 @@ import ReactMarkdown from "react-markdown"
 import { TextShimmer } from "@/components/ui/text-shimmer"
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter"
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import remarkGfm from "remark-gfm"
 import { SandpackProvider, SandpackPreview } from "@codesandbox/sandpack-react"
@@ -783,24 +783,24 @@ export function MessageList({
           while (i < messages.length) {
             const message = messages[i]
             const taskMeta = message.metadata as any
-            
+
             // Check if this message starts a task group
             if (taskMeta?.taskGroupId && taskMeta?.taskIndex && taskMeta?.totalTasks) {
               const groupId = taskMeta.taskGroupId
               const taskIndex = taskMeta.taskIndex
               const totalTasks = taskMeta.totalTasks
-              
+
               // Collect this user message and its AI response (next message)
               const groupMessages: Message[] = [message]
               if (i + 1 < messages.length && messages[i + 1].role === "assistant") {
                 groupMessages.push(messages[i + 1])
                 i++ // skip the assistant message in the outer loop
               }
-              
-              const isLastAssistantStreaming = groupMessages.length > 1 && 
-                groupMessages[groupMessages.length - 1].id.startsWith("temp-") && 
+
+              const isLastAssistantStreaming = groupMessages.length > 1 &&
+                groupMessages[groupMessages.length - 1].id.startsWith("temp-") &&
                 (i === messages.length - 1 || i + 1 === messages.length)
-              
+
               elements.push(
                 <TaskChatGroup
                   key={`task-${groupId}-${taskIndex}`}
@@ -1559,12 +1559,12 @@ function WorkSummaryView({
   activeMessageId?: string | null
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
-  
+
   const summaryData = content || { summary: "", files: [] }
   const files = summaryData.files || []
   const summaryText = summaryData.summary || ""
   const fileCount = files.length
-  
+
   return (
     <div className="flex flex-col gap-2">
       <Button
@@ -1687,6 +1687,34 @@ function AIMessageContent({
   const { parts, codeBlocks, files, versionName: parsedVersionName } = parseAIResponse(message.content)
   const versionName = message.versionName || parsedVersionName || (index ? `Version ${Math.floor(index / 2) + 1}` : null)
 
+  // Auto-trigger terminal commands from <CustomAction>
+  const triggeredActions = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    parts.forEach((p, idx) => {
+      if (p.type === 'customAction') {
+        const action = p.content;
+        const actionId = `action-${message.id}-${idx}-${action.name}-${action.content}`;
+
+        if (!triggeredActions.current.has(actionId)) {
+          const isGmail = action.name === "Open in Gmail";
+          const isScanProvider = action.name === "Scan Provider";
+
+          if (!isGmail && !isScanProvider) {
+            console.log(`[Auto-Trigger] Running terminal command: ${action.content}`);
+            window.dispatchEvent(new CustomEvent('terminal-run-command', { 
+              detail: { command: action.content } 
+            }));
+            triggeredActions.current.add(actionId);
+          } else if (isScanProvider) {
+             // We don't auto-trigger scan provider as it's a message send, 
+             // but user could want it. For now, let's keep it manual or user requested.
+          }
+        }
+      }
+    });
+  }, [parts, message.id]);
+
   const markdownComponents = {
     strong: ({ children }: { children?: React.ReactNode }) => (
       <strong className="font-bold text-black bg-[#e4e4e4] px-1.5 py-1 rounded text-sm">{children}</strong>
@@ -1702,17 +1730,8 @@ function AIMessageContent({
       <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
     ),
     li: ({ children }: { children?: React.ReactNode }) => <li className="text-sm leading-relaxed">{children}</li>,
-    code: ({ children, className }: { children?: React.ReactNode; className?: string }) => {
-      // If it has a language class but is being rendered as <code>, it's likely a block.
-      // We hide blocks in the chat per user request.
-      if (className?.startsWith("language-")) {
-        return null
-      }
-      return (
-        <code className={cn("bg-gray-100 px-1 py-0.5 rounded text-xs font-mono", className)}>{children}</code>
-      )
-    },
-    pre: () => null, // Hide all code block containers in the chat
+    pre: () => null, 
+    code: () => null, 
   }
 
   const getTitle = (type: string, content: any) => {
@@ -2134,11 +2153,11 @@ function AIMessageContent({
                         } else {
                           basePkg = pkg.split("/")[0];
                         }
-                        
+
                         // Ignore common base packages that are likely already present
                         const commonPks = ["react", "react-dom", "lucide-react", "framer-motion", "clsx", "tailwind-merge", "react-router-dom", "next"];
                         if (!commonPks.includes(basePkg)) {
-                           importsFound.add(basePkg);
+                          importsFound.add(basePkg);
                         }
                       }
                     }
@@ -2257,7 +2276,7 @@ function AIMessageContent({
             const sectionKey = `section-${collapsibleIndex}`;
             const isLastPart = idx === parts.length - 1;
             const isActive = isStreaming && isLastPart;
-            const isOpen = expandedSections[sectionKey] ?? false; 
+            const isOpen = expandedSections[sectionKey] ?? false;
             const title = p.type === "customAction" ? p.content.name : getTitle(p.type, p.content);
             const Icon = getIcon(p.type);
 

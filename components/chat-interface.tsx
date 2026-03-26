@@ -27,20 +27,13 @@ interface ChatInterfaceProps {
   initialUserMessage?: string
   userProfile?: UserProfile | null
 }
-function isCodeGenerationRequest(content: string): boolean {
-  const lowerContent = content.toLowerCase()
-  const codeKeywords = [
-    "build", "create", "make", "develop", "generate", "code", "app",
-    "website", "component", "page", "design", "implement", "add", "update",
-    "fix", "change", "modify", "refactor", "style", "layout", "form",
-    "button", "navbar", "footer", "capture", "duplicate"
-  ]
-  return codeKeywords.some((keyword) => lowerContent.includes(keyword))
-}
+// Code preview panel is always open — no keyword detection needed
 
 /** Extract file blocks from streaming AI content in real-time */
-function extractFilesFromStreamingContent(content: string): Array<{ path: string; content: string; language: string }> {
+function extractFilesFromStreamingContent(content: string): { files: Array<{ path: string; content: string; language: string }>, activeFile: string | null } {
   const files: Array<{ path: string; content: string; language: string }> = []
+  let activeFile: string | null = null
+
   // Match completed code blocks with file attributes
   const completedBlockRegex = /```(\w+)?\s*file="([^"]+)"\s*\n([\s\S]*?)```/g
   let match
@@ -54,8 +47,8 @@ function extractFilesFromStreamingContent(content: string): Array<{ path: string
   // Also detect the currently-streaming (unclosed) code block
   const unfinishedMatch = content.match(/```(\w+)?\s*file="([^"]+)"\s*\n([\s\S]*)$/)
   if (unfinishedMatch) {
-    // Only add if it doesn't already exist in completed blocks
     const path = unfinishedMatch[2]
+    activeFile = path
     if (!files.some(f => f.path === path)) {
       files.push({
         language: unfinishedMatch[1] || "typescript",
@@ -64,19 +57,21 @@ function extractFilesFromStreamingContent(content: string): Array<{ path: string
       })
     }
   }
-  return files
+  return { files, activeFile }
 }
 
 export function ChatInterface({ project, initialMessages, initialUserMessage, userProfile }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<StrictMessage[]>([])
   const [windowWidth, setWindowWidth] = useState(0)
   const [isResizingState, setIsResizingState] = useState(false)
+  const rafRef = useRef<number | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
-  const [isCodeGenerating, setIsCodeGenerating] = useState(false)
+  const [isCodeGenerating, setIsCodeGenerating] = useState(false) // kept for post-generation sync only
   const [extractedFiles, setExtractedFiles] = useState<Array<{ path: string; content: string; language: string }>>([])
   const [previewError, setPreviewError] = useState<{ message: string; file?: string; line?: string } | null>(null)
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+  const [isPreviewOpen, setIsPreviewOpen] = useState(true) // always open
   const [editingMessage, setEditingMessage] = useState<{ id: string; content: string } | null>(null)
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const {
     activeTab: workbenchTab,
     setActiveTab: setWorkbenchTab,
@@ -143,7 +138,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
             const data = await res.json()
             const hasFiles = data.files && data.files.length > 0
             setHasProjectFiles(hasFiles)
-            if (hasFiles) setIsPreviewOpen(true)
+            setIsPreviewOpen(true)
           }
         } catch (err) {
           console.error("[ChatInterface] Failed to check project files:", err)
@@ -212,12 +207,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
     setIsStreaming(true)
     isStreamingRef.current = true
-    const isCaptureUrl = userContent.toLowerCase().includes("capture from url:")
-    // Always open the code tab when generating code
-    if (isCaptureUrl || isCodeGenerationRequest(userContent)) {
-      setIsCodeGenerating(true)
-      setIsPreviewOpen(true)
-    }
+    // Always open code preview and set code generating
+    setIsCodeGenerating(true)
+    setIsPreviewOpen(true)
     const tempId = `temp-auto-${Date.now()}`
     const tempAssistant: StrictMessage = {
       id: tempId,
@@ -282,14 +274,17 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
               }))
 
               // Live file extraction: parse streaming content for file blocks
-              const liveFiles = extractFilesFromStreamingContent(accumulated)
+              const { files: liveFiles, activeFile } = extractFilesFromStreamingContent(accumulated)
               if (liveFiles.length > 0) {
                 setExtractedFiles(liveFiles)
-                // Auto-open code preview when first file appears
-                if (!isPreviewOpen) {
-                  setIsPreviewOpen(true)
-                  setIsCodeGenerating(true)
+                if (activeFile) {
+                    setSelectedFilePath(activeFile)
+                    // Auto-switch to Code tab when generating code
+                    setWorkbenchTab("code")
                 }
+                // Auto-open code preview when first file appears
+                setIsPreviewOpen(true)
+                setIsCodeGenerating(true)
               }
             }
             if (data.done) {
@@ -365,10 +360,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       setIsStreaming(false)
       isStreamingRef.current = false
       abortControllerRef.current = null
-      // Keep isCodeGenerating true for a short delay to let preview load
-      setTimeout(() => {
-        setIsCodeGenerating(false)
-      }, 2500)
+      // Immediately stop code generating — preview will boot now
+      setIsCodeGenerating(false)
       // Play notification sound if enabled
       try {
         const bellEnabled = localStorage.getItem("falbor_bell_notification")
@@ -400,9 +393,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
     hasAutoTriggered.current = true
 
-    if (isCodeGenerationRequest(initialUserMessage)) {
-      setIsPreviewOpen(true)
-    }
+    setIsPreviewOpen(true)
 
     // Call directly — hasInitialized is already true so messages are loaded and rendered.
     handleAutoGenerate(initialUserMessage)
@@ -420,11 +411,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       // Mark auto-trigger as done — ChatInput is handling its own streaming,
       // so the auto-trigger effect should NOT fire a second stream.
       hasAutoTriggered.current = true
-      const isCaptureUrl = safeMessage.content.toLowerCase().includes("capture from url:")
-      if (isCaptureUrl || isCodeGenerationRequest(safeMessage.content)) {
-        setIsPreviewOpen(true)
-        setIsCodeGenerating(true)
-      }
+      setIsPreviewOpen(true)
+      setIsCodeGenerating(true)
     }
     // Also open preview when assistant message arrives with artifact
     if (safeMessage.role === "assistant" && safeMessage.hasArtifact) {
@@ -542,32 +530,81 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
 
 
-  // ─── Mouse drag for resizer ───────────────────────────────────────────────
-  const handleMouseMove = useCallback((e: MouseEvent) => {
+  // ─── Smooth mouse/touch drag for resizer ──────────────────────────────────
+  const handlePointerMove = useCallback((clientX: number) => {
     if (!isResizing.current) return
-    const newWidth = startWidth.current + (e.clientX - startX.current)
-    setLeftWidth(Math.max(200, Math.min(newWidth, window.innerWidth - 200)))
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
+    rafRef.current = requestAnimationFrame(() => {
+      const newWidth = startWidth.current + (clientX - startX.current)
+      const clamped = Math.max(280, Math.min(newWidth, window.innerWidth - 280))
+      setLeftWidth(clamped)
+      rafRef.current = null
+    })
   }, [])
 
-  const handleMouseUp = useCallback(() => {
+  const handlePointerEnd = useCallback(() => {
+    if (!isResizing.current) return
     isResizing.current = false
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
+    }
     setIsResizingState(false)
-    document.body.style.userSelect = "auto"
-    document.removeEventListener("mousemove", handleMouseMove)
-    document.removeEventListener("mouseup", handleMouseUp)
-  }, [handleMouseMove])
+    document.body.style.userSelect = ""
+    document.body.style.cursor = ""
+    document.removeEventListener("mousemove", handleMouseMoveRef.current)
+    document.removeEventListener("mouseup", handleMouseUpRef.current)
+    document.removeEventListener("touchmove", handleTouchMoveRef.current)
+    document.removeEventListener("touchend", handleTouchEndRef.current)
+    document.removeEventListener("touchcancel", handleTouchEndRef.current)
+  }, [])
+
+  // Stable refs so event listeners always reference the latest callbacks
+  const handleMouseMoveRef = useRef((e: MouseEvent) => handlePointerMove(e.clientX))
+  const handleMouseUpRef = useRef(() => handlePointerEnd())
+  const handleTouchMoveRef = useRef((e: TouchEvent) => {
+    if (e.touches.length > 0) handlePointerMove(e.touches[0].clientX)
+  })
+  const handleTouchEndRef = useRef(() => handlePointerEnd())
+
+  // Keep refs up to date
+  useEffect(() => {
+    handleMouseMoveRef.current = (e: MouseEvent) => handlePointerMove(e.clientX)
+    handleMouseUpRef.current = () => handlePointerEnd()
+    handleTouchMoveRef.current = (e: TouchEvent) => {
+      if (e.touches.length > 0) handlePointerMove(e.touches[0].clientX)
+    }
+    handleTouchEndRef.current = () => handlePointerEnd()
+  }, [handlePointerMove, handlePointerEnd])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      e.preventDefault()
       isResizing.current = true
       setIsResizingState(true)
       startX.current = e.clientX
       startWidth.current = leftWidth
       document.body.style.userSelect = "none"
-      document.addEventListener("mousemove", handleMouseMove)
-      document.addEventListener("mouseup", handleMouseUp)
+      document.body.style.cursor = "col-resize"
+      document.addEventListener("mousemove", handleMouseMoveRef.current)
+      document.addEventListener("mouseup", handleMouseUpRef.current)
     },
-    [leftWidth, handleMouseMove, handleMouseUp]
+    [leftWidth]
+  )
+
+  const handleTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (e.touches.length !== 1) return
+      isResizing.current = true
+      setIsResizingState(true)
+      startX.current = e.touches[0].clientX
+      startWidth.current = leftWidth
+      document.body.style.userSelect = "none"
+      document.addEventListener("touchmove", handleTouchMoveRef.current, { passive: true })
+      document.addEventListener("touchend", handleTouchEndRef.current)
+      document.addEventListener("touchcancel", handleTouchEndRef.current)
+    },
+    [leftWidth]
   )
 
   const isNarrow = isPreviewOpen && leftWidth < windowWidth * 0.4
@@ -812,25 +849,36 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         />
       )}
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
+        {/* Full-screen overlay during resize — prevents iframes from stealing events */}
+        {isResizingState && (
+          <div
+            className="fixed inset-0 z-[9999]"
+            style={{ cursor: 'col-resize' }}
+          />
+        )}
+
         <div
           className={cn(
-            "flex flex-col h-full bg-background border-r transition-all duration-300 ease-in-out",
+            "flex flex-col h-full bg-background border-r",
+            !isResizingState && "transition-[width] duration-200 ease-out",
             (isPreviewOpen || isSplitScreen || workbenchTab === "database" || workbenchTab === "settings") ? "" : "flex-1",
             isSplitScreen && "hidden",
-            isNarrow && "min-w-[400px]"
+            isNarrow && "min-w-[280px]"
           )}
-          style={{ width: (isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && !isSplitScreen ? leftWidth : "100%" }}
+          style={{
+            width: (isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && !isSplitScreen ? leftWidth : "100%",
+            willChange: isResizingState ? 'width' : 'auto',
+          }}
         >
           <div
             ref={messagesContainerRef}
-            className={`flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4 ${isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"}`}
+            className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4"
           >
             <div
               className={cn(
                 "w-full",
-                !isPreviewOpen && "max-w-3xl mx-auto",
-                isResizingState ? "transition-none" : "transition-all duration-300 ease-in-out"
+                !isPreviewOpen && "max-w-3xl mx-auto"
               )}
             >
               <MessageList
@@ -874,29 +922,53 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           </div>
         </div>
 
+        {/* Resize handle — smooth, professional, with touch support */}
         {isPreviewOpen && !isSplitScreen && (
           <div
-            className="w-1 cursor-col-resize hover:bg-primary/50 transition-colors z-[60] bg-border/40"
+            className="group relative z-[60] flex items-center justify-center"
+            style={{ width: isResizingState ? 5 : 4, cursor: 'col-resize' }}
             onMouseDown={handleMouseDown}
-          />
+            onTouchStart={handleTouchStart}
+          >
+            {/* Invisible wider hit area for easier grabbing */}
+            <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
+            {/* Visible bar */}
+            <div
+              className={cn(
+                "w-[3px] h-full rounded-full transition-all duration-150",
+                isResizingState
+                  ? "bg-primary/70 shadow-[0_0_8px_rgba(var(--primary-rgb,99,102,241),0.4)]"
+                  : "bg-border/40 group-hover:bg-primary/50"
+              )}
+            />
+          </div>
         )}
 
         {(isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && (
-          <div className={cn("flex-1 overflow-hidden", isSplitScreen ? "p-0" : "")}>
+          <div
+            className={cn(
+              "flex-1 overflow-hidden",
+              isSplitScreen ? "p-0" : "",
+              !isResizingState && "transition-[width] duration-200 ease-out"
+            )}
+            style={{ willChange: isResizingState ? 'width' : 'auto' }}
+          >
             <CodePreview
               projectId={project.id}
               role={role}
-             onError={(error) => setPreviewError(error)}
+              onError={(error) => setPreviewError(error)}
               isOpen={isPreviewOpen}
               onClose={() => { if (!hasProjectFiles) setIsPreviewOpen(false) }}
               initialTab={workbenchTab}
               onTabChange={(tab) => setWorkbenchTab(tab as any)}
               filesOverride={extractedFiles.length > 0 ? extractedFiles : undefined}
+              selectedFilePath={selectedFilePath}
               isSplitScreen={isSplitScreen}
               onEnterSplit={() => setIsSplitScreen(true)}
               onExitSplit={() => setIsSplitScreen(false)}
               isTerminalOpen={isTerminalOpen}
               onSendMessage={handleSendMessage}
+              isCodeGenerating={isCodeGenerating || isStreaming}
               isHistoryView={activeMessageId !== null && messages.some(m => m.hasArtifact) && activeMessageId !== [...messages].reverse().find(m => m.hasArtifact)?.id}
             />
           </div>

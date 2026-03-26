@@ -19,6 +19,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Falbor",
   description: "Build websites with AI",
+  icons: {
+    icon: [{ url: "/icons/falbor.png", type: "image/png" }],
+  },
 }
 
 export default function RootLayout({

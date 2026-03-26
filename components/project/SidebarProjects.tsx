@@ -288,7 +288,7 @@ export default function SidebarProjects({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
-          'fixed top-[-10px] left-0 h-screen transition-all duration-300 ease-in-out z-[100] flex flex-col bg-[#FAF9F5]',
+          'fixed top-[-10px] left-0 h-screen transition-all duration-300 ease-in-out z-[100] flex flex-col bg-none',
           isAlwaysOpenPage ? 'w-[180px] transition-none' : ((isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[180px]' : 'w-[64px]')),
           className
         )}

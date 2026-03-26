@@ -45,6 +45,7 @@ interface CodePreviewProps {
   isHistoryView?: boolean
   onSendMessage?: (message: string) => void
   role?: "admin" | "editor" | "viewer"
+  selectedFilePath?: string | null
 }
 interface TerminalTab {
   id: number
@@ -339,6 +340,7 @@ export function CodePreview({
   tabValue: tabValueProp,
   isHistoryView = false,
   onSendMessage,
+  selectedFilePath,
 }: CodePreviewProps) {
   const [files, setFiles] = useState<
     Array<{ path: string; content: string; imageData?: string; language: string; type?: string; isLocked?: boolean }>
@@ -398,7 +400,7 @@ export function CodePreview({
 
   const toggleInspectorMode = () => {
     setIsInspectorMode((prev) => !prev);
-  };
+  }
 
   // Preview navigation handlers
   const handleNavigate = useCallback((url: string) => {
@@ -505,6 +507,18 @@ export function CodePreview({
     console.log("[v0] Original files:", sourceFiles.length, "Filtered files:", filtered.length)
     return filtered
   }, [filesOverride, files, isGitHubImport, projectType, isCodeGenerating, isHistoryView])
+
+  // Auto-select file when selectedFilePath prop changes (live streaming)
+  useEffect(() => {
+    if (selectedFilePath) {
+      const file = effectiveFiles.find(f => f.path === selectedFilePath);
+      if (file && file.path !== selectedFile?.path) {
+        setSelectedFile(file);
+        setEditedContent(file.content);
+        setEditedImageData(file.imageData);
+      }
+    }
+  }, [selectedFilePath, effectiveFiles, selectedFile?.path]);
   const sandpackFiles = useMemo(() => {
     if (projectType !== "react" || effectiveFiles.length === 0) return {}
     const filesMap: Record<string, string> = {}
@@ -771,14 +785,14 @@ class StdoutRedirect:
   const handleSave = useCallback(async () => {
     if (!selectedFile) return
     if (editedContent === selectedFile.content && editedImageData === selectedFile.imageData) return
-    
+
     try {
       const token = await getToken()
       await fetch(`/api/projects/${projectId}/files`, {
         method: "PUT",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ 
-          path: selectedFile.path, 
+        body: JSON.stringify({
+          path: selectedFile.path,
           content: editedContent,
           imageData: editedImageData || null
         }),
@@ -1222,12 +1236,8 @@ class StdoutRedirect:
                 </div>
               </div>
             ) : projectType === null ? (
-              <div className="flex-1 flex items-center justify-center bg-gray-50">
-                <div className="text-center">
-                  <FeatureShowcaseDark />
-                  <Loader className="animate-spin h-8 w-8 mx-auto mb-3" />
-                  <p className="text-sm text-gray-500">Loading project...</p>
-                </div>
+              <div className="flex-1 flex items-center justify-center bg-white">
+                <FeatureShowcaseDark />
               </div>
             ) : projectType === "python" ? (
               <>

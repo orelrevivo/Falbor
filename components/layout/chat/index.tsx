@@ -580,6 +580,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
       if (tasksList.length > 0) {
         setTasks(tasksList)
+        // Broadcast tasks to FeatureShowcaseDark in the code preview panel
+        window.dispatchEvent(new CustomEvent('falbor-tasks-update', { detail: { tasks: tasksList } }))
       }
     }
   }

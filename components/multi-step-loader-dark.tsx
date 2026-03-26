@@ -116,17 +116,20 @@ export const MultiStepLoader = ({
   loading,
   duration = 2000,
   loop = true,
+  externalValue,
 }: {
   loadingStates: LoadingState[]
   loading?: boolean
   duration?: number
   loop?: boolean
+  /** When provided, overrides the internal auto-cycling index */
+  externalValue?: number
 }) => {
   const [currentState, setCurrentState] = useState(0)
 
   useEffect(() => {
-    if (!loading) {
-      setCurrentState(0)
+    if (!loading || externalValue !== undefined) {
+      if (!loading) setCurrentState(0)
       return
     }
     const timeout = setTimeout(() => {
@@ -140,7 +143,10 @@ export const MultiStepLoader = ({
     }, duration)
 
     return () => clearTimeout(timeout)
-  }, [currentState, loading, loop, loadingStates.length, duration])
+  }, [currentState, loading, loop, loadingStates.length, duration, externalValue])
+
+  const activeValue = externalValue !== undefined ? externalValue : currentState
+
   return (
     <AnimatePresence mode='wait'>
       {loading && (
@@ -157,7 +163,7 @@ export const MultiStepLoader = ({
           className='w-full h-full fixed inset-0 z-[100] flex items-center justify-center backdrop-blur-2xl'
         >
           <div className='h-96  relative'>
-            <LoaderCore value={currentState} loadingStates={loadingStates} />
+            <LoaderCore value={activeValue} loadingStates={loadingStates} />
           </div>
         </motion.div>
       )}

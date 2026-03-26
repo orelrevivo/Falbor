@@ -391,6 +391,85 @@ function detectMessageType(message: string): "greeting" | "question" | "build" {
   return "build"
 }
 
+/**
+ * Design Intelligence: Auto-detects the type of website being requested
+ * and returns a design hint string to inject into the system prompt so
+ * the AI selects the right palette, fonts, and design patterns.
+ */
+function detectDesignContext(message: string): string {
+  const lower = message.toLowerCase()
+  
+  const SITE_TYPES: Array<{ keywords: string[]; type: string; palette: string; fonts: string }> = [
+    {
+      keywords: ["blog", "article", "editorial", "magazine", "journal", "writing", "posts"],
+      type: "Blog / Content Site",
+      palette: "Blog palette (deep navy #1a1a2e, coral accent #e94560, off-white #fafafa background)",
+      fonts: "Playfair Display for headings + Source Sans 3 for body text (editorial elegance)"
+    },
+    {
+      keywords: ["store", "shop", "ecommerce", "e-commerce", "product", "cart", "checkout", "marketplace"],
+      type: "E-Commerce / Store",
+      palette: "E-Commerce palette (slate #0f172a, amber #f59e0b for prices, emerald #059669 for CTAs)",
+      fonts: "Plus Jakarta Sans for both headings and body (clean, professional)"
+    },
+    {
+      keywords: ["portfolio", "personal site", "resume", "cv", "showcase", "my work", "about me"],
+      type: "Portfolio / Personal",
+      palette: "Portfolio palette (near-black #18181b, violet accent #a78bfa, warm white #fafaf9)",
+      fonts: "DM Sans for both headings and body (minimal, elegant)"
+    },
+    {
+      keywords: ["dashboard", "saas", "admin", "panel", "analytics", "crm", "management", "platform"],
+      type: "SaaS / Dashboard",
+      palette: "SaaS palette (indigo #6366f1, slate canvas #f1f5f9, white surfaces)",
+      fonts: "Inter for both headings and body (clean, data-focused)"
+    },
+    {
+      keywords: ["landing", "startup", "launch", "marketing", "waitlist", "coming soon", "hero"],
+      type: "Landing Page / Marketing",
+      palette: "Landing Page palette (sky blue #0ea5e9, dark headlines #0f172a, orange CTAs #f97316)",
+      fonts: "Sora for headings + DM Sans for body (modern startup feel)"
+    },
+    {
+      keywords: ["dark mode", "dark theme", "developer", "dev tool", "terminal", "code", "hacker"],
+      type: "Dark Mode / Tech",
+      palette: "Dark palette (zinc-950 #09090b background, violet #a78bfa accent, cyan #22d3ee highlights)",
+      fonts: "Space Grotesk for headings + Inter for body (tech-focused)"
+    },
+    {
+      keywords: ["restaurant", "food", "menu", "café", "cafe", "bakery", "recipe", "cooking"],
+      type: "Restaurant / Food",
+      palette: "Restaurant palette (amber-brown #92400e, red CTAs #dc2626, cream #fffbeb background)",
+      fonts: "Playfair Display for headings + Inter for body (warm, inviting)"
+    },
+    {
+      keywords: ["medical", "health", "doctor", "clinic", "hospital", "wellness", "fitness", "gym"],
+      type: "Medical / Health",
+      palette: "Health palette (teal #0891b2, mint-white #f0fdfa, deep cyan text #164e63)",
+      fonts: "Manrope for headings + Inter for body (trustworthy, clean)"
+    }
+  ]
+  
+  for (const siteType of SITE_TYPES) {
+    if (siteType.keywords.some(kw => lower.includes(kw))) {
+      return `\n\n### AUTO-DETECTED DESIGN CONTEXT ###
+Site type detected: **${siteType.type}**
+Recommended palette: ${siteType.palette}
+Recommended fonts: ${siteType.fonts}
+Apply this palette and font pair automatically. Define ALL colors as CSS variables in :root in src/index.css. Import the fonts via Google Fonts in index.html. Maintain 100% consistency across all components.
+### END DESIGN CONTEXT ###`
+    }
+  }
+  
+  // Default: Landing Page style (most universal)
+  return `\n\n### AUTO-DETECTED DESIGN CONTEXT ###
+No specific site type detected. Use the **Landing Page / Marketing** palette as default:
+Palette: Sky blue #0ea5e9 primary, dark #0f172a headlines, orange #f97316 CTAs, white background, slate-50 #f8fafc surfaces.
+Fonts: Sora for headings + DM Sans for body. Import via Google Fonts.
+Define ALL colors as CSS variables in :root. Maintain 100% design consistency.
+### END DESIGN CONTEXT ###`
+}
+
 async function handleModelRequest(
   history: any[],
   message: string,
@@ -497,6 +576,12 @@ async function handleModelRequest(
   let systemPrompt = securityMode
     ? SECURITY_SYSTEM_PROMPT
     : (discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext, neonContext))
+
+  // Inject Design Intelligence — auto-detect site type and recommend palette/fonts
+  if (!discussMode && !securityMode && isCodeRequest) {
+    const designContext = detectDesignContext(message)
+    systemPrompt += designContext
+  }
 
   const contextId = targetProjectId || projectId
 
