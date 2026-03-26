@@ -754,34 +754,6 @@ export default {
                 onDeviceChange={setSelectedDevice}
                 zoom={zoom}
                 onZoomChange={setZoom}
-                onCheckPackages={() => {
-                    const importsFound = new Set<string>();
-                    files.forEach(file => {
-                        const importRegex = /(?:import\s+(?:[\w\s{},*]+)\s+from\s+['"]([^'"]+)['"])|(?:import\(['"]([^'"]+)['"]\))/g;
-                        let m;
-                        while ((m = importRegex.exec(file.content)) !== null) {
-                            const pkg = m[1] || m[2];
-                            if (!pkg.startsWith(".") && !pkg.startsWith("/") && !pkg.startsWith("@/") && !["path", "fs", "os", "http", "https"].includes(pkg)) {
-                                let basePkg = pkg;
-                                if (pkg.startsWith("@")) {
-                                    const parts = pkg.split("/");
-                                    if (parts.length >= 2) basePkg = `${parts[0]}/${parts[1]}`;
-                                } else {
-                                    basePkg = pkg.split("/")[0];
-                                }
-                                const commonPks = ["react", "react-dom", "lucide-react", "framer-motion", "clsx", "tailwind-merge", "react-router-dom", "next"];
-                                if (!commonPks.includes(basePkg)) {
-                                    importsFound.add(basePkg);
-                                }
-                            }
-                        }
-                    });
-
-                    if (importsFound.size > 0) {
-                        const command = `npm i ${Array.from(importsFound).join(" ")}`;
-                        window.dispatchEvent(new CustomEvent('terminal-run-command', { detail: { command } }));
-                    }
-                }}
             />
 
             <div className="flex-1 relative flex flex-col min-h-0">
