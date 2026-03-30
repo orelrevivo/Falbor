@@ -73,7 +73,7 @@ export default async function HomePage() {
       className={`relative min-h-screen flex flex-col ${isAuthenticated ? "overflow-hidden bg-white" : "" //Bg-main
         }`}
     >
-      <main className="flex flex-1 flex-col items-center px-4 w-full">
+      <main className="flex flex-1 flex-col items-center w-full">
 
         {/* ================= NOT AUTH ================= */}
         {!isAuthenticated && (
@@ -85,12 +85,12 @@ export default async function HomePage() {
 
               {/* ✅ centered background image layer */}
               <div
-                className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                className="pointer-events-none absolute inset-0 w-full h-full"
                 style={{
-                  backgroundImage: "url('/bglight.png')",
+                  backgroundImage: "url('/bg/bg-v3.png')",
                   backgroundRepeat: "no-repeat",
                   backgroundPosition: "center",
-                  backgroundSize: "contain", // keeps natural proportions
+                  backgroundSize: "cover",
                 }}
               />
 

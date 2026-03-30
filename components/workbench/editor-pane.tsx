@@ -626,6 +626,7 @@ export function EditorPane({
               <Editor
                 key={selectedFile.path}
                 height="100%"
+                theme="light"
                 language={language}
                 value={displayContent}
                 onMount={(editor, monaco) => {

@@ -263,8 +263,29 @@ export function WebContainerPreview({
                 const hasTailwindConfig = files.some(f => f?.path === "tailwind.config.js" || f?.path === "tailwind.config.ts")
                 const hasPostcssConfig = files.some(f => f?.path === "postcss.config.js" || f?.path === "postcss.config.ts")
 
-                // 2. Default Boilerplate Fallbacks
+                // 2. Default Boilerplate Fallbacks with Enhanced Stack
                 if (!hasPackageJson) {
+                    // Smart Dependency Detection: Scan user files for additional imports
+                    const detectedDeps: Record<string, string> = {};
+                    const importRegex = /(?:from|import\(?)\s*['"]([^'"].*?)['"]/g;
+                    
+                    files.forEach(f => {
+                        if (!f?.content) return;
+                        let match;
+                        while ((match = importRegex.exec(f.content)) !== null) {
+                            const pkg = match[1];
+                            // Filter out relative imports and built-ins
+                            if (!pkg.startsWith('.') && !pkg.startsWith('/') && !pkg.startsWith('@/')) {
+                                // Handle scoped packages or sub-paths
+                                const parts = pkg.split('/');
+                                const name = pkg.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0];
+                                if (!["react", "react-dom", "vite", "tailwindcss", "autoprefixer", "postcss"].includes(name)) {
+                                    detectedDeps[name] = "latest";
+                                }
+                            }
+                        }
+                    });
+
                     fileSystem["package.json"] = {
                         file: {
                             contents: JSON.stringify({
@@ -283,7 +304,17 @@ export function WebContainerPreview({
                                     "framer-motion": "^11.11.11",
                                     "clsx": "^2.1.1",
                                     "tailwind-merge": "^2.5.4",
-                                    "@supabase/supabase-js": "^2.45.4"
+                                    "@supabase/supabase-js": "^2.45.4",
+                                    "three": "^0.169.0",
+                                    "@types/three": "^0.169.0",
+                                    "@react-three/fiber": "^8.17.10",
+                                    "@react-three/drei": "^9.114.0",
+                                    "gsap": "^3.12.5",
+                                    "date-fns": "^4.1.0",
+                                    "recharts": "^2.12.7",
+                                    "canvas-confetti": "^1.9.3",
+                                    "@types/canvas-confetti": "^1.6.4",
+                                    ...detectedDeps
                                 },
                                 scripts: {
                                     "dev": "vite --host",
@@ -505,7 +536,7 @@ export default {
         }
     }, [isTerminalOpen])
 
-    // Sync files
+    // Sync files and auto-install new dependencies
     useEffect(() => {
         if (!webcontainerInstance || status !== "ready") return
 
@@ -514,6 +545,10 @@ export default {
 
         const timeout = setTimeout(async () => {
             try {
+                // Check if package.json needs updating due to new imports
+                const importRegex = /(?:from|import\(?)\s*['"]([^'"].*?)['"]/g;
+                const newlyDetectedPackages: string[] = [];
+                
                 for (const file of files) {
                     const pathParts = file.path.split("/").filter(Boolean)
                     if (pathParts.length > 1) {
@@ -521,12 +556,54 @@ export default {
                         await webcontainerInstance.fs.mkdir(dirPath, { recursive: true })
                     }
                     await webcontainerInstance.fs.writeFile(file.path, file.content)
+
+                    // Scan for new imports
+                    if (file.content) {
+                        let match;
+                        while ((match = importRegex.exec(file.content)) !== null) {
+                            const pkg = match[1];
+                            if (!pkg.startsWith('.') && !pkg.startsWith('/') && !pkg.startsWith('@/')) {
+                                const parts = pkg.split('/');
+                                const name = pkg.startsWith('@') ? `${parts[0]}/${parts[1]}` : parts[0];
+                                newlyDetectedPackages.push(name);
+                            }
+                        }
+                    }
                 }
+
+                // If new packages are found, trigger Background Install
+                if (newlyDetectedPackages.length > 0) {
+                    const pkgJsonPath = "package.json";
+                    const pkgJsonRaw = await webcontainerInstance.fs.readFile(pkgJsonPath, 'utf-8').catch(() => null);
+                    if (pkgJsonRaw) {
+                        const pkgJson = JSON.parse(pkgJsonRaw);
+                        let changed = false;
+                        newlyDetectedPackages.forEach(p => {
+                            if (!pkgJson.dependencies[p]) {
+                                pkgJson.dependencies[p] = "latest";
+                                changed = true;
+                            }
+                        });
+
+                        if (changed) {
+                            console.log("[WebContainer] Dynamic dependency update detected. installing...");
+                            await webcontainerInstance.fs.writeFile(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
+                            const terminal = xtermRef.current;
+                            terminal?.writeln("\r\n\x1b[34m[Autopilot] New imports detected. Updating environment...\x1b[0m");
+                            
+                            const installProc = await webcontainerInstance.spawn("npm", ["install"]);
+                            installProc.output.pipeTo(new WritableStream({ write(data) { terminal?.write(data) } }));
+                            await installProc.exit;
+                            terminal?.writeln("\x1b[32m[Autopilot] Environment synchronized.\x1b[0m");
+                        }
+                    }
+                }
+
                 lastRenderedFiles.current = currentFilesString
             } catch (err) {
                 console.error("Sync error:", err)
             }
-        }, 500)
+        }, 800)
 
         return () => clearTimeout(timeout)
     }, [files, webcontainerInstance, status, isCodeGenerating])

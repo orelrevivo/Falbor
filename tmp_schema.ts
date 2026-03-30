@@ -1,4 +1,4 @@
-// config/schema.ts (updated with new table for GitHub connections)
+﻿// config/schema.ts (updated with new table for GitHub connections)
 import { pgTable, text, timestamp, uuid, jsonb, boolean, integer, serial } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import { check } from "drizzle-orm/pg-core"
@@ -177,6 +177,7 @@ export const userCredits = pgTable("user_credits", {
   stripeCustomerId: text("stripe_customer_id"),
   dailyMessageCount: integer("daily_message_count").default(0).notNull(),
   lastDailyMessageReset: timestamp("last_daily_message_reset"),
+  experienceLevel: text("experience_level").default("hard").notNull(), // "easy" | "hard"
 })
 
 export const userModelConfigs = pgTable("user_model_configs", {
@@ -889,5 +890,4 @@ export const projectAnalyticsEvents = pgTable("project_analytics_events", {
 })
 
 export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
-export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert
 export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert

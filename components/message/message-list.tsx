@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { TaskChatGroup } from "./task-chat-group"
-
+import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import {
@@ -37,6 +37,10 @@ import {
   Edit,
   Clock,
   FileCode,
+  Cpu,
+  Shield,
+  AudioLinesIcon,
+  Check,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
@@ -277,20 +281,24 @@ function parseAIResponse(content: string) {
     }
   }
 
-  const codeRegex = /```(\w+)?\s*(?:file="([^"]+)")?\s*\n([\s\S]*?)```/g
+  const codeRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]+)["']?)?\s*\r?\n([\s\S]*?)```/g
   const codeBlocks: Array<{ filename: string; code: string; language: string; isOpen?: boolean }> = []
   for (const match of processedContent.matchAll(codeRegex)) {
     const language = match[1] || "typescript"
-    const filename = match[2] || `file.${language}`
-    const code = match[3].trim()
-    const content = { filename, code, language, isOpen: false }
-    codeBlocks.push(content)
-    matches.push({
-      type: "codeBlock",
-      start: match.index!,
-      fullMatch: match[0],
-      content
-    })
+    const filename = match[2]
+
+    // ONLY extract as workbench codeBlock if an explicit filename was provided via file="..." attribute
+    // Otherwise it's a general code snippet that should stay in the chat bubble
+    if (filename) {
+      const content = { filename: filename.trim(), code: match[3].trim(), language, isOpen: false }
+      codeBlocks.push(content)
+      matches.push({
+        type: "codeBlock",
+        start: match.index!,
+        fullMatch: match[0],
+        content
+      })
+    }
   }
 
   matches.sort((a, b) => a.start - b.start)
@@ -308,18 +316,21 @@ function parseAIResponse(content: string) {
   let finalText = processedContent.substring(lastEnd).trim()
 
   // Live Code Block Tracking at the end (robust for streaming)
-  const openCodeRegex = /```(\w+)?\s*(?:file="([^"\n]*?)")?\s*\r?\n?([\s\S]*?)$/g
+  const openCodeRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]+)["']?)?\s*\r?\n?([\s\S]*?)$/g
   const openMatch = openCodeRegex.exec(finalText)
   if (openMatch) {
-    const textBefore = finalText.substring(0, openMatch.index).trim()
-    if (textBefore) parts.push({ type: "text", content: textBefore })
-
     const lang = openMatch[1] || "typescript"
-    const file = openMatch[2] || `file.${lang}`
-    const content = { filename: file, code: openMatch[3].trim(), language: lang, isOpen: true }
-    parts.push({ type: "codeBlock", content })
-    codeBlocks.push(content)
-    finalText = "" // consumed
+    const file = openMatch[2]
+
+    if (file) {
+      const textBefore = finalText.substring(0, openMatch.index).trim()
+      if (textBefore) parts.push({ type: "text", content: textBefore })
+
+      const content = { filename: file.trim(), code: openMatch[3].trim(), language: lang, isOpen: true }
+      parts.push({ type: "codeBlock", content })
+      codeBlocks.push(content)
+      finalText = "" // consumed
+    }
   }
 
   if (finalText) {
@@ -1702,13 +1713,13 @@ function AIMessageContent({
 
           if (!isGmail && !isScanProvider) {
             console.log(`[Auto-Trigger] Running terminal command: ${action.content}`);
-            window.dispatchEvent(new CustomEvent('terminal-run-command', { 
-              detail: { command: action.content } 
+            window.dispatchEvent(new CustomEvent('terminal-run-command', {
+              detail: { command: action.content }
             }));
             triggeredActions.current.add(actionId);
           } else if (isScanProvider) {
-             // We don't auto-trigger scan provider as it's a message send, 
-             // but user could want it. For now, let's keep it manual or user requested.
+            // We don't auto-trigger scan provider as it's a message send, 
+            // but user could want it. For now, let's keep it manual or user requested.
           }
         }
       }
@@ -1721,7 +1732,7 @@ function AIMessageContent({
     ),
     em: ({ children }: { children?: React.ReactNode }) => <em className="italic text-black/80">{children}</em>,
     p: ({ children }: { children?: React.ReactNode }) => (
-      <p className="text-sm leading-relaxed whitespace-pre-wrap mb-1 last:mb-0">{children}</p>
+      <div className="text-sm leading-relaxed whitespace-pre-wrap mb-1 last:mb-0">{children}</div>
     ),
     ul: ({ children }: { children?: React.ReactNode }) => (
       <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
@@ -1730,8 +1741,73 @@ function AIMessageContent({
       <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
     ),
     li: ({ children }: { children?: React.ReactNode }) => <li className="text-sm leading-relaxed">{children}</li>,
-    pre: () => null, 
-    code: () => null, 
+    pre: ({ children }: { children?: React.ReactNode }) => (
+      <div className="relative group/code my-4 rounded-md overflow-hidden">
+        <pre className="m-0 p-0 whitespace-pre-wrap break-words">
+          {children}
+        </pre>
+      </div>
+    ),
+    code: ({ node, inline, className, children, ...props }: any) => {
+      const match = /language-(\w+)/.exec(className || "")
+      const code = String(children).replace(/\n$/, "")
+
+      if (inline) {
+        return <code className="px-1.5 py-0.5 rounded text-sm text-black font-mono" {...props}>{children}</code>
+      }
+      const [copied, setCopied] = useState(false);
+
+      const handleCopy = () => {
+        navigator.clipboard.writeText(code);
+        setCopied(true);
+
+        // reset after 2 seconds
+        setTimeout(() => setCopied(false), 2000);
+      };
+
+      return (
+        <div className="relative group">
+          <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity z-10 flex gap-2">
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 bg-white hover:bg-white cursor-pointer text-black/50 hover:text-black/50 rounded-md"
+              onClick={handleCopy}
+            >
+              {copied ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+          <SyntaxHighlighter
+            language={match ? match[1] : "typescript"}
+            style={oneLight}
+            wrapLongLines={true}
+            customStyle={{
+              margin: 0,
+              padding: "1rem",
+              paddingRight: "1.25rem", // Extra padding to ensure 5px clearance before the edge if needed
+              fontSize: "11px",
+              lineHeight: "1.5",
+              background: "#f0f0f0",
+            }}
+            codeTagProps={{
+              style: {
+                background: "transparent",
+                backgroundColor: "transparent",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                boxShadow: "none",
+              }
+            }}
+          >
+            {code}
+          </SyntaxHighlighter>
+        </div>
+      )
+    },
   }
 
   const getTitle = (type: string, content: any) => {
@@ -2185,6 +2261,57 @@ function AIMessageContent({
 
   return (
     <div className="space-y-3 w-full">
+      {/* FalMax Multi-Agent Pipeline Visualization
+      {message.metadata?.agentActivities && (
+        <div className="mb-4 bg-black/[0.02] border border-black/[0.05] rounded-xl p-3 shadow-sm">
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <Cpu className="w-4 h-4 text-blue-600 animate-pulse" />
+            <span className="text-[11px] font-bold uppercase tracking-wider text-black/50">FalMax Orchestration Pipeline</span>
+          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            {[
+              { id: 'ARCHITECT', label: 'Architect', icon: Lightbulb, color: 'blue' },
+              { id: 'BUILDER', label: 'Builder', icon: Zap, color: 'amber' },
+              { id: 'REVIEWER', label: 'Reviewer', icon: Shield, color: 'emerald' },
+              { id: 'NARRATOR', label: 'Narrator', icon: AudioLinesIcon, color: 'indigo' },
+            ].map((agent) => {
+              const status = (message.metadata?.agentActivities as any)?.[agent.id]
+              const Icon = agent.icon
+              const isActive = status && !status.toLowerCase().includes('done') && !status.toLowerCase().includes('planned') && !status.toLowerCase().includes('completed')
+              
+              return (
+                <div key={agent.id} className={cn(
+                  "flex flex-col gap-1.5 p-2 rounded-lg border transition-all duration-300",
+                  status ? `bg-${agent.color}-50/50 border-${agent.color}-100/50` : "bg-white/50 border-black/[0.03] opacity-50"
+                )}>
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "p-1 rounded-md",
+                      status ? `bg-${agent.color}-100 text-${agent.color}-600` : "bg-gray-100 text-gray-400"
+                    )}>
+                      <Icon className={cn("w-3 h-3", isActive && "animate-pulse")} />
+                    </div>
+                    <span className="text-[10px] font-bold text-black/70 leading-none">{agent.label}</span>
+                  </div>
+                  <div className="min-h-[14px]">
+                    {status ? (
+                      <TextShimmer className={cn(
+                        "text-[9px] font-medium leading-none",
+                        `text-${agent.color}-700/80`
+                      )}>
+                        {status}
+                      </TextShimmer>
+                    ) : (
+                      <span className="text-[9px] text-black/20 font-medium leading-none italic">Waiting...</span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )} */}
+
       {isStreaming && (!parts || parts.length === 0 || (parts.length === 1 && parts[0].type === "text" && !parts[0].content)) && (
         <div className="flex items-center gap-2 mb-4">
           <Button
@@ -2212,9 +2339,10 @@ function AIMessageContent({
             }
 
             if (p.type === "text") {
-              // Strip any raw XML tags that leaked through before displaying
+              // Strip any raw XML tags and agent status JSON that leaked through
               const cleanedText = p.content
-                .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck)[^>]*>/gi, "")
+                .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck|GeneratedCode|HiddenCode)[^>]*>/gi, "")
+                .replace(/\{"type":\s*"agent",\s*"agent":\s*"[^"]*",\s*"status":\s*"[^"]*"\}\s*/g, "")
                 .replace(/([_\-*=~`#]){3,}\s*$/gm, "")
                 .replace(/\n{3,}/g, "\n\n")
                 .trim()

@@ -2,7 +2,7 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 
-const isProtectedRoute = createRouteMatcher(["/chat(.*)", "/api/supabase/provision"])
+const isProtectedRoute = createRouteMatcher(["/chat(.*)", "/api/supabase/provision", "/api/pusher/trigger"])
 
 // Routes that need cross-origin isolation for WebContainer (SharedArrayBuffer)
 const needsIsolation = (pathname: string) =>

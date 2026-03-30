@@ -465,7 +465,7 @@ const MacOSMenuBar: React.FC<MacOSMenuBarProps> = ({
   return (
     <div className="relative">
       <div
-        className={`backdrop-blur-md border shadow-xs ${className}`}
+        className={`backdrop-blur-md bg-white border shadow-md ${className}`}
         style={{
           height: '40px',
           borderRadius: '8px',

@@ -13,7 +13,7 @@ export default function DefaultDemo() {
     <div>
       <div style={{
         position: 'absolute',
-        top: '3%',
+        top: '0.8%',
         left: '50%',
         transform: 'translate(-50%, -50%)',
         width: '90%',

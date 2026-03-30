@@ -128,6 +128,28 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   }, [])
 
 
+  // ─── Restore code from history on mount or message load ──────────────────
+  useEffect(() => {
+    if (messages.length === 0 || extractedFiles.length > 0) return
+
+    // Find the latest assistant message that contains code blocks (look for markdown triple backticks)
+    const assistantMsgs = [...messages].reverse().filter(m => m.role === "assistant" && m.content.includes("```"))
+
+    // Pick the most recent one
+    const lastCodeMsg = assistantMsgs[0]
+
+    if (lastCodeMsg) {
+      console.log(`[ChatInterface] Restoring workbench from message: ${lastCodeMsg.id}`)
+      const { files, activeFile } = extractFilesFromStreamingContent(lastCodeMsg.content)
+      if (files.length > 0) {
+        setExtractedFiles(files)
+        if (activeFile) setSelectedFilePath(activeFile)
+        setHasProjectFiles(true)
+        setIsPreviewOpen(true)
+      }
+    }
+  }, [messages, extractedFiles.length])
+
   // ─── Check project files on mount (once) ─────────────────────────────────
   useEffect(() => {
     if (!project.id) return
@@ -243,13 +265,24 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         }),
         signal: abortControllerRef.current.signal,
       })
-      if (!res.ok) throw new Error(`API error: ${res.status}`)
+      if (!res.ok) {
+        let errorMsg = `API error: ${res.status}`
+        try {
+          const resClone = res.clone()
+          const errorData = await resClone.json()
+          if (errorData.error) errorMsg = errorData.error
+        } catch (e) { }
+        throw new Error(errorMsg)
+      }
 
       const reader = res.body?.getReader()
       if (!reader) throw new Error("No stream")
       const decoder = new TextDecoder()
-      let accumulated = ""
+      let overallAccumulated = ""
+      let chatAccumulated = ""
+      let codeAccumulated = ""
       let lineBuffer = ""
+      let agentActivities: Record<string, string> = {}
 
       while (true) {
         const { done, value } = await reader.read()
@@ -262,51 +295,78 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           if (!line.startsWith("data: ")) continue
           try {
             const data = JSON.parse(line.slice(6))
-            if (data.text) {
-              accumulated += data.text
+
+            // Handle FalMax Multi-Agent Events
+            if (data.type === "agent") {
+              agentActivities[data.agent] = data.status
               setMessages((prev) =>
-                prev.map((m) => (m.id === tempId ? { ...m, content: accumulated } : m))
+                prev.map((m) => (m.id === tempId ? { ...m, metadata: { ...m.metadata, agentActivities: { ...agentActivities } } } : m))
+              )
+              continue
+            }
+
+            if (data.type === "code") {
+              // Code stream from Builder - don't show in chat history, but append for workbench extraction
+              codeAccumulated += data.text
+              overallAccumulated += data.text
+            } else if (data.type === "chat") {
+              // Chat stream from Narrator - show in chat history
+              chatAccumulated += data.text
+              overallAccumulated += data.text
+            } else if (data.text) {
+              // Legacy/Standard stream - show both
+              chatAccumulated += data.text
+              overallAccumulated += data.text
+            }
+
+            if (data.text || data.type === "code" || data.type === "chat") {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === tempId ? { ...m, content: chatAccumulated } : m))
               )
 
-              // Broadcast AI chunk for live collaboration
-              window.dispatchEvent(new CustomEvent(`broadcast:${project.id}`, {
-                detail: { type: 'MSG_AI_STREAM', tempId, chunk: accumulated, senderId: user?.id }
-              }))
+              // Broadcast AI chunk for live collaboration (Skip for FalMax to avoid Pusher spam/errors)
+              if (project.selectedModel !== "falmax") {
+                window.dispatchEvent(new CustomEvent(`broadcast:${project.id}`, {
+                  detail: { type: 'MSG_AI_STREAM', tempId, chunk: chatAccumulated, senderId: user?.id }
+                }))
+              }
 
-              // Live file extraction: parse streaming content for file blocks
-              const { files: liveFiles, activeFile } = extractFilesFromStreamingContent(accumulated)
+              // Live file extraction from the dedicated CODE BUFFER ONLY
+              // This is CRITICAL to prevent <Thinking> tags from corrupting code files
+              const { files: liveFiles, activeFile } = extractFilesFromStreamingContent(codeAccumulated || overallAccumulated)
               if (liveFiles.length > 0) {
                 setExtractedFiles(liveFiles)
                 if (activeFile) {
-                    setSelectedFilePath(activeFile)
-                    // Auto-switch to Code tab when generating code
-                    setWorkbenchTab("code")
+                  setSelectedFilePath(activeFile)
+                  setWorkbenchTab("code")
                 }
-                // Auto-open code preview when first file appears
                 setIsPreviewOpen(true)
                 setIsCodeGenerating(true)
               }
             }
+
             if (data.done) {
               const finalId = data.messageId || `final-${Date.now()}`
-              const finalContent = accumulated.trim() ? accumulated : (data.content || accumulated)
+              // For the final persist, we use the combined data so refresh works
+              // Use <GeneratedCode> tags so MessageList knows to hide this part from the chat bubble
+              const finalContent = chatAccumulated + "\n\n<GeneratedCode>\n" + codeAccumulated + "\n</GeneratedCode>\n"
 
               const finalAssistantMsg: StrictMessage = {
-                  id: finalId,
-                  projectId: project.id,
-                  role: "assistant",
-                  content: finalContent,
-                  hasArtifact: data.hasArtifact ?? false,
-                  createdAt: new Date(),
-                  thinking: data.thinking || null,
-                  versionName: data.versionName || null,
-                  searchQueries: data.searchQueries || null,
-                  isAutomated: true,
-                  tokensUsed: data.tokensUsed || null,
-                  cost: data.cost || null,
-                  sessionId: targetSessionId,
-                  imageData: null,
-                  metadata: null
+                id: finalId,
+                projectId: project.id,
+                role: "assistant",
+                content: finalContent,
+                hasArtifact: data.hasArtifact ?? false,
+                createdAt: new Date(),
+                thinking: data.thinking || null,
+                versionName: data.versionName || null,
+                searchQueries: data.searchQueries || null,
+                isAutomated: true,
+                tokensUsed: data.tokensUsed || null,
+                cost: data.cost || null,
+                sessionId: targetSessionId,
+                imageData: null,
+                metadata: { ...metadata, agentActivities: { ...agentActivities } }
               }
 
               // Broadcast completion
@@ -425,8 +485,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       // 3. Smart Deduplication: If a message with same content/role arrives (e.g. from Pusher or SSE)
       const duplicateIdx = validPrev.findIndex(
         (m) => m.id === safeMessage.id || (
-          m.role === safeMessage.role && 
-          m.content === safeMessage.content && 
+          m.role === safeMessage.role &&
+          m.content === safeMessage.content &&
           m.id.startsWith("temp-")
         )
       )
@@ -657,7 +717,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       if (prev.some((m) => m.id === newUserMsg.id)) return prev
       return [...prev, newUserMsg]
     })
-    
+
     // Broadcast user message to collaborators
     window.dispatchEvent(new CustomEvent(`broadcast:${project.id}`, {
       detail: { type: 'MSG_USER', message: newUserMsg, senderId: user?.id }
@@ -720,11 +780,11 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       case 'MSG_AI_COMPLETE':
         setMessages((prev) => {
           // If we already have this assistant message by ID or content/role match
-          const existing = prev.find(m => 
-            m.id === finalMessage.id || 
+          const existing = prev.find(m =>
+            m.id === finalMessage.id ||
             (m.role === 'assistant' && m.content === finalMessage.content && (m.id.startsWith("temp-") || finalMessage.id.startsWith("temp-")))
           )
-          
+
           if (existing) {
             return prev.map(m => m.id === existing.id ? { ...finalMessage, createdAt: new Date(finalMessage.createdAt) } : m)
           }
@@ -732,13 +792,13 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           const updated = prev.map(m => m.id === tempId ? { ...finalMessage, createdAt: new Date(finalMessage.createdAt) } : m)
           // If not found (maybe joined mid-stream), just append the final message
           if (!prev.some(m => m.id === tempId) && !prev.some(m => m.id === finalMessage.id)) {
-             return [...prev, { ...finalMessage, createdAt: new Date(finalMessage.createdAt) }]
+            return [...prev, { ...finalMessage, createdAt: new Date(finalMessage.createdAt) }]
           }
           return updated
         })
         // Finalize state
         if (finalMessage.hasArtifact) {
-           setHasProjectFiles(true)
+          setHasProjectFiles(true)
         }
         break
     }
@@ -817,9 +877,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
-      <PresenceLayer 
-        projectId={project.id} 
-        onMessageReceived={handleRealtimeMessage} 
+      <PresenceLayer
+        projectId={project.id}
+        onMessageReceived={handleRealtimeMessage}
       />
 
       {typeof document !== 'undefined' && document.getElementById('header-right-portal') ? (
@@ -895,8 +955,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
           <div
             className={cn(
-                "p-4 border-t bg-background/50 backdrop-blur-md sticky bottom-0",
-                !isPreviewOpen && "max-w-3xl mx-auto w-full border-x rounded-t-xl"
+              "p-4 border-t bg-background/50 backdrop-blur-md sticky bottom-0",
+              !isPreviewOpen && "max-w-3xl mx-auto w-full border-x rounded-t-xl"
             )}
           >
             <ChatInput
@@ -986,12 +1046,12 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
               if (e.target === e.currentTarget) setEditingMessage(null)
             }}
           >
-             <motion.div 
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className="w-full max-w-2xl bg-card border shadow-2xl rounded-xl overflow-hidden pointer-events-auto"
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-2xl bg-card border shadow-2xl rounded-xl overflow-hidden pointer-events-auto"
             >
               {/* Reuse Edit UI from previous turn if available, or simplified here */}
               <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
@@ -1013,8 +1073,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                   <button
                     className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
                     onClick={() => {
-                        const val = (document.getElementById("edit-message-textarea") as HTMLTextAreaElement).value
-                        handleEditMessage(editingMessage.id, val)
+                      const val = (document.getElementById("edit-message-textarea") as HTMLTextAreaElement).value
+                      handleEditMessage(editingMessage.id, val)
                     }}
                   >
                     Save & Regenerate

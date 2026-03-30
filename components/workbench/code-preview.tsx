@@ -390,6 +390,7 @@ export function CodePreview({
   const { getToken } = useAuth()
   const [isInspectorMode, setIsInspectorMode] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
+  const lastAutoSelectedPathRef = useRef<string | null>(null);
 
   // Preview toolbar state
   const [previewUrl, setPreviewUrl] = useState("/")
@@ -510,15 +511,16 @@ export function CodePreview({
 
   // Auto-select file when selectedFilePath prop changes (live streaming)
   useEffect(() => {
-    if (selectedFilePath) {
+    if (selectedFilePath && selectedFilePath !== lastAutoSelectedPathRef.current) {
       const file = effectiveFiles.find(f => f.path === selectedFilePath);
-      if (file && file.path !== selectedFile?.path) {
+      if (file) {
+        lastAutoSelectedPathRef.current = selectedFilePath;
         setSelectedFile(file);
         setEditedContent(file.content);
         setEditedImageData(file.imageData);
       }
     }
-  }, [selectedFilePath, effectiveFiles, selectedFile?.path]);
+  }, [selectedFilePath, effectiveFiles]);
   const sandpackFiles = useMemo(() => {
     if (projectType !== "react" || effectiveFiles.length === 0) return {}
     const filesMap: Record<string, string> = {}

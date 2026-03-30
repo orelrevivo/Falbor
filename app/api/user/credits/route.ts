@@ -178,7 +178,7 @@ async function applyRegeneration(userId: string) {
       const resetTime = new Date(record.lastDailyMessageReset).getTime()
       const nineHoursMs = 9 * 60 * 60 * 1000
       const elapsed = nowMs - resetTime
-      
+
       if (elapsed >= nineHoursMs) {
         // Reset count
         dailyMessageCount = 0
@@ -373,7 +373,7 @@ export async function POST(request: NextRequest) {
       const dailyCount = (record.dailyMessageCount || 0) + 1
       const isNowZero = dailyCount >= 5
       await db.update(userCredits)
-        .set({ 
+        .set({
           balance: record.balance - cost,
           dailyMessageCount: dailyCount,
           lastDailyMessageReset: isNowZero ? new Date() : record.lastDailyMessageReset
@@ -382,7 +382,7 @@ export async function POST(request: NextRequest) {
     } else {
       await db.update(userCredits).set({ balance: record.balance - cost }).where(eq(userCredits.userId, userId))
     }
-    
+
     return NextResponse.json({ success: true, remainingBalance: record.balance - cost })
 
   } catch (error: any) {

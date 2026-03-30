@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap } from "lucide-react"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2 } from "lucide-react"
 import {
   Loader,
   X,
@@ -88,6 +88,8 @@ interface ModelOption {
   label: string
   isPremium: boolean
   iconUrl: string
+  description?: string
+  subModels?: { id: string; label: string; iconUrl: string; color: string }[]
 }
 type DesignConfig = {
   primaryColor: string
@@ -185,34 +187,95 @@ const EMAIL_TEMPLATES = [
   { id: "reauthentication", label: "Reauthentication" },
 ]
 const MODEL_OPTIONS: ModelOption[] = [
-  // { id: "gemini", label: "Gemini 3.1 Pro", isPremium: false, iconUrl: "/icons/gemini.png" },
-  { id: "claude-sonnet-4.6", label: "Claude Sonnet 4.6", isPremium: false, iconUrl: "/icons/claude.png" },
-  { id: "claude-opus-4.6", label: "Claude Opus 4.6", isPremium: true, iconUrl: "/icons/claude.png" },
-  { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-opus-4.5", label: "Claude Opus 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-sonnet-4.5", label: "Claude Sonnet 4.5", isPremium: true, iconUrl: "/icons/claude.png" },
-  // { id: "claude-opus-4", label: "Claude Opus 4", isPremium: false, iconUrl: "/icons/claude.png" },
-  // { id: "claude-3.5-haiku", label: "Claude 3.5 Haiku", isPremium: false, iconUrl: "/icons/claude.png" },
-  // { id: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet", isPremium: false, iconUrl: "/icons/claude.png" },
-  { id: "gpt-5.4-pro", label: "GPT-5.4 Pro", isPremium: true, iconUrl: "/icons/openai.png" },
-  { id: "gpt-5.4", label: "GPT-5.4", isPremium: true, iconUrl: "/icons/openai.png" },
-  { id: "gpt-oss-120b", label: "GPT OSS 120B", isPremium: true, iconUrl: "/icons/openai.png" },
-  // { id: "gpt-5.2", label: "GPT-5.2", isPremium: false, iconUrl: "/icons/openai.png" },
-  // { id: "gpt-5.1-codex", label: "GPT-5.1 Codex Max", isPremium: false, iconUrl: "/icons/openai.png" },
-  { id: "grok-4.1-fast", label: "Grok 4.1 Fast", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  { id: "grok-4-fast", label: "Grok 4 Fast", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  // { id: "grok-code-fast-1", label: "Grok Code Fast 1", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  // { id: "grok-4", label: "Grok 4", isPremium: true, iconUrl: "/icons/grok-light.png" },
-  // { id: "grok-3-mini", label: "Grok 3 Mini", isPremium: false, iconUrl: "/icons/grok-light.png" },
-  // { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash Lite", isPremium: false, iconUrl: "/icons/gemini.png" },
-  // { id: "qwen-3.5-35b", label: "Qwen 3.5 35B", isPremium: true, iconUrl: "/icons/qwen.png" },
-  // { id: "qwen-3.5-27b", label: "Qwen 3.5 27B", isPremium: true, iconUrl: "/icons/qwen.png" },
-  { id: "glm-4.7-flash", label: "GLM 4.7 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
-  { id: "glm-4.6v", label: "GLM 4.6V", isPremium: false, iconUrl: "/icons/zAI.png" },
-  { id: "glm-5-turbo", label: "GLM 5 Turbo", isPremium: true, iconUrl: "/icons/zAI.png" },
-  { id: "glm-4.5-flash", label: "GLM 4.5 Flash", isPremium: false, iconUrl: "/icons/zAI.png" },
-  // { id: "nemotron-3-super-120b", label: "Nemotron 3 Super 120B", isPremium: true, iconUrl: "/icons/nvidia.png" },
-  // { id: "gemma-3-12b-it", label: "Gemma 3 12B IT", isPremium: false, iconUrl: "/icons/google.png" },
+  {
+    id: "falmax",
+    label: "FalMax",
+    isPremium: true,
+    iconUrl: "/icons/falbor.png",
+    description: "Professional model specialized in building games, complex websites, and long-form technical tasks.",
+    subModels: [
+      { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview", iconUrl: "/icons/gemini.png", color: "#1a73e8" },
+      { id: "x-ai/grok-3", label: "Grok 3", iconUrl: "/icons/grok-light.png", color: "#000000" },
+      { id: "openai/gpt-5.1", label: "GPT-5.1", iconUrl: "/icons/ChatGPT_logo.svg-Photoroom.png", color: "#10a37f" },
+    ]
+  },
+  {
+    id: "claude-opus-4.6",
+    label: "Claude Opus 4.6",
+    isPremium: true,
+    iconUrl: "/icons/claude.png",
+    description: "Anthropic's most powerful model for highly complex creative and technical reasoning."
+  },
+  {
+    id: "claude-haiku-4.5",
+    label: "Claude Haiku 4.5",
+    isPremium: false,
+    iconUrl: "/icons/claude.png",
+    description: "Fast and efficient model for quick responses and lightweight tasks."
+  },
+  {
+    id: "grok-4.1-fast",
+    label: "Grok 4.1 Fast",
+    isPremium: true,
+    iconUrl: "/icons/grok-light.png",
+    description: "xAI's latest high-speed model with real-time knowledge and advanced logic."
+  },
+  {
+    id: "grok-4-fast",
+    label: "Grok 4 Fast",
+    isPremium: true,
+    iconUrl: "/icons/grok-light.png",
+    description: "Balanced high-performance model with excellent reasoning capabilities."
+  },
+  {
+    id: "glm-4.7-flash",
+    label: "GLM 4.7 Flash",
+    isPremium: false,
+    iconUrl: "/icons/zAI.png",
+    description: "Ultra-fast multimodal model optimized for low latency and high-speed processing."
+  },
+  {
+    id: "glm-5-turbo",
+    label: "GLM 5 Turbo",
+    isPremium: false,
+    iconUrl: "/icons/zAI.png",
+    description: "Powerful general-purpose model with strong reasoning and instruction following."
+  },
+  {
+    id: "moonshotai/kimi-k2.5",
+    label: "Kimi K2.5",
+    isPremium: true,
+    iconUrl: "/icons/moonshotai.avif",
+    description: "Moonshot AI's latest multimodal model with exceptional reasoning and long-context capabilities."
+  },
+  {
+    id: "moonshotai/kimi-k2-thinking",
+    label: "Kimi K2 Thinking",
+    isPremium: true,
+    iconUrl: "/icons/moonshotai.avif",
+    description: "Specialized Kimi model optimized for deep thinking, complex problem-solving, and logical deduction."
+  },
+  {
+    id: "minimax/minimax-m2.7",
+    label: "MiniMax M2.7",
+    isPremium: true,
+    iconUrl: "/icons/minimax.avif",
+    description: "MiniMax's next-generation model with significant improvements in coding and technical writing."
+  },
+  {
+    id: "minimax/minimax-m2.5",
+    label: "MiniMax M2.5",
+    isPremium: true,
+    iconUrl: "/icons/minimax.avif",
+    description: "Balanced high-performance model from MiniMax for diverse creative and analytical tasks."
+  },
+  {
+    id: "gemini-3.1-flash-lite",
+    label: "Gemini 3.1 Flash Lite",
+    isPremium: false,
+    iconUrl: "/icons/gemini.png",
+    description: "Google's ultra-lightweight and fast multimodal model."
+  },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -345,7 +408,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     projectId,
     onNewMessage,
     placeholder = "Ask anything... to get started",
-    initialModel = "gpt-oss-120b",
+    initialModel = "gemini-3.1-flash-lite",
     connected = false,
     onCloseIdeas,
     isAutomated = false,
@@ -400,6 +463,13 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isEditing, setIsEditing] = useState(false)
   const [isListening, setIsListening] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
+
+  useEffect(() => {
+    if (balanceData?.subscriptionTier === "none" && selectedModel !== "gemini-3.1-flash-lite") {
+      setSelectedModel("gemini-3.1-flash-lite")
+    }
+  }, [balanceData?.subscriptionTier, selectedModel])
+
   const [isAutoSelected, setIsAutoSelected] = useState(false)
   const [selectedFramework, setSelectedFramework] = useState<string>("vite")
   const [showFrameworkHover, setShowFrameworkHover] = useState(false)
@@ -422,6 +492,12 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isSavingCredentials, setIsSavingCredentials] = useState(false)
   const [isProvisioning, setIsProvisioning] = useState(false)
   const [credentialsSaved, setCredentialsSaved] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const [showConfirmation, setShowConfirmation] = useState(false)
   const [pendingSubmitData, setPendingSubmitData] = useState<{
     userMessage: string
@@ -1259,7 +1335,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
   const handleModelSelect = async (modelId: string) => {
     const model = MODEL_OPTIONS.find((m) => m.id === modelId)
     if (!model) return
-    const hasSubscription = balanceData?.subscriptionTier !== "none"
+    if (model.id === "falmax" && balanceData?.subscriptionTier !== "teams") {
+      alert("FalMax is exclusive to Teams subscribers.")
+      return
+    }
+
     if (model.isPremium && !hasSubscription) {
       setShowPremiumAlert(true)
       return
@@ -1566,6 +1646,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
         abortControllerRef.current = new AbortController()
         try {
+          const effectiveModel = balanceData?.subscriptionTier === "none" ? "gemini-3.1-flash-lite" : selectedModel
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1576,7 +1657,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               uploadedFiles: null,
               discussMode: isDiscussMode,
               isAutomated,
-              selectedModel,
+              selectedModel: effectiveModel,
               selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
               sessionId,
             }),
@@ -1685,6 +1766,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         }
       } else if (projectId) {
         abortControllerRef.current = new AbortController()
+        const effectiveModel = balanceData?.subscriptionTier === "none" ? "gemini-3.1-flash-lite" : selectedModel
         await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1695,7 +1777,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             uploadedFiles: null,
             discussMode: isDiscussMode,
             isAutomated,
-            selectedModel,
+            selectedModel: effectiveModel,
             selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
             sessionId,
           }),
@@ -1994,7 +2076,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             <div className="w-full">
 
               {/* TOGGLE BUTTON */}
-              <Button
+              {/* <Button
                 type="button"
                 variant="outline"
                 onClick={() => setShowTaskPanel(!showTaskPanel)}
@@ -2028,18 +2110,18 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                     </Badge>
                   )}
 
-                  {/* {effectiveIsLoading && tasks.length === 0 && (
+                  {effectiveIsLoading && tasks.length === 0 && (
                     <Badge>
                       <div className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />
                       Generating...
                     </Badge>
-                  )} */}
+                  )}
 
                 </div>
-              </Button>
+              </Button> */}
 
               {/* TASK PANEL (SMOOTH GRID ANIMATION) */}
-              <div
+              {/* <div
                 className={cn(
                   "grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
                   showTaskPanel
@@ -2050,17 +2132,15 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                 <div className="overflow-hidden">
                   <div className="rounded-b-md bg-white p-2 space-y-1 max-h-32 overflow-y-auto">
 
-                    {/* Loading state */}
-                    {/* {tasks.length === 0 && effectiveIsLoading && (
+                    {tasks.length === 0 && effectiveIsLoading && (
                       <div className="flex items-center gap-3 p-2 rounded-md border bg-gray-50 border-gray-100">
                         <Loader2 className="w-4 h-4 animate-spin text-blue-400 flex-shrink-0" />
                         <span className="text-sm text-gray-500">
                           Analyzing your request and planning tasks...
                         </span>
                       </div>
-                    )} */}
+                    )}
 
-                    {/* Tasks */}
                     {tasks.map((task, idx) => (
                       <div
                         key={`task-${idx}-${task.text}`}
@@ -2093,7 +2173,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
                   </div>
                 </div>
-              </div>
+              </div> */}
 
             </div>
           )}
@@ -2226,117 +2306,167 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             ) : (
               <div className="flex items-center">
                 <div className="relative flex items-center" ref={menuRef}>
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      if (!isViewer) {
-                        setShowMenu((prev) => !prev)
-                      }
-                    }}
-                    className={cn(
-                      "h-7 w-7 p-1.5 text-sm rounded-md BackgroundStyle text-black ml-1",
-                      isViewer ? "cursor-not-allowed opacity-50 relative" : "cursor-default"
-                    )}
-                    title={isViewer ? "Viewing mode" : "More options"}
-                    disabled={isLoading || isViewer}
-                    variant="ghost"
-                    size="sm"
-                  >
-                    {isViewer ? <Lock className="w-3.5 h-3.5 text-red-500" /> : <Plus className="w-4 h-4" />}
-                  </Button>
-
-                  {/* Plan Mode Switch - show only on landing/new chat (no projectId) */}
-                  {!projectId && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div className="flex items-center gap-2 ml-2">
-                          <Switch
-                            id="plan-mode"
-                            checked={planMode}
-                            // onCheckedChange={setPlanMode}
-                            disabled={isLoading}
-                          />
-                          <Label
-                            htmlFor="plan-mode"
-                            className="text-xs text-muted-foreground cursor-pointer"
-                          >
-                            PlanMode
-                          </Label>
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Plan mode is coming soon</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  )}
-
-                  {showMenu && (
-                    <div
-                      className="absolute z-50 w-56 overflow-visible bg-white shadow-md border border-[#cfcfd1]
-                    animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2
-                    focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
-                    data-[variant=destructive]:focus:bg-destructive/10
-                    dark:data-[variant=destructive]:focus:bg-destructive/20 
-                    data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive
-                    [&_svg:not([class*='text-'])]:text-muted-foreground 
-                    items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
-                    outline-hidden select-none data-[disabled]:pointer-events-none 
-                    data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
-                    [&_svg:not([class*='size-'])]:size-4"
-                      style={{ bottom: "100%", left: "0", marginBottom: "10px" }}
-                    >
-                      {menuMode === "main" ? (
-                        <>
-                          <div
-                            onClick={() => {
-                              fileInputRef.current?.click()
-                              setShowMenu(false)
-                            }}
-                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm text-black", isLoading ? "opacity-50 cursor-not-allowed" : "BackgroundStyle cursor-default")}
-                          >
-                            <Link1Icon className="h-4 w-4 mr-2 text-black/90" />
-                            Attach images & files
-                          </div>
-                          {/* <div
-                            onClick={() => {
-                              setShowGoogleDriveModal(true)
-                              setShowMenu(false)
-                            }}
-                            className={cn("flex items-center px-2 py-1.5 text-sm rounded-sm", isLoading ? "opacity-50 cursor-not-allowed" : "hover:bg-[#e7e7e7] cursor-pointer")}
-                          >
-                            <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="h-4 w-4 mr-2" alt="" />
-                            Add from Google Drive
-                          </div> */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        onClick={() => {
+                          fileInputRef.current?.click()
+                          setShowMenu(false)
+                        }}
+                        className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
+                      >
+                        <img src="/icons/attachment.png" className="w-4 h-4 " alt="" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isViewer ? "Viewing mode" : "Attachment & Images"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  {menuMode === "main" ? (
+                    <div className="space-y-0.5">
+                      {/* <Tooltip>
+                        <TooltipTrigger asChild>
                           <div
                             onClick={() => {
                               if (!message.includes("Capture from URL:")) {
                                 setMenuMode("design")
                               }
                             }}
-                            className={cn("flex items-center px-2 py-1.5 text-[12px] rounded-sm w-full text-black", message.includes("Capture from URL:") ? "opacity-50 cursor-not-allowed grayscale" : "BackgroundStyle cursor-default")}
+                            className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
                           >
-                            <Palette className="h-4 w-4 mr-2 text-black/90" />
-                            System Design
+                            <Palette className="h-4 w-4 text-black/90" />
                           </div>
-                          <div
-                            className="relative flex items-center px-2 py-1.5 text-[12px] text-black rounded-sm BackgroundStyle cursor-default w-full"
-                            onMouseEnter={() => setShowDatabaseHover(true)}
-                            onMouseLeave={() => setShowDatabaseHover(false)}
-                            onClick={(e) => {
-                              if (projectId && onOpenDatabase) {
-                                onOpenDatabase()
-                              }
-                            }}
-                          >
-                            <Database className="h-4 w-4 mr-2 text-black/90" />
-                            Database
-                            {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
-                            {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>}
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{isViewer ? "Viewing mode" : "System Design"}</p>
+                        </TooltipContent>
+                      </Tooltip> */}
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5 bg-white border border-[#cfcfd1] rounded-md p-0.5 w-[200px]">
+                      <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-xs rounded-sm BackgroundStyle cursor-default w-full">
+                        <ArrowLeft className="h-3 w-3 mr-2" />
+                        Back
+                      </div>
+                      {designSystems.map((system) => (
+                        <div
+                          key={system.name}
+                          onClick={() => {
+                            setSelectedDesign(system.name)
+                            setDesignConfig(designPresets[system.name])
+                            setIsDesignActive(true)
+                            setShowMenu(false)
+                          }}
+                          className="flex items-center px-2 py-1.5 text-xs rounded-sm BackgroundStyle cursor-default w-full"
+                        >
+                          <div className={`h-3 w-3 rounded mr-2 ${system.previewColor}`} />
+                          {system.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
-                            {showDatabaseHover && (!projectId || !onOpenDatabase) && (
-                              <div
-                                className="absolute z-50 w-56
-                              BackgroundStyleButton
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".ts,.tsx,.js,.jsx,.py,.css,.html,.json,.md,.txt,image/*"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            <div className="flex items-center gap-px">
+              {/* Standalone Enhance Prompt Button */}
+              {mounted && balanceData?.subscriptionTier !== "none" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      className="h-7 px-2.5 text-[12px] shadow-none rounded-md bg-white text-black ml-2 hover:bg-[#e7e7e7] transition-colors cursor-pointer"
+                      disabled={isLoading || isViewer}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <Cpu className="w-4 h-4 mr-0.5" />
+                      <span className="truncate max-w-[100px]">
+                        {currentModel.label}
+                        {currentModel.id === 'falmax' && (
+                          <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
+                        )}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48 max-h-[400px] overflow-y-auto bg-white border border-gray-200 shadow-md border border-[#cfcfd1] z-[100]">
+                    <TooltipProvider>
+                      {MODEL_OPTIONS.map((model) => (
+                        <Tooltip key={model.id}>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuItem
+                              onClick={() => handleModelSelect(model.id)}
+                              className={cn(
+                                "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7]",
+                                selectedModel === model.id && "bg-[#e7e7e7]"
+                              )}
+                            >
+                              <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0">
+                                <img src={model.iconUrl || "/placeholder.svg"} alt="" className="w-full h-full object-cover" />
+                              </div>
+                              <span className="text-sm font-medium">
+                                {model.label}
+                                {model.id === 'falmax' && (
+                                  <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
+                                )}
+                              </span>
+                              {model.isPremium && !hasSubscription && (
+                                <Lock className="w-3 h-3 ml-auto text-gray-700" />
+                              )}
+                            </DropdownMenuItem>
+                          </TooltipTrigger>
+                          {model.description && (
+                            <TooltipContent side="right" className="max-w-[220px] text-xs p-3">
+                              <p className="mb-2 text-white/90">{model.description}</p>
+                              {model.subModels && model.subModels.length > 0 && (
+                                <div className="flex flex-col gap-1.5">
+                                  {model.subModels.map((sub) => (
+                                    <div key={sub.id} className="flex items-center gap-1.5">
+                                      <div className="w-3.5 h-3.5 rounded-full overflow-hidden flex-shrink-0">
+                                        <img src={sub.iconUrl} alt={sub.label} className="w-full h-full object-cover" />
+                                      </div>
+                                      <span className="text-[11px] text-white/90">
+                                        {sub.label}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      ))}
+                    </TooltipProvider>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <div
+                className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                onMouseEnter={() => setShowDatabaseHover(true)}
+                onMouseLeave={() => setShowDatabaseHover(false)}
+                onClick={(e) => {
+                  if (projectId && onOpenDatabase) {
+                    onOpenDatabase()
+                  }
+                }}
+              >
+                <img src="/icons/database.png" className="w-4 h-4 " alt="" />
+                {/* {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
+                    {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>} */}
+
+                {showDatabaseHover && (!projectId || !onOpenDatabase) && (
+                  <div
+                    className="absolute z-50 w-46
                               focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
                               data-[variant=destructive]:focus:bg-destructive/10
                               dark:data-[variant=destructive]:focus:bg-destructive/20 
@@ -2345,13 +2475,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
                               outline-hidden select-none data-[disabled]:pointer-events-none 
                               data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
-                              [&_svg:not([class*='size-'])]:size-4"
-                                style={{ left: "100%", top: 0, marginLeft: "-7px" }}
-                                onMouseEnter={() => setShowDatabaseHover(true)}
-                                onMouseLeave={() => setShowDatabaseHover(false)}
-                              >
-                                <TooltipProvider>
-                                  {/* <Tooltip>
+                              [&_svg:not([class*='size-'])]:size-4 bg-white shadow-md border border-[#cfcfd1] rounded-md p-0.5"
+                    onMouseEnter={() => setShowDatabaseHover(true)}
+                    onMouseLeave={() => setShowDatabaseHover(false)}
+                  >
+                    <TooltipProvider>
+                      {/* <Tooltip>
                                     <TooltipTrigger asChild>
                                       <div
                                         className="flex items-center w-full px-2 h-8 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
@@ -2366,401 +2495,99 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                       <p>Use the professional Neon-powered database (Recommended)</p>
                                     </TooltipContent>
                                   </Tooltip> */}
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="flex items-center w-full px-2 py-1.5 h-8 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setIsNeonDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
-                                      >
-                                        <img src="/icons/falbor.png" className="w-6 h-6 mr-2" alt="" />
-                                        <span className="flex-1 text-left">Falbor Database</span>
-                                        {isFalborDb && <Check className="h-4 w-4 text-black" />}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Use the Falbor built-in database (Supabase)</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
-                                      >
-                                        <img src="/icons/supabase.png" className="w-6 h-6 mr-2" alt="" />
-                                        <span className="flex-1 text-left">Connect Supabase</span>
-                                        {!isFalborDb && !isNeonDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Connect your own Supabase database</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                  <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
-                                      >
-                                        <img src="/icons/database-off.png" className="w-6 h-6 mr-2" alt="" />
-                                        <span className="flex-1 text-left">Create without DB</span>
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Proceed without connecting any database</p>
-                                    </TooltipContent>
-                                  </Tooltip>
-                                </TooltipProvider>
-                              </div>
-                            )}
-                          </div>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <div
-                            className="relative flex items-center px-2 py-1.5 text-[12px] rounded-sm BackgroundStyle text-black cursor-default w-full"
-                            onMouseEnter={() => setShowModelHover(true)}
-                            onMouseLeave={() => setShowModelHover(false)}
+                            className="flex items-center w-full px-2 py-1.5 h-8 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setIsNeonDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
                           >
-                            {isAutoSelected ? (
-                              <div className="w-10 h-5 mr-2 to-purple-500 flex items-center justify-center">
-                                <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
-                              </div>
-                            ) : (
-                              <img src={currentModel.iconUrl || "/placeholder.svg"} className="h-4 w-4 mr-2" alt="" />
-                            )}
-                            <span className="flex-1 text-left">AI Model</span>
-                            <span className="ml-auto text-muted-foreground text-[10px]">
-                              {isAutoSelected ? "Auto Select" : currentModel.label}
-                            </span>
-
-                            {showModelHover && (
-                              <div
-                                className="absolute z-50 w-[260px]
-                               bg-white
-                               focus:bg-accent focus:text-accent-foreground
-                               items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
-                               outline-hidden select-none shadow-md border border-[#cfcfd1]"
-                                style={{ left: "100%", top: "-100px", marginLeft: "-7px" }}
-                                onMouseEnter={() => setShowModelHover(true)}
-                                onMouseLeave={() => setShowModelHover(false)}
-                              >
-                                {/* <div className="flex items-center justify-between px-2.5 py-1">
-                                  <span className="text-xs font-semibold text-muted-foreground">AI Models</span>
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleAutoModelSelect()
-                                    }}
-                                    className="flex items-center gap-1 text-[10px] font-bold text-[#0099FF] hover:text-blue-700 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-full transition-all"
-                                    title="Auto-select best model for your prompt"
-                                  >
-                                    <Zap className="w-2.5 h-2.5" />
-                                    Auto
-                                  </button>
-                                </div> */}
-                                <div className="max-h-[500px] overflow-y-auto space-y-0.5">
-                                  {/* Auto Select Option - First in list */}
-                                  {/* <div
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleAutoModelSelect()
-                                    }}
-                                    className="flex items-center gap-3 px-3 py-1.5 rounded-md cursor-default relative BackgroundStyle"
-                                    title="Auto-select best model for your prompt"
-                                  >
-                                    <div className="ml-[-3px] w-10 h-6 to-purple-500 flex items-center justify-center">
-                                      <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
-                                    </div>
-                                    <span className="flex-1 text-black">Auto Select</span>
-                                    {isAutoSelected && (
-                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold"><Check className="w-4 h-4" /></span>
-                                    )}
-                                  </div> */}
-
-                                  {MODEL_OPTIONS.slice(0, 23).map((model) => (
-                                    <div
-                                      key={model.id}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        if (model.isPremium && !hasSubscription) {
-                                          setShowPremiumAlert(true)
-                                          return
-                                        }
-                                        handleModelSelect(model.id)
-                                        setShowModelHover(false)
-                                        setShowMenu(false)
-                                      }}
-                                      className={cn(
-                                        "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-default relative text-black",
-                                        model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "BackgroundStyle"
-                                      )}
-                                    >
-                                      <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
-                                      <span className={cn("flex-1", model.isPremium && !hasSubscription ? "blur-[0.5px]" : "")}>{model.label}</span>
-                                      {model.isPremium && !hasSubscription && (
-                                        <Lock className="w-3 h-3 text-gray-600" />
-                                      )}
-                                      {selectedModel === model.id && !isAutoSelected && (
-                                        <span className="text-[12px] px-2 py-0.5 rounded-2xl font-bold"><Check className="w-4 h-4" /></span>
-                                      )}
-                                    </div>
-                                  ))}
-                                </div>
-                                {/* <div className="h-px bg-gray-100 w-full m-0 p-0 my-1" />
-                              <div className="p-0.5 space-y-0.5">
-                                {MODEL_OPTIONS.slice(6).map((model) => (
-                                  <div
-                                    key={model.id}
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      if (model.isPremium && !hasSubscription) {
-                                        setShowPremiumAlert(true)
-                                        return
-                                      }
-                                      handleModelSelect(model.id)
-                                      setShowModelHover(false)
-                                      setShowMenu(false)
-                                    }}
-                                    className={cn(
-                                      "flex items-center gap-3 px-3 py-1.5 rounded-md cursor-pointer relative",
-                                      model.isPremium && !hasSubscription ? "opacity-40 cursor-not-allowed grayscale-[0.8]" : "hover:bg-[#f3f3f3]"
-                                    )}
-                                  >
-                                    <img src={model.iconUrl} alt={model.label} className="w-4 h-4 rounded" />
-                                    <span className={cn("flex-1", model.isPremium && !hasSubscription ? "blur-[0.5px]" : "")}>{model.label}</span>
-                                    {model.isPremium && !hasSubscription && (
-                                      <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-blue-500 to-purple-500 backdrop-blur-md text-white border border-white/20 shadow-xl text-[10px] uppercase font-bold px-2 py-0.5 rounded-full z-10 flex items-center gap-1 opacity-100 grayscale-0">
-                                        <Lock className="w-2.5 h-2.5" /> Pro Plus
-                                      </span>
-                                    )}
-                                    {selectedModel === model.id && (
-                                      <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">ACTIVE</span>
-                                    )}
-                                    {model.isPremium && hasSubscription && (
-                                      <Lock className="w-3 h-3 text-gray-600" />
-                                    )}
-                                  </div>
-                                ))}
-                              </div> */}
-                              </div>
-                            )}
+                            <img src="/icons/falbor.png" className="w-6 h-6 mr-2" alt="" />
+                            <span className="flex-1 text-left">Falbor Database</span>
+                            {isFalborDb && <Check className="h-4 w-4 text-black" />}
                           </div>
-
-                          {/* {!projectId && (
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Use the Falbor built-in database (Supabase)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <div
-                            className="relative flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer w-full"
-                            onMouseEnter={() => setShowFrameworkHover(true)}
-                            onMouseLeave={() => setShowFrameworkHover(false)}
+                            className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
                           >
-                            <Square className="h-4 w-4 mr-2 text-muted-foreground stroke-1" />
-                            <span className="flex-1 text-left">Choose framework</span>
-                            <span className="ml-auto text-muted-foreground text-[10px] uppercase font-bold">{selectedFramework}</span>
-
-                            {showFrameworkHover && (
-                              <div
-                                className="absolute z-50 w-64
-                              BackgroundStyleButton
-                              focus:bg-accent focus:text-accent-foreground
-                              items-center gap-2 rounded-md  text-sm
-                              outline-hidden select-none border"
-                                style={{ left: "100%", top: 0, marginLeft: "-7px" }}
-                                onMouseEnter={() => setShowFrameworkHover(true)}
-                                onMouseLeave={() => setShowFrameworkHover(false)}
-                              >
-                                <div className="p-0.5 space-y-0.5">
-                                  {["vite", "nextjs", "vue"].map((fw) => {
-                                    const icon =
-                                      fw === "nextjs" ? <img src="/icons/nextjs.png" className="w-5 h-5 mr-2" alt="" /> :
-                                        fw === "vue" ? <img src="/icons/vue.png" className="w-7 h-7 ml-[-3px]" alt="" /> :
-                                          <img src="/icons/Vite.png" className="w-5 h-5 mr-2" alt="" />
-
-                                    return (
-                                      <div
-                                        key={fw}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          setSelectedFramework(fw)
-                                          setShowFrameworkHover(false)
-                                          setShowMenu(false)
-                                        }}
-                                        className="flex items-center gap-3 px-3 py-1.5 rounded-sm cursor-pointer relative hover:bg-white"
-                                      >
-                                        {icon}
-
-                                        <span className="flex-1 capitalize text-sm">
-                                          {fw === "nextjs"
-                                            ? "Next.js (React + TypeScript)"
-                                            : fw === "vue"
-                                              ? "Vue + TypeScript"
-                                              : "Vite + TypeScript"}
-                                        </span>
-
-                                        {selectedFramework === fw && (
-                                          <span className="text-[10px] bg-gray-200 text-gray-900 px-2 py-0.5 rounded-2xl font-bold">
-                                            ACTIVE
-                                          </span>
-                                        )}
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
+                            <img src="/icons/supabase.png" className="w-6 h-6 mr-2" alt="" />
+                            <span className="flex-1 text-left">Connect Supabase</span>
+                            {!isFalborDb && !isNeonDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
                           </div>
-                        )} */}
-
-                          {/* <div
-                            className="relative flex items-center px-2 py-1.5 text-sm rounded-sm hover:bg-[#e7e7e7] cursor-pointer w-full"
-                            onMouseEnter={() => setShowUrlHover(true)}
-                            onMouseLeave={() => setShowUrlHover(false)}
-                          >
-                            <Globe className="h-4 w-4 mr-2" />
-                            <span className="flex-1 text-left">Capture from URL</span>
-                            <Badge>Beta</Badge>
-                            {showUrlHover && (
-                              <div
-                                className="absolute z-50 w-64
-                              bg-white
-                              focus:bg-accent focus:text-accent-foreground
-                              items-center gap-2 rounded-md px-3 py-3 text-sm
-                              outline-hidden select-none border shadow-sm"
-                                style={{ left: "100%", top: "-50px", marginLeft: "-7px" }}
-                                onMouseEnter={() => setShowUrlHover(true)}
-                                onMouseLeave={() => setShowUrlHover(false)}
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="mb-2 text-xs font-semibold text-muted-foreground">Website URL</div>
-                                <div className="flex gap-2">
-                                  <Input
-                                    placeholder="https://example.com"
-                                    value={captureUrlInput}
-                                    onChange={(e) => setCaptureUrlInput(e.target.value)}
-                                    className="h-8 text-xs font-normal"
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") {
-                                        e.preventDefault();
-                                        if (captureUrlInput.trim()) {
-                                          const promptText = `Capture from URL: ${captureUrlInput.trim()}`;
-                                          setMessage(prev => prev + (prev.trim() ? "\\n\\n" : "") + promptText);
-                                          setCaptureUrlInput("");
-                                          setShowUrlHover(false);
-                                          setShowMenu(false);
-                                        }
-                                      }
-                                    }}
-                                  />
-                                  <Button
-                                    size="sm"
-                                    className="h-8"
-                                    onClick={() => {
-                                      if (captureUrlInput.trim()) {
-                                        const promptText = `Capture from URL: ${captureUrlInput.trim()}`;
-                                        setMessage(prev => prev + (prev.trim() ? "\\n\\n" : "") + promptText);
-                                        setCaptureUrlInput("");
-                                        setShowUrlHover(false);
-                                        setShowMenu(false);
-                                      }
-                                    }}
-                                  >
-                                    Add
-                                  </Button>
-                                </div>
-                              </div>
-                            )}
-                          </div> */}
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Connect your own Supabase database</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <div
-                            onClick={() => {
-                              if (!isImproving && message.trim() && !isLoading) {
-                                handleImprovePrompt()
-                                setShowMenu(false)
-                              }
-                            }}
-                            className={cn("flex items-center px-2 py-1.5 text-[12px] text-black rounded-sm w-full", isImproving || !message.trim() || isLoading ? "opacity-50 cursor-not-allowed" : "BackgroundStyle cursor-default")}
+                            className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
                           >
-                            {!isImproving ? (
-                              <StarsIcon className="h-4 w-4 mr-2" />
-                            ) : (
-                              <div className="w-4 h-4 mr-2 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                            )}
-                            Enhance Prompt
+                            <img src="/icons/database-off.png" className="w-6 h-6 mr-2" alt="" />
+                            <span className="flex-1 text-left">Create without DB</span>
                           </div>
-                        </>
-                      ) : (
-                        <>
-                          <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back
-                          </div>
-                          {designSystems.map((system) => (
-                            <div
-                              key={system.name}
-                              onClick={() => {
-                                setSelectedDesign(system.name)
-                                setDesignConfig(designPresets[system.name])
-                                setIsDesignActive(true)
-                                setShowMenu(false)
-                              }}
-
-                              className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
-                            >
-                              <div className={`h-4 w-4 rounded mr-2 ${system.previewColor}`} />
-                              {system.name}
-                            </div>
-                          ))}
-                          <div
-                            onClick={() => {
-                              setSelectedDesign("Custom")
-                              setShowDesignModal(true)
-                              setIsDesignActive(true)
-                              setShowMenu(false)
-                            }}
-
-                            className="flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-gray-100 cursor-pointer transition-colors w-full"
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            New Design System
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center relative" ref={dropdownRef}>
-                  {connected && (
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Proceed without connecting any database</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+              </div>
+              {/* Voice Input Button */}
+              {!isListening && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
                     <Button
                       type="button"
+                      onClick={handleVoiceToggle}
+                      className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                      title="Voice input"
+                      disabled={isLoading}
                       variant="ghost"
                       size="sm"
-                      onClick={onCloseIdeas}
-                      className="px-2 py-1 text-sm text-black/75 hover:text-black hover:bg-[#e4e4e48c] h-auto ml-1"
                     >
-                      Close
+                      <AudioLinesIcon className="w-4 h-4" />
                     </Button>
-                  )}
-                </div>
-              </div>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".ts,.tsx,.js,.jsx,.py,.css,.html,.json,.md,.txt,image/*"
-              multiple
-              onChange={handleFileUpload}
-              className="hidden"
-            />
-            <div className="flex items-center gap-px">
-              {!isListening && (
-                <Button
-                  type="button"
-                  onClick={handleVoiceToggle}
-                  className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
-                  title="Voice input"
-                  disabled={isLoading}
-                  variant="ghost"
-                  size="sm"
-                >
-                  <AudioLinesIcon className="w-4 h-4" />
-                </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Voice input</p>
+                  </TooltipContent>
+                </Tooltip>
               )}
+              {!isImproving && message.trim() && !isLoading && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={handleImprovePrompt}
+                      className="h-7 w-7 p-0.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <img src="/icons/Improving.png" alt="" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Enhance prompt</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {isImproving && (
+                <div className="h-7 w-7 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-[#0099ff]/20 border-t-[#0099ff] rounded-full animate-spin" />
+                </div>
+              )}
+              {/* Send/Submit Button */}
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -2769,9 +2596,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       onClick={isListening ? stopVoiceInput : undefined}
                       size={isProvisioning || editingMessage ? "default" : "icon"}
                       className={cn(
-                        "h-7 p-1.5 rounded-md mr-1 transition-colors",
+                        "h-7 p-1.5 rounded-md mr-1 transition-colors w-7",
                         (isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-white hover:bg-black/5 border border-black/20")),
-                        "w-7",
                         (!effectiveIsLoading && !isListening &&
                           ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
                             !isAuthenticated || isViewer)) ? "cursor-not-allowed opacity-50" : "cursor-pointer"
@@ -2784,8 +2610,6 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         <Circle className="w-4 h-4 text-white" />
                       ) : isViewer ? (
                         <Lock className="w-3.5 h-3.5 text-red-500" />
-                      ) : editingMessage ? (
-                        <ArrowUp className="w-6 h-6 text-black" />
                       ) : (
                         <ArrowUp className="w-6 h-6 text-black" />
                       )}
@@ -2795,7 +2619,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                     <TooltipContent side="top" align="center" className="bg-white text-black border shadow-md font-medium">
                       <p className="flex items-center gap-2">
                         <Lock className="w-3 h-3 text-red-500" />
-                        You are a viewer and cannot send messages.
+                        You cannot send messages.
                       </p>
                     </TooltipContent>
                   )}
@@ -2803,16 +2627,16 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               </TooltipProvider>
             </div>
           </div>
-        </form >
+        </form>
 
         {/* Upgrade Banner & Daily Limit Indicator */}
-        {balanceData?.subscriptionTier === 'none' && (
+        {!hasSubscription && (
           <div className="mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] bg-[#dbd9d9b2]/80 flex items-center justify-between">
             <div className="flex flex-col gap-0.5 ml-2">
               <p className="text-[13px] text-zinc-600 font-medium">
                 {isDailyLimitReached
                   ? `Credits renew in ${formatTime(dailyResetTimer)}`
-                  : `You have`} {5 - (balanceData.dailyMessageCount || 0)} messages left for today.
+                  : `You have`} {5 - (balanceData?.dailyMessageCount || 0)} messages left for today.
               </p>
               {!isDailyLimitReached && (
                 <div className="flex items-center gap-1.5">
@@ -2822,7 +2646,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         key={i}
                         className={cn(
                           "w-3 h-1 rounded-full",
-                          i <= (balanceData.dailyMessageCount || 0) ? "bg-zinc-400" : "bg-zinc-200"
+                          i <= (balanceData?.dailyMessageCount || 0) ? "bg-zinc-400" : "bg-zinc-200"
                         )}
                       />
                     ))}

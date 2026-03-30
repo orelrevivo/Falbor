@@ -160,12 +160,12 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
   const [replyText, setReplyText] = useState("")
   const [sendingReply, setSendingReply] = useState(false)
   const [resendKey, setResendKey] = useState("")
-  const [aiUsage, setAiUsage] = useState<{ 
-    balance: number, 
-    totalMessages: number, 
-    totalCost: number, 
-    projectKey: string | null, 
-    tier: string 
+  const [aiUsage, setAiUsage] = useState<{
+    balance: number,
+    totalMessages: number,
+    totalCost: number,
+    projectKey: string | null,
+    tier: string
   } | null>(null)
   const [loadingUsage, setLoadingUsage] = useState(false)
   const [showApiKey, setShowApiKey] = useState(false)
@@ -1217,7 +1217,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
               </div>
             )}
 
-            {activeTab === "auth_providers" && (
+            {/* {activeTab === "auth_providers" && (
               <div className="p-6 space-y-6 overflow-y-auto h-full">
                 <div className="flex items-center justify-between mb-2">
                   <div>
@@ -1285,7 +1285,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
 
             {activeTab === "sql" && (
               <div className="flex flex-col h-full bg-white">
@@ -2274,32 +2274,32 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                 <div className="bg-white border rounded-sm p-8 shadow-xs">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                     <div className="flex flex-col gap-2">
-                       <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Available Balance</div>
-                       <div className="text-3xl font-black text-gray-900">
-                          ${aiUsage?.balance?.toFixed(2) || "0.00"}
-                       </div>
+                      <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Available Balance</div>
+                      <div className="text-3xl font-black text-gray-900">
+                        ${aiUsage?.balance?.toFixed(2) || "0.00"}
+                      </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                       <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Total Messages</div>
-                       <div className="text-3xl font-black text-zinc-400">
-                          {aiUsage?.totalMessages || 0}
-                       </div>
+                      <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Total Messages</div>
+                      <div className="text-3xl font-black text-zinc-400">
+                        {aiUsage?.totalMessages || 0}
+                      </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                       <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Accumulated Cost</div>
-                       <div className="text-3xl font-black text-zinc-400">
-                          ${aiUsage?.totalCost?.toFixed(2) || "0.00"}
-                       </div>
+                      <div className="text-[11px] text-gray-400 font-bold uppercase tracking-widest pl-1">Accumulated Cost</div>
+                      <div className="text-3xl font-black text-zinc-400">
+                        ${aiUsage?.totalCost?.toFixed(2) || "0.00"}
+                      </div>
                     </div>
                   </div>
 
                   <div className="mt-8 p-4 bg-zinc-50 border border-zinc-100 rounded-xl flex items-center gap-3">
                     <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center border border-zinc-200">
-                        <Info size={14} className="text-zinc-400" />
+                      <Info size={14} className="text-zinc-400" />
                     </div>
                     <p className="text-xs text-zinc-500">
-                        Your account is currently on the <span className="font-bold text-zinc-700 capitalize">{aiUsage?.tier}</span> plan. 
-                        API usage is billed per token and deducted from your Falbor Balance.
+                      Your account is currently on the <span className="font-bold text-zinc-700 capitalize">{aiUsage?.tier}</span> plan.
+                      API usage is billed per token and deducted from your Falbor Balance.
                     </p>
                   </div>
                 </div>

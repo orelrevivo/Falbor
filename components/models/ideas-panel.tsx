@@ -22,9 +22,8 @@ export function IdeasPanel({ onSelectIdea }: IdeasPanelProps) {
             key={cat.name}
             variant={selectedCategory === cat.name ? "default" : "ghost"}
             onClick={() => setSelectedCategory(cat.name)}
-            className={`h-6 px-1.5 text-xs bg-[#e4e4e494] hover:bg-[#e7e7e7] text-black border-[#272727] ${
-                selectedCategory === cat.name ? "bg-[#e4e4e4] hover:bg-[#e4e4e4]" : ""
-            }`}
+            className={`h-6 px-1.5 text-xs bg-[#e4e4e494] hover:bg-[#e7e7e7] text-black border-[#272727] ${selectedCategory === cat.name ? "bg-[#e4e4e4] hover:bg-[#e4e4e4]" : ""
+              }`}
           >
             {cat.name}
           </Button>
@@ -43,8 +42,8 @@ export function IdeasPanel({ onSelectIdea }: IdeasPanelProps) {
             {idea.title}
           </Button>
         )) || (
-          <p className="text-muted-foreground text-sm">Select a category to view ideas.</p>
-        )}
+            <p className="text-muted-foreground text-sm">Select a category to view ideas.</p>
+          )}
       </div>
     </div>
   )
