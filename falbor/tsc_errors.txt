@@ -1,0 +1,48 @@
+.next/dev/types/validator.ts(441,31): error TS2344: Type 'typeof import("C:/Users/orelr/OneDrive/Desktop/Falbor-main/app/api/mcp/auth/[provider]/route")' does not satisfy the constraint 'RouteHandlerConfig<"/api/mcp/auth/[provider]">'.
+  Types of property 'GET' are incompatible.
+    Type '(request: Request, { params }: { params: { provider: string; }; }) => Promise<NextResponse<unknown>>' is not assignable to type '(request: NextRequest, context: { params: Promise<{ provider: string; }>; }) => void | Response | Promise<void | Response>'.
+      Types of parameters '__1' and 'context' are incompatible.
+        Type '{ params: Promise<{ provider: string; }>; }' is not assignable to type '{ params: { provider: string; }; }'.
+          Types of property 'params' are incompatible.
+            Property 'provider' is missing in type 'Promise<{ provider: string; }>' but required in type '{ provider: string; }'.
+.next/dev/types/validator.ts(837,31): error TS2344: Type 'typeof import("C:/Users/orelr/OneDrive/Desktop/Falbor-main/app/api/projects/[id]/supabase/sql-files/route")' does not satisfy the constraint 'RouteHandlerConfig<"/api/projects/[id]/supabase/sql-files">'.
+  Types of property 'GET' are incompatible.
+    Type '(request: NextRequest, { params }: { params: { id: string; }; }) => Promise<NextResponse<{ id: string; projectId: string; fileName: string; content: string; createdAt: Date; }[]> | NextResponse<...>>' is not assignable to type '(request: NextRequest, context: { params: Promise<{ id: string; }>; }) => void | Response | Promise<void | Response>'.
+      Types of parameters '__1' and 'context' are incompatible.
+        Type '{ params: Promise<{ id: string; }>; }' is not assignable to type '{ params: { id: string; }; }'.
+          Types of property 'params' are incompatible.
+            Property 'id' is missing in type 'Promise<{ id: string; }>' but required in type '{ id: string; }'.
+.next/types/validator.ts(405,31): error TS2344: Type 'typeof import("C:/Users/orelr/OneDrive/Desktop/Falbor-main/app/api/mcp/auth/[provider]/route")' does not satisfy the constraint 'RouteHandlerConfig<"/api/mcp/auth/[provider]">'.
+  Types of property 'GET' are incompatible.
+    Type '(request: Request, { params }: { params: { provider: string; }; }) => Promise<NextResponse<unknown>>' is not assignable to type '(request: NextRequest, context: { params: Promise<{ provider: string; }>; }) => void | Response | Promise<void | Response>'.
+      Types of parameters '__1' and 'context' are incompatible.
+        Type '{ params: Promise<{ provider: string; }>; }' is not assignable to type '{ params: { provider: string; }; }'.
+          Types of property 'params' are incompatible.
+            Property 'provider' is missing in type 'Promise<{ provider: string; }>' but required in type '{ provider: string; }'.
+.next/types/validator.ts(792,31): error TS2344: Type 'typeof import("C:/Users/orelr/OneDrive/Desktop/Falbor-main/app/api/projects/[id]/supabase/sql-files/route")' does not satisfy the constraint 'RouteHandlerConfig<"/api/projects/[id]/supabase/sql-files">'.
+  Types of property 'GET' are incompatible.
+    Type '(request: NextRequest, { params }: { params: { id: string; }; }) => Promise<NextResponse<{ id: string; projectId: string; fileName: string; content: string; createdAt: Date; }[]> | NextResponse<...>>' is not assignable to type '(request: NextRequest, context: { params: Promise<{ id: string; }>; }) => void | Response | Promise<void | Response>'.
+      Types of parameters '__1' and 'context' are incompatible.
+        Type '{ params: Promise<{ id: string; }>; }' is not assignable to type '{ params: { id: string; }; }'.
+          Types of property 'params' are incompatible.
+            Property 'id' is missing in type 'Promise<{ id: string; }>' but required in type '{ id: string; }'.
+app/api/plans/route.ts(28,28): error TS2769: No overload matches this call.
+  Overload 1 of 2, '(value: { userId: string | SQL<unknown> | Placeholder<string, any>; projectId: string | SQL<unknown> | Placeholder<string, any>; questions: SQL<unknown> | { ...; }[] | Placeholder<...>; summary: string | ... 1 more ... | Placeholder<...>; id?: string | ... 2 more ... | undefined; createdAt?: SQL<...> | ... 2 more ... | undefined; updatedAt?: SQL<...> | ... 2 more ... | undefined; }): PgInsertBase<...>', gave the following error.
+    Type 'string' is not assignable to type 'SQL<unknown> | { id: number; question: string; answer: string; }[] | Placeholder<string, any>'.
+  Overload 2 of 2, '(values: { userId: string | SQL<unknown> | Placeholder<string, any>; projectId: string | SQL<unknown> | Placeholder<string, any>; questions: SQL<unknown> | { ...; }[] | Placeholder<...>; summary: string | ... 1 more ... | Placeholder<...>; id?: string | ... 2 more ... | undefined; createdAt?: SQL<...> | ... 2 more ... | undefined; updatedAt?: SQL<...> | ... 2 more ... | undefined; }[]): PgInsertBase<...>', gave the following error.
+    Object literal may only specify known properties, and 'id' does not exist in type '{ userId: string | SQL<unknown> | Placeholder<string, any>; projectId: string | SQL<unknown> | Placeholder<string, any>; questions: SQL<unknown> | { id: number; question: string; answer: string; }[] | Placeholder<...>; summary: string | ... 1 more ... | Placeholder<...>; id?: string | ... 2 more ... | undefined; cre...'.
+app/api/plans/route.ts(86,31): error TS2352: Conversion of type '{ id: number; question: string; answer: string; }[]' to type 'string' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+app/api/plans/route.ts(102,31): error TS2352: Conversion of type '{ id: number; question: string; answer: string; }[]' to type 'string' may be a mistake because neither type sufficiently overlaps with the other. If this was intentional, convert the expression to 'unknown' first.
+app/api/tasks/generate-idea/route.ts(24,35): error TS2339: Property 'credits' does not exist on type '{ userId: string; balance: number; lastRegenTime: Date; lastClaimedGiftId: string | null; lastMonthlyClaim: Date | null; lastDispense: Date | null; subscriptionTier: string; balancePerMonth: number; paypalSubscriptionId: string | null; stripeCustomerId: string | null; }'.
+app/api/tasks/generate-idea/route.ts(71,14): error TS2353: Object literal may only specify known properties, and 'credits' does not exist in type '{ userId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; balance?: number | SQL<unknown> | PgColumn<...> | undefined; ... 7 more ...; stripeCustomerId?: string | ... 3 more ... | undefined; }'.
+app/api/tasks/generate-idea/route.ts(71,41): error TS2339: Property 'credits' does not exist on type 'PgTableWithColumns<{ name: "user_credits"; schema: undefined; columns: { userId: PgColumn<{ name: "user_id"; tableName: "user_credits"; dataType: "string"; columnType: "PgText"; data: string; driverParam: string; notNull: true; ... 7 more ...; generated: undefined; }, {}, {}>; ... 8 more ...; stripeCustomerId: PgCol...'.
+app/api/tasks/improve/route.ts(24,35): error TS2339: Property 'credits' does not exist on type '{ userId: string; balance: number; lastRegenTime: Date; lastClaimedGiftId: string | null; lastMonthlyClaim: Date | null; lastDispense: Date | null; subscriptionTier: string; balancePerMonth: number; paypalSubscriptionId: string | null; stripeCustomerId: string | null; }'.
+app/api/tasks/improve/route.ts(50,14): error TS2353: Object literal may only specify known properties, and 'credits' does not exist in type '{ userId?: string | SQL<unknown> | PgColumn<ColumnBaseConfig<ColumnDataType, string>, {}, {}> | undefined; balance?: number | SQL<unknown> | PgColumn<...> | undefined; ... 7 more ...; stripeCustomerId?: string | ... 3 more ... | undefined; }'.
+app/api/tasks/improve/route.ts(50,41): error TS2339: Property 'credits' does not exist on type 'PgTableWithColumns<{ name: "user_credits"; schema: undefined; columns: { userId: PgColumn<{ name: "user_id"; tableName: "user_credits"; dataType: "string"; columnType: "PgText"; data: string; driverParam: string; notNull: true; ... 7 more ...; generated: undefined; }, {}, {}>; ... 8 more ...; stripeCustomerId: PgCol...'.
+app/profile/[id]/page.tsx(31,38): error TS2552: Cannot find name 'userId'. Did you mean 'user'?
+app/profile/[id]/page.tsx(31,64): error TS2304: Cannot find name 'projects'.
+components/chat/SkillSelector.tsx(248,74): error TS2367: This comparison appears to be unintentional because the types '"skills"' and '"templates"' have no overlap.
+components/workbench/web-container-preview.tsx(94,22): error TS2307: Cannot find module '@xterm/xterm/css/xterm.css' or its corresponding type declarations.
+components/workbench/web-container-preview.tsx(666,43): error TS18047: 'webcontainerInstance' is possibly 'null'.
+components/workbench/web-container-preview.tsx(672,49): error TS18047: 'webcontainerInstance' is possibly 'null'.
+\n

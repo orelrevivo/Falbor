@@ -1,0 +1,2916 @@
+"use client"
+import type React from "react"
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react"
+import { useRouter } from "next/navigation"
+import { useUser } from "@clerk/nextjs"
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2 } from "lucide-react"
+import {
+  Loader,
+  X,
+  Plus,
+  Circle,
+  MoreHorizontal,
+  ArrowLeft,
+  ChevronDown,
+  FileText,
+  Loader2,
+  Download,
+  Copy,
+  Edit,
+  Check,
+  Shield,
+  List,
+  Square,
+  CheckCircle2,
+  StopCircle,
+  Bug,
+  Scan,
+  Terminal
+} from "lucide-react"
+import { Link1Icon } from "@radix-ui/react-icons"
+import { Switch } from "@/components/ui/switch"
+import type { Message } from "@/config/schema"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Editor } from "@monaco-editor/react"
+import { motion, AnimatePresence } from "framer-motion"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
+import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
+import { GoogleDriveModal } from "@/components/models/google-drive-modal"
+import { getMcpConnections } from "@/app/actions/mcp"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { SkillSelector } from "@/components/chat/SkillSelector"
+interface ChatInputProps {
+  isAuthenticated: boolean
+  projectId?: string
+  onNewMessage?: (message: Message) => void
+  placeholder?: string
+  initialModel?: string
+  connected?: boolean
+  onCloseIdeas?: () => void
+  isAutomated?: boolean
+  previewError?: {
+    message: string
+    file?: string
+    line?: string
+  } | null
+  onDismissError?: () => void
+  onOpenDatabase?: () => void
+  externalIsLoading?: boolean
+  onStop?: () => void
+  messages?: Message[]
+  disabled?: boolean
+  initialMessage?: string
+  editingMessage?: { id: string; content: string } | null
+  sessionId?: string
+  onCancelEdit?: () => void
+  onSaveEdit?: (id: string, content: string) => void
+  role?: "viewer" | "editor" | "admin"
+}
+interface BalanceData {
+  subscriptionTier: string
+  balance?: number
+  secondsUntilNextRegen?: number
+  dailyMessageCount?: number
+  secondsUntilDailyReset?: number
+}
+export interface ChatInputRef {
+  insertPrompt: (prompt: string) => void
+}
+interface ModelOption {
+  id: string
+  label: string
+  isPremium: boolean
+  iconUrl: string
+  description?: string
+  subModels?: { id: string; label: string; iconUrl: string; color: string }[]
+}
+type DesignConfig = {
+  primaryColor: string
+  secondaryColor: string
+  backgroundColor: string
+  textColor: string
+  buttonStyle: "rounded" | "square" | "pill"
+  borderStyle: "solid" | "dashed" | "none"
+}
+const designSystems = [
+  { name: "Base", previewColor: "bg-black" },
+  { name: "Mono", previewColor: "bg-gray-500" },
+  { name: "Cosmic Night", previewColor: "bg-purple-900" },
+  { name: "Soft Pop", previewColor: "bg-green-500" },
+  { name: "Neo Brutalism", previewColor: "bg-yellow-500" },
+  { name: "Vintage Paper", previewColor: "bg-amber-300" },
+  { name: "Modern Minimal", previewColor: "bg-blue-200" },
+  { name: "Bubblegum", previewColor: "bg-pink-400" },
+]
+const designPresets: Record<string, DesignConfig> = {
+  Base: {
+    primaryColor: "#000000",
+    secondaryColor: "#ffffff",
+    backgroundColor: "#ffffff",
+    textColor: "#000000",
+    buttonStyle: "rounded",
+    borderStyle: "solid",
+  },
+  Mono: {
+    primaryColor: "#333333",
+    secondaryColor: "#666666",
+    backgroundColor: "#f0f0f0",
+    textColor: "#000000",
+    buttonStyle: "square",
+    borderStyle: "none",
+  },
+  "Cosmic Night": {
+    primaryColor: "#4b0082",
+    secondaryColor: "#ffffff",
+    backgroundColor: "#000000",
+    textColor: "#ffffff",
+    buttonStyle: "rounded",
+    borderStyle: "dashed",
+  },
+  "Soft Pop": {
+    primaryColor: "#00ff00",
+    secondaryColor: "#ff4500",
+    backgroundColor: "#ffffff",
+    textColor: "#000000",
+    buttonStyle: "pill",
+    borderStyle: "solid",
+  },
+  "Neo Brutalism": {
+    primaryColor: "#ffff00",
+    secondaryColor: "#ff0000",
+    backgroundColor: "#ffffff",
+    textColor: "#000000",
+    buttonStyle: "square",
+    borderStyle: "solid",
+  },
+  "Vintage Paper": {
+    primaryColor: "#8b4513",
+    secondaryColor: "#f4e8d4",
+    backgroundColor: "#f4e8d4",
+    textColor: "#4b2e0b",
+    buttonStyle: "rounded",
+    borderStyle: "dashed",
+  },
+  "Modern Minimal": {
+    primaryColor: "#007bff",
+    secondaryColor: "#6c757d",
+    backgroundColor: "#ffffff",
+    textColor: "#212529",
+    buttonStyle: "square",
+    borderStyle: "none",
+  },
+  Bubblegum: {
+    primaryColor: "#ff69b4",
+    secondaryColor: "#ffb6c1",
+    backgroundColor: "#fff0f5",
+    textColor: "#c71585",
+    buttonStyle: "pill",
+    borderStyle: "solid",
+  },
+}
+
+
+
+const EMAIL_TEMPLATES = [
+  { id: "confirmation", label: "Confirm Sign Up" },
+  { id: "invite", label: "Invite User" },
+  { id: "magic_link", label: "Magic Link" },
+  { id: "email_change", label: "Change Email" },
+  { id: "recovery", label: "Reset Password" },
+  { id: "reauthentication", label: "Reauthentication" },
+]
+const MODEL_OPTIONS: ModelOption[] = [
+  {
+    id: "falmax",
+    label: "FalMax",
+    isPremium: true,
+    iconUrl: "/icons/falbor.png",
+    description: "Professional model specialized in building games, complex websites, and long-form technical tasks.",
+    subModels: [
+      { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview", iconUrl: "/icons/gemini.png", color: "#1a73e8" },
+      { id: "x-ai/grok-3", label: "Grok 3", iconUrl: "/icons/grok-light.png", color: "#000000" },
+      { id: "openai/gpt-5.1", label: "GPT-5.1", iconUrl: "/icons/ChatGPT_logo.svg-Photoroom.png", color: "#10a37f" },
+    ]
+  },
+  {
+    id: "claude-opus-4.6",
+    label: "Claude Opus 4.6",
+    isPremium: true,
+    iconUrl: "/icons/claude.png",
+    description: "Anthropic's most powerful model for highly complex creative and technical reasoning."
+  },
+  {
+    id: "claude-haiku-4.5",
+    label: "Claude Haiku 4.5",
+    isPremium: false,
+    iconUrl: "/icons/claude.png",
+    description: "Fast and efficient model for quick responses and lightweight tasks."
+  },
+  {
+    id: "grok-4.1-fast",
+    label: "Grok 4.1 Fast",
+    isPremium: true,
+    iconUrl: "/icons/grok-light.png",
+    description: "xAI's latest high-speed model with real-time knowledge and advanced logic."
+  },
+  {
+    id: "grok-4-fast",
+    label: "Grok 4 Fast",
+    isPremium: true,
+    iconUrl: "/icons/grok-light.png",
+    description: "Balanced high-performance model with excellent reasoning capabilities."
+  },
+  {
+    id: "glm-4.7-flash",
+    label: "GLM 4.7 Flash",
+    isPremium: false,
+    iconUrl: "/icons/zAI.png",
+    description: "Ultra-fast multimodal model optimized for low latency and high-speed processing."
+  },
+  {
+    id: "glm-5-turbo",
+    label: "GLM 5 Turbo",
+    isPremium: false,
+    iconUrl: "/icons/zAI.png",
+    description: "Powerful general-purpose model with strong reasoning and instruction following."
+  },
+  {
+    id: "moonshotai/kimi-k2.5",
+    label: "Kimi K2.5",
+    isPremium: true,
+    iconUrl: "/icons/moonshotai.avif",
+    description: "Moonshot AI's latest multimodal model with exceptional reasoning and long-context capabilities."
+  },
+  {
+    id: "moonshotai/kimi-k2-thinking",
+    label: "Kimi K2 Thinking",
+    isPremium: true,
+    iconUrl: "/icons/moonshotai.avif",
+    description: "Specialized Kimi model optimized for deep thinking, complex problem-solving, and logical deduction."
+  },
+  {
+    id: "minimax/minimax-m2.7",
+    label: "MiniMax M2.7",
+    isPremium: true,
+    iconUrl: "/icons/minimax.avif",
+    description: "MiniMax's next-generation model with significant improvements in coding and technical writing."
+  },
+  {
+    id: "minimax/minimax-m2.5",
+    label: "MiniMax M2.5",
+    isPremium: true,
+    iconUrl: "/icons/minimax.avif",
+    description: "Balanced high-performance model from MiniMax for diverse creative and analytical tasks."
+  },
+  {
+    id: "gemini-3.1-flash-lite",
+    label: "Gemini 3.1 Flash Lite",
+    isPremium: false,
+    iconUrl: "/icons/gemini.png",
+    description: "Google's ultra-lightweight and fast multimodal model."
+  },
+]
+
+const formatFileSize = (bytes: number) => {
+  if (bytes === 0) return "0 Bytes"
+  const k = 1024
+  const sizes = ["Bytes", "KB", "MB", "GB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
+}
+interface AttachedFile {
+  id: string
+  name: string
+  type: string
+  size: number
+  content: string
+  preview?: string | null
+  uploadStatus: "uploading" | "complete"
+  displayName?: string
+}
+interface PastedContent {
+  id: string
+  content: string
+}
+interface FilePreviewButtonProps {
+  file: AttachedFile
+  onClick: () => void
+  onRemove: () => void
+}
+const FilePreviewButton: React.FC<FilePreviewButtonProps> = ({ file, onClick, onRemove }) => {
+  const isImage = file.type.startsWith("image/") && file.preview
+  return (
+    <div className="relative group flex items-center justify-between w-[150px] px-2 rounded-sm border border-[#e4e4e4a8] bg-white hover:bg-white transition-all cursor-pointer">
+      <div className="flex items-center gap-3 flex-1" onClick={onClick}>
+        {isImage ? (
+          <img src={file.preview! || "/placeholder.svg"} alt={file.name} className="w-5 h-5 object-cover rounded" />
+        ) : (
+          <div className="p-2 bg-gray-200 rounded">
+            <FileText className="w-3 h-3 text-gray-600" />
+          </div>
+        )}
+        <div className="flex-1">
+          <p className="text-xs text-gray-500">
+            {formatFileSize(file.size)} • {file.type.split("/")[1] || "text"}
+          </p>
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+        className="
+          p-1
+          ml-[-12px]
+          bg-gray-100h-10
+          rounded text-black
+          cursor-pointer
+          transition-all
+          opacity-0
+          group-hover:opacity-50
+        "
+      >
+        <X className="w-4 h-4" />
+      </button>
+      {file.uploadStatus === "uploading" && (
+        <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+          <Loader className="w-4 h-4 text-gray-500 animate-spin" />
+        </div>
+      )}
+    </div>
+  )
+}
+interface PastedContentButtonProps {
+  content: PastedContent
+  onClick: () => void
+  onRemove: () => void
+}
+const PastedContentButton: React.FC<PastedContentButtonProps> = ({ content, onClick, onRemove }) => {
+  return (
+    <div className="relative group flex items-center justify-between w-[132px] px-2 rounded-sm border border-[#e4e4e4a8] bg-white hover:bg-white transition-all cursor-pointer">
+      <div className="flex items-center gap-3 flex-1" onClick={onClick}>
+        <div className="">
+          <FileText className="w-3 h-3 text-gray-600" />
+        </div>
+        <div className="flex-1 overflow-hidden">
+          <p className="text-xs text-gray-500 truncate">{content.content.substring(0, 13)}...</p>
+        </div>
+      </div>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+        className="
+          p-1
+          ml-[-7px]
+          bg-gray-100h-10
+          rounded text-black
+          cursor-pointer
+          transition-all
+          opacity-0
+          group-hover:opacity-50
+        "
+      >
+        <X className="w-4 h-4" />
+      </button>
+      {content.content === "uploading" && (
+        <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
+          <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+        </div>
+      )}
+    </div>
+  )
+}
+interface DatabaseCredentials {
+  supabaseUrl: string
+  anonKey: string
+  neonUrl?: string
+  neonApiKey?: string
+}
+interface SupabaseProject {
+  ref: string
+  name: string
+  organization_name?: string | null
+  region?: string | null
+}
+const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInputImpl(
+  {
+    isAuthenticated,
+    projectId,
+    onNewMessage,
+    placeholder = "Ask anything... to get started",
+    initialModel = "gemini-3.1-flash-lite",
+    connected = false,
+    onCloseIdeas,
+    isAutomated = false,
+    previewError,
+    onDismissError,
+    onOpenDatabase,
+    externalIsLoading = false,
+    onStop,
+    messages = [],
+    initialMessage,
+    editingMessage,
+    onCancelEdit,
+    onSaveEdit,
+    sessionId = "main",
+    role = "admin"
+  },
+  ref,
+) {
+  const isViewer = role === "viewer"
+  const [message, setMessage] = useState(initialMessage || "")
+  const [isLoading, setIsLoading] = useState(false)
+
+  const effectiveIsLoading = isLoading || externalIsLoading
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastAssistant = [...messages].reverse().find(m => m.role === "assistant")
+      if (lastAssistant) {
+        parseTasksFromContent(lastAssistant.content)
+      }
+    }
+  }, [messages])
+  const [isImproving, setIsImproving] = useState(false)
+  const [isFocused, setIsFocused] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<{ data: string; mimeType: string } | null>(null)
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [imageName, setImageName] = useState<string>("")
+  const [imageSize, setImageSize] = useState<number>(0)
+  const [uploadedFiles, setUploadedFiles] = useState<AttachedFile[]>([])
+  const [pastedContents, setPastedContents] = useState<PastedContent[]>([])
+  const [balanceData, setBalanceData] = useState<BalanceData | null>(null)
+  const [timeLeft, setTimeLeft] = useState(0)
+  const [isDiscussMode, setIsDiscussMode] = useState(false)
+  const [selectedFile, setSelectedFile] = useState<{
+    id: string
+    name: string
+    content: string
+    type: string
+    isPasted: boolean
+  } | null>(null)
+  const [editedContent, setEditedContent] = useState<string>("")
+  const [isEditing, setIsEditing] = useState(false)
+  const [isListening, setIsListening] = useState(false)
+  const [selectedModel, setSelectedModel] = useState<string>(initialModel)
+
+  useEffect(() => {
+    if (balanceData?.subscriptionTier === "none" && selectedModel !== "gemini-3.1-flash-lite") {
+      setSelectedModel("gemini-3.1-flash-lite")
+    }
+  }, [balanceData?.subscriptionTier, selectedModel])
+
+  const [isAutoSelected, setIsAutoSelected] = useState(false)
+  const [selectedFramework, setSelectedFramework] = useState<string>("vite")
+  const [showFrameworkHover, setShowFrameworkHover] = useState(false)
+  const [showModelDropdown, setShowModelDropdown] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const [menuMode, setMenuMode] = useState<"main" | "design">("main")
+  const [showDatabaseHover, setShowDatabaseHover] = useState(false)
+  const [showModelHover, setShowModelHover] = useState(false)
+  const [isFalborDb, setIsFalborDb] = useState(false)
+  const [isNeonDb, setIsNeonDb] = useState(false)
+  const [showDesignModal, setShowDesignModal] = useState(false)
+  const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
+  const [designConfig, setDesignConfig] = useState<DesignConfig | null>(null)
+  const [isDesignActive, setIsDesignActive] = useState(false)
+  const [tempConfig, setTempConfig] = useState<DesignConfig>(designPresets["Base"])
+  const [showPremiumAlert, setShowPremiumAlert] = useState(false)
+  const [showLoginDialog, setShowLoginDialog] = useState(false)
+  const [showDatabaseModal, setShowDatabaseModal] = useState(false)
+  const [databaseCredentials, setDatabaseCredentials] = useState<DatabaseCredentials>({ supabaseUrl: "", anonKey: "" })
+  const [isSavingCredentials, setIsSavingCredentials] = useState(false)
+  const [isProvisioning, setIsProvisioning] = useState(false)
+  const [credentialsSaved, setCredentialsSaved] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const [showConfirmation, setShowConfirmation] = useState(false)
+  const [pendingSubmitData, setPendingSubmitData] = useState<{
+    userMessage: string
+    selectedImage: { data: string; mimeType: string } | null
+    isDiscussMode: boolean
+    selectedModel: string
+    isAutomated: boolean
+    isFalborDb: boolean
+    isNeonDb: boolean
+    selectedFramework?: string
+  } | null>(null)
+  const [isActive, setIsActive] = useState(false)
+  const [accessToken, setAccessToken] = useState<string>("")
+  const [isFetchingProjects, setIsFetchingProjects] = useState(false)
+  const [projects, setProjects] = useState<SupabaseProject[]>([])
+  const [selectedProjectRef, setSelectedProjectRef] = useState<string>("")
+  const [fetchError, setFetchError] = useState<string | null>(null)
+  const [lastAssistantContent, setLastAssistantContent] = useState<string>("")
+  const [pendingMigrations, setPendingMigrations] = useState<string[]>([])
+  const [showTokenModal, setShowTokenModal] = useState(false)
+  const [tempAccessToken, setTempAccessToken] = useState<string>("")
+  const [isFetchingApiKeys, setIsFetchingApiKeys] = useState(false)
+  const [mcpConnections, setMcpConnections] = useState<any[]>([])
+
+  const [selectedMcpIds, setSelectedMcpIds] = useState<string[]>([])
+
+  const [isLoadingConnection, setIsLoadingConnection] = useState(true)
+  const [showTaskPanel, setShowTaskPanel] = useState(true)
+  const [tasks, setTasks] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
+  const tasksKey = projectId ? `chat-tasks-${projectId}` : "chat-tasks-global"
+  const [showUrlHover, setShowUrlHover] = useState(false)
+  const [captureUrlInput, setCaptureUrlInput] = useState("")
+  const [showErrorPanel, setShowErrorPanel] = useState(true)
+  const [isScanning, setIsScanning] = useState(false)
+  const [scannerLogs, setScannerLogs] = useState<{ text: string; status: "success" | "loading" | "pending" }[]>([])
+  const [planMode, setPlanMode] = useState(false)
+  const [showSkillSelector, setShowSkillSelector] = useState(false)
+  const [dailyResetTimer, setDailyResetTimer] = useState<number>(0)
+  const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1)
+  const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false)
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort()
+      setIsLoading(false)
+      abortControllerRef.current = null
+    }
+    if (onStop) {
+      onStop()
+    }
+  }
+
+  // Auto-open and auto-close logic for Tasks panel
+  useEffect(() => {
+    // If we're loading and tasks have appeared, ensure panel is open
+    if (effectiveIsLoading && tasks.length > 0) {
+      setShowTaskPanel(true)
+    }
+
+    // Auto-close when everything is done
+    if (!effectiveIsLoading && tasks.length > 0 && tasks.every((t) => t.status === "success")) {
+      const timer = setTimeout(() => {
+        setShowTaskPanel(false)
+      }, 2500) // 2.5s delay after completion
+      return () => clearTimeout(timer)
+    }
+  }, [effectiveIsLoading, tasks])
+
+  const parseScannerLogsFromContent = (content: string) => {
+    const logs: { text: string; status: "success" | "loading" | "pending" }[] = []
+
+    // MCP Scan
+    if (content.match(/<Scan>([\s\S]*?)<\/Scan>/i)) {
+      logs.push({ text: "Account connection context analyzed.", status: "success" })
+    } else if (content.toLowerCase().includes("<scan>")) {
+      logs.push({ text: "Scanning connection context...", status: "loading" })
+    }
+
+    // Capability Discovery
+    if (content.match(/<Discover(Gmail|Discord|Messenger)Tools>([\s\S]*?)<\/Discover(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Discovered platform capabilities.", status: "success" })
+    } else if (content.match(/<Discover(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Fetching available tools...", status: "loading" })
+    }
+
+    // Execution / Retrieval
+    if (content.match(/<Test(Gmail|Discord|Messenger)Tools>([\s\S]*?)<\/Test(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Operation executed successfully.", status: "success" })
+    } else if (content.match(/<Test(Gmail|Discord|Messenger)Tools>/i)) {
+      logs.push({ text: "Executing tool call...", status: "loading" })
+    }
+
+    // Internet Search
+    if (content.match(/<InternetSearch>([\s\S]*?)<\/InternetSearch>/i)) {
+      logs.push({ text: "External information retrieved.", status: "success" })
+    } else if (content.toLowerCase().includes("<internetsearch>")) {
+      logs.push({ text: "Searching knowledge base...", status: "loading" })
+    }
+
+    // Terminal Commands
+    if (content.match(/<Terminal>([\s\S]*?)<\/Terminal>/i)) {
+      logs.push({ text: "Command execution complete.", status: "success" })
+    } else if (content.toLowerCase().includes("<terminal>")) {
+      logs.push({ text: "Running system command...", status: "loading" })
+    }
+
+    if (logs.length > 0) {
+      setScannerLogs(logs)
+    }
+  }
+
+  const handleFixError = async (online = false) => {
+    if (!previewError) return
+    const errorMsg = previewError.message
+    const errorFile = previewError.file || "unknown"
+
+    if (online) {
+      setScannerLogs([{ text: "Initializing online deep scan...", status: "loading" }])
+      setIsScanning(true)
+      const scanPrompt = `[CRITICAL_ERROR_FIX]
+ERROR: "${errorMsg}"
+FILE: ${errorFile}
+
+Please perform a deep ONLINE SCAN to resolve this issue:
+1. <Scan> pinpoint the error source.
+2. <InternetSearch> find the most relevant, modern fix online.
+3. <VerifyingSolution> verify the fix matches our React/Vite stack.
+4. <Terminal> install any missing libraries if needed.
+5. Apply the fix to ONLY the affected file.
+6. Verify the result.`
+      handleSubmit(undefined, scanPrompt)
+    } else {
+      const fixPrompt = `I'm getting this error in ${errorFile}: "${errorMsg}". Please fix it by updating ONLY the relevant file.`
+      handleSubmit(undefined, fixPrompt)
+    }
+    setShowErrorPanel(false)
+  }
+
+  const parseTasksFromContent = (content: string) => {
+    const tasksRegex = /<Tasks>([\s\S]*?)(?:<\/Tasks>|$)/gi
+    let match
+    let lastMatch = null
+    while ((match = tasksRegex.exec(content)) !== null) {
+      lastMatch = match
+    }
+    if (lastMatch && lastMatch[1]) {
+      const lines = lastMatch[1].trim().split("\n")
+      const tasksList = lines.map(line => {
+        if (!line.trim()) return null
+        const successMatch = line.match(/^(.+?)\s*[✓✔]\s*$/)
+        const loadingMatch = line.match(/^(.+?)\s*[⏳⌛]\s*$/)
+        if (successMatch) return { text: successMatch[1].trim(), status: "success" as const }
+        if (loadingMatch) return { text: loadingMatch[1].trim(), status: "loading" as const }
+        return { text: line.trim(), status: "pending" as const }
+      }).filter(Boolean) as { text: string; status: "success" | "loading" | "pending" }[]
+
+      if (tasksList.length > 0) {
+        setTasks(tasksList)
+        // Broadcast tasks to FeatureShowcaseDark in the code preview panel
+        window.dispatchEvent(new CustomEvent('falbor-tasks-update', { detail: { tasks: tasksList } }))
+      }
+    }
+  }
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const timerRef = useRef<NodeJS.Timeout | null>(null)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const abortControllerRef = useRef<AbortController | null>(null)
+  const recognitionRef = useRef<any>(null)
+  const lastTranscriptRef = useRef("")
+  const streamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const analyserRef = useRef<AnalyserNode | null>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const animationRef = useRef<number | null>(null)
+  const router = useRouter()
+  const { user, isLoaded } = useUser()
+  const draftKey = projectId ? `chat-draft-${projectId}` : "chat-draft-global"
+  const filesKey = projectId ? `chat-files-${projectId}` : "chat-files-global"
+  const pastedKey = projectId ? `chat-pasted-${projectId}` : "chat-pasted-global"
+  const designKey = "chat-design-config"
+  const modelKey = projectId ? `chat-selected-model-${projectId}` : "chat-selected-model-global"
+  const frameworkKey = "chat-selected-framework-global"
+  // Load saved connection from server on mount
+  useEffect(() => {
+    const loadUserConnection = async () => {
+      if (!isAuthenticated) {
+        setIsLoadingConnection(false)
+        return
+      }
+      try {
+        const res = await fetch("/api/user/supabase-connection")
+        if (res.ok) {
+          const data = await res.json()
+          if (data.connected) {
+            setCredentialsSaved(true)
+            setSelectedProjectRef(data.selectedProjectRef || "")
+            if (data.supabaseUrl && data.anonKey) {
+              setDatabaseCredentials({
+                supabaseUrl: data.supabaseUrl,
+                anonKey: data.anonKey,
+              })
+            }
+            // If we have a project ref but need to show project name
+            if (data.selectedProjectName) {
+              setProjects([{ ref: data.selectedProjectRef, name: data.selectedProjectName }])
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load user connection:", err)
+      } finally {
+        setIsLoadingConnection(false)
+      }
+    }
+    loadUserConnection()
+
+    const loadMcpConnections = async () => {
+      if (!isAuthenticated) return
+      const data = await getMcpConnections()
+      setMcpConnections(data)
+    }
+    loadMcpConnections()
+  }, [isAuthenticated])
+  useEffect(() => {
+    const savedDraft = localStorage.getItem(draftKey)
+    if (savedDraft && savedDraft.trim()) {
+      setMessage(savedDraft)
+    }
+
+    // Check for auto-prompt from MCP page
+    const autoPrompt = localStorage.getItem("falbor_auto_prompt")
+    if (autoPrompt) {
+      localStorage.removeItem("falbor_auto_prompt")
+      // Short delay to ensure component is fully ready
+      setTimeout(() => {
+        handleSubmit(undefined, autoPrompt)
+      }, 500)
+    }
+
+    const savedFiles = localStorage.getItem(filesKey)
+    if (savedFiles) {
+      setUploadedFiles(JSON.parse(savedFiles))
+    }
+    const savedPasted = localStorage.getItem(pastedKey)
+    if (savedPasted) {
+      setPastedContents(JSON.parse(savedPasted))
+    }
+  }, [draftKey, filesKey, pastedKey])
+
+  useEffect(() => {
+    if (editingMessage) {
+      setMessage(editingMessage.content)
+      textareaRef.current?.focus()
+    }
+  }, [editingMessage])
+
+  useEffect(() => {
+    const savedDesign = localStorage.getItem(designKey)
+    if (savedDesign) {
+      const parsed = JSON.parse(savedDesign)
+      setSelectedDesign(parsed.name)
+      setDesignConfig(parsed.config)
+    }
+  }, [])
+  useEffect(() => {
+    if (selectedDesign && designConfig) {
+      localStorage.setItem(designKey, JSON.stringify({ name: selectedDesign, config: designConfig }))
+    }
+  }, [selectedDesign, designConfig])
+  useEffect(() => {
+    const savedModel = localStorage.getItem(modelKey)
+    if (savedModel) {
+      setSelectedModel(savedModel)
+    }
+  }, [])
+  useEffect(() => {
+    localStorage.setItem(modelKey, selectedModel)
+  }, [selectedModel])
+  useEffect(() => {
+    const savedFramework = localStorage.getItem(frameworkKey)
+    if (savedFramework && ["vite", "nextjs", "vue"].includes(savedFramework)) {
+      setSelectedFramework(savedFramework)
+    }
+  }, [])
+  useEffect(() => {
+    localStorage.setItem(frameworkKey, selectedFramework)
+  }, [selectedFramework])
+  useEffect(() => {
+    localStorage.setItem(filesKey, JSON.stringify(uploadedFiles))
+  }, [uploadedFiles, filesKey])
+  useEffect(() => {
+    localStorage.setItem(pastedKey, JSON.stringify(pastedContents))
+  }, [pastedContents, pastedKey])
+  useEffect(() => {
+    const savedTasks = localStorage.getItem(tasksKey)
+    if (savedTasks) {
+      setTasks(JSON.parse(savedTasks))
+    }
+  }, [tasksKey])
+  useEffect(() => {
+    localStorage.setItem(tasksKey, JSON.stringify(tasks))
+  }, [tasks, tasksKey])
+  const createProject = async (withCredentials: boolean) => {
+    if (!pendingSubmitData) return
+    setIsLoading(true)
+
+    let supabaseUrl = ""
+    let anonKey = ""
+    let serviceRoleKey = ""
+    let projectRef = ""
+    let dbPassword = ""
+
+    try {
+      if (pendingSubmitData.isFalborDb) {
+        setIsProvisioning(true)
+        try {
+          const provRes = await fetch("/api/supabase/provision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: `project-${Math.random().toString(36).slice(2, 10)}` })
+          })
+
+          if (!provRes.ok) {
+            const err = await provRes.json().catch(() => ({}))
+            throw new Error(err.error || "Failed to provision database")
+          }
+
+          const creds = await provRes.json()
+          supabaseUrl = creds.supabaseUrl
+          anonKey = creds.anonKey
+          serviceRoleKey = creds.serviceRoleKey
+          projectRef = creds.projectRef
+          dbPassword = creds.dbPassword
+        } finally {
+          setIsProvisioning(false)
+        }
+      }
+
+      let neonUrl = ""
+      let neonPassword = ""
+      let neonProjectRef = ""
+
+      if (pendingSubmitData.isNeonDb) {
+        setIsProvisioning(true)
+        try {
+          const provRes = await fetch("/api/neon/provision", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: `project-${Math.random().toString(36).slice(2, 10)}` })
+          })
+
+          if (!provRes.ok) {
+            const err = await provRes.json().catch(() => ({}))
+            throw new Error(err.error || "Failed to provision Neon database")
+          }
+
+          const creds = await provRes.json()
+
+          if (!creds.databaseUrl) {
+            throw new Error("Neon connection URL was not returned. Please try again or check your Neon console.")
+          }
+
+          neonUrl = creds.databaseUrl
+          neonPassword = creds.dbPassword
+          neonProjectRef = creds.projectRef
+
+          setDatabaseCredentials(prev => ({
+            ...prev,
+            neonUrl: creds.databaseUrl,
+            neonApiKey: creds.dbPassword
+          }))
+
+          console.log("[ChatInput] Neon provisioned successfully. Proceeding to project creation.")
+        } catch (error) {
+          console.error("[ChatInput] Neon provision failed:", error)
+          alert(error instanceof Error ? error.message : "Database setup failed. Please check your Neon configuration.")
+          setIsLoading(false)
+          setIsProvisioning(false)
+          return // STOP everything here
+        } finally {
+          setIsProvisioning(false)
+        }
+      }
+
+      if (!pendingSubmitData.isAutomated) {
+        const deductRes = await fetch("/api/user/credits", {
+          method: "POST",
+        })
+        if (!deductRes.ok) {
+          const errData = await deductRes.json().catch(() => ({}))
+          if (deductRes.status === 401) {
+            alert("Please sign in to continue.")
+            return
+          }
+          if (deductRes.status === 402) {
+            alert("Insufficient balance. Please wait for monthly refill or upgrade.")
+            return
+          }
+          alert(errData.error || "Failed to process your request. Please try again.")
+          return
+        }
+        await fetchBalance()
+      }
+      localStorage.removeItem(draftKey)
+      localStorage.removeItem(filesKey)
+      localStorage.removeItem(pastedKey)
+      setMessage("")
+      setSelectedImage(null)
+      setImagePreview(null)
+      setImageName("")
+      setImageSize(0)
+      setUploadedFiles([])
+      setPastedContents([])
+      setIsDesignActive(false)
+
+
+      const body: any = {
+        message: pendingSubmitData.userMessage,
+        imageData: pendingSubmitData.selectedImage,
+        uploadedFiles: null,
+        discussMode: pendingSubmitData.isDiscussMode,
+        isAutomated: pendingSubmitData.isAutomated,
+        selectedModel: pendingSubmitData.selectedModel,
+        isFalborDb: pendingSubmitData.isFalborDb,
+        isNeonDb: pendingSubmitData.isNeonDb,
+        selectedFramework: pendingSubmitData.selectedFramework,
+      }
+
+      // Inject credentials directly into the project creation (so they are saved immediately)
+      if (pendingSubmitData.isFalborDb) {
+        body.supabaseUrl = supabaseUrl
+        body.anonKey = anonKey
+        body.serviceRoleKey = serviceRoleKey
+        body.projectRef = projectRef
+        body.dbPassword = dbPassword
+
+        // Also inject into the first message content so it's visible in history
+        body.message += `\n\n## Database Connection (Managed by Falbor)\nDatabase provisioned successfully.\nVITE_SUPABASE_URL=${supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${anonKey}\nSUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`
+      } else if (pendingSubmitData.isNeonDb) {
+        body.neonUrl = neonUrl
+        body.neonPassword = neonPassword
+        body.neonProjectRef = neonProjectRef
+
+        // Also inject into the first message content so it's visible in history
+        body.message += `\n\n## Database Connection (Managed by Falbor Max)\nNeon project provisioned successfully.\nDATABASE_URL=${neonUrl}`
+      } else if (withCredentials || credentialsSaved) {
+        if (databaseCredentials.supabaseUrl) {
+          body.supabaseUrl = databaseCredentials.supabaseUrl
+          body.anonKey = databaseCredentials.anonKey
+        }
+        if (databaseCredentials.neonUrl) {
+          body.neonUrl = databaseCredentials.neonUrl
+        }
+      }
+
+      const res = await fetch("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        throw new Error(`API returned ${res.status}: ${res.statusText}`)
+      }
+      const { projectId: newId } = await res.json()
+
+      // Transfer tasks to the new project key
+      const globalTasks = localStorage.getItem("chat-tasks-global")
+      if (globalTasks) {
+        localStorage.setItem(`chat-tasks-${newId}`, globalTasks)
+      }
+
+      setPendingSubmitData(null)
+      const redirectPath = planMode ? `/chat/${newId}/plan` : `/chat/${newId}`
+      if (typeof window !== "undefined" && !window.crossOriginIsolated) {
+        window.location.href = redirectPath
+      } else {
+        router.push(redirectPath)
+      }
+    } catch (err) {
+      console.error("Project creation failed:", err)
+      alert(err instanceof Error ? err.message : "Failed to create project. Please try again.")
+    } finally {
+      setIsLoading(false)
+      setIsProvisioning(false)
+    }
+  }
+  const handleSupabaseOAuthConnect = (
+    credentials: DatabaseCredentials,
+    projectRef: string,
+    projectName: string,
+    token: string,
+  ) => {
+    setDatabaseCredentials(credentials)
+    setSelectedProjectRef(projectRef)
+    setAccessToken(token)
+    setCredentialsSaved(true)
+    if (projectName) {
+      setProjects([{ ref: projectRef, name: projectName }])
+    }
+  }
+
+  const handleDisconnectDatabase = async () => {
+    try {
+      await fetch("/api/user/supabase-connection", {
+        method: "DELETE",
+      })
+      setCredentialsSaved(false)
+      setAccessToken("")
+      setProjects([])
+      setSelectedProjectRef("")
+      setDatabaseCredentials({ supabaseUrl: "", anonKey: "" })
+    } catch (err) {
+      console.error("Failed to disconnect:", err)
+    }
+  }
+  const drawVisualizer = () => {
+    const canvas = canvasRef.current
+    if (!canvas || !analyserRef.current) {
+      if (animationRef.current) {
+        animationRef.current = requestAnimationFrame(drawVisualizer)
+      }
+      return
+    }
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+    const analyser = analyserRef.current
+    const bufferLength = analyser.frequencyBinCount
+    const dataArray = new Uint8Array(bufferLength)
+    analyser.getByteFrequencyData(dataArray)
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const barWidth = (canvas.width / bufferLength) * 2.5
+    let barHeight
+    let x = 0
+    for (let i = 0; i < bufferLength; i++) {
+      barHeight = (dataArray[i] / 255) * canvas.height
+      ctx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`
+      ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2)
+      x += barWidth + 1
+    }
+    animationRef.current = requestAnimationFrame(drawVisualizer)
+  }
+  useEffect(() => {
+    if (isListening && canvasRef.current) {
+      const canvas = canvasRef.current
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = canvas.offsetWidth * dpr
+      canvas.height = canvas.offsetHeight * dpr
+      const ctx = canvas.getContext("2d")
+      if (ctx) {
+        ctx.scale(dpr, dpr)
+      }
+      drawVisualizer()
+    } else if (!isListening && animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+  }, [isListening])
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowModelDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setShowMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+  const fetchBalance = async () => {
+    if (!user?.id || !isLoaded) return
+    try {
+      const res = await fetch("/api/user/credits")
+      if (res.ok) {
+        const data: BalanceData = await res.json()
+        setBalanceData(data)
+        if (data.secondsUntilNextRegen) {
+          setTimeLeft(data.secondsUntilNextRegen)
+        }
+      } else {
+        console.error(`Failed to fetch balance: ${res.status} ${res.statusText}`)
+      }
+    } catch (err) {
+      console.error("Failed to fetch balance:", err)
+    }
+  }
+  useEffect(() => {
+    fetchBalance()
+    if (timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          fetchBalance()
+          return 60
+        }
+        return prev - 1
+      })
+      setDailyResetTimer((prev) => {
+        if (prev > 0) return prev - 1
+        return 0
+      })
+    }, 1000)
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current)
+    }
+  }, [user?.id, isLoaded])
+
+  useEffect(() => {
+    if (balanceData?.secondsUntilDailyReset) {
+      setDailyResetTimer(balanceData.secondsUntilDailyReset)
+    }
+  }, [balanceData])
+
+  const formatTime = (seconds: number) => {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const isDailyLimitReached = balanceData?.subscriptionTier === 'none' && (balanceData?.dailyMessageCount || 0) >= 5 && dailyResetTimer > 0
+  const refetchBalance = async () => {
+    if (!user?.id) return
+    await fetchBalance()
+  }
+  const handleAttachedFiles = (files: File[], isPasted = false) => {
+    const totalAttachments = uploadedFiles.length + pastedContents.length + files.length
+    if (totalAttachments > 10) {
+      alert("Maximum of 10 attachments allowed.")
+      return
+    }
+    files.forEach((file) => {
+      const id = Date.now().toString() + Math.random().toString(36).slice(2)
+      const tempFile: AttachedFile = {
+        id,
+        name: file.name,
+        type: file.type || "text/plain",
+        size: file.size,
+        content: "",
+        uploadStatus: "uploading",
+        displayName: file.name,
+      }
+      setUploadedFiles((prev) => [...prev, tempFile])
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        const content = event.target?.result as string
+        setTimeout(() => {
+          setUploadedFiles((prev) =>
+            prev.map((f) =>
+              f.id === id
+                ? { ...f, content, preview: file.type.startsWith("image/") ? content : null, uploadStatus: "complete" }
+                : f,
+            ),
+          )
+        }, 1000)
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    handleAttachedFiles(files)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
+    }
+  }
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData.items
+    const pastedFiles: File[] = []
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].kind === "file") {
+        const file = items[i].getAsFile()
+        if (file) pastedFiles.push(file)
+      }
+    }
+    if (pastedFiles.length > 0) {
+      e.preventDefault()
+      handleAttachedFiles(pastedFiles, true)
+      return
+    }
+    const text = e.clipboardData.getData("text")
+    if (text.length > 500) {
+      e.preventDefault()
+      const totalAttachments = uploadedFiles.length + pastedContents.length + 1
+      if (totalAttachments > 10) {
+        alert("Maximum of 10 attachments allowed.")
+        return
+      }
+      const id = Date.now().toString()
+      setPastedContents((prev) => [...prev, { id, content: text }])
+    }
+  }
+  const handleImprovePrompt = async () => {
+    if (!isAuthenticated) {
+      setShowLoginDialog(true)
+      return
+    }
+    if (!message.trim() || isImproving) return
+    setIsImproving(true)
+    let liveText = ""
+    try {
+      const body = projectId ? { projectId, prompt: message } : { prompt: message }
+      const res = await fetch("/api/chat/improve-prompt", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const errorText = await res.text().catch(() => "Unknown error")
+        throw new Error(`Failed to improve prompt: ${res.status} ${errorText}`)
+      }
+      const reader = res.body?.getReader()
+      const decoder = new TextDecoder()
+      if (!reader) throw new Error("No stream")
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        const chunk = decoder.decode(value)
+        const lines = chunk.split("\n").filter(Boolean)
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              if (data.text) {
+                liveText += data.text
+                setMessage(liveText)
+              }
+              if (data.done) {
+                setMessage(data.improvedPrompt)
+              }
+            } catch { }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Prompt improvement failed:", err)
+      alert(err instanceof Error ? err.message : "Failed to improve prompt. Please try again.")
+    } finally {
+      setIsImproving(false)
+    }
+  }
+  const stopVoiceInput = () => {
+    recognitionRef.current?.stop()
+    setIsListening(false)
+    recognitionRef.current = null
+    lastTranscriptRef.current = ""
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close()
+      audioContextRef.current = null
+    }
+    analyserRef.current = null
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current)
+      animationRef.current = null
+    }
+  }
+  const handleVoiceToggle = async () => {
+    if (isListening) {
+      stopVoiceInput()
+      return
+    }
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
+      alert("Speech recognition is not supported in this browser. Please use Chrome, Edge, or Safari.")
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      streamRef.current = stream
+      const audioContext = new AudioContext()
+      audioContextRef.current = audioContext
+      const source = audioContext.createMediaStreamSource(stream)
+      const analyser = audioContext.createAnalyser()
+      analyserRef.current = analyser
+      analyser.fftSize = 256
+      source.connect(analyser)
+      const SpeechRecognitionConstructor = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      const recognition = new SpeechRecognitionConstructor()
+      recognition.continuous = true
+      recognition.interimResults = true
+      recognition.lang = "en-US"
+      recognition.onresult = (event: any) => {
+        let transcript = ""
+        for (let i = 0; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript
+        }
+        const added = transcript.substring(lastTranscriptRef.current.length)
+        if (added) {
+          setMessage((prev) => {
+            const newMessage = prev + added
+            localStorage.setItem(draftKey, newMessage)
+            return newMessage
+          })
+          setTimeout(() => {
+            textareaRef.current?.focus()
+            if (textareaRef.current) {
+              textareaRef.current.scrollTop = textareaRef.current.scrollHeight
+            }
+          }, 0)
+        }
+        lastTranscriptRef.current = transcript
+      }
+      recognition.onerror = (event: any) => {
+        console.error("Voice recognition error:", event.error)
+        stopVoiceInput()
+      }
+      recognition.onend = () => {
+        stopVoiceInput()
+      }
+      recognition.start()
+      recognitionRef.current = recognition
+      lastTranscriptRef.current = ""
+      setIsListening(true)
+    } catch (err) {
+      console.error("Failed to start voice recognition:", err)
+      alert("Could not access microphone. Please check permissions and try again.")
+    }
+  }
+  useEffect(() => {
+    if (showDesignModal) {
+      setTempConfig(designConfig ?? designPresets["Base"])
+    }
+  }, [showDesignModal, designConfig])
+  const handleModelSelect = async (modelId: string) => {
+    const model = MODEL_OPTIONS.find((m) => m.id === modelId)
+    if (!model) return
+    if (model.id === "falmax" && balanceData?.subscriptionTier !== "teams") {
+      alert("FalMax is exclusive to Teams subscribers.")
+      return
+    }
+
+    if (model.isPremium && !hasSubscription) {
+      setShowPremiumAlert(true)
+      return
+    }
+
+    setSelectedModel(modelId)
+    setIsAutoSelected(false) // Reset auto-selected when manually selecting a model
+    setShowModelDropdown(false)
+
+    // Persist to DB if we are in a project
+    if (projectId) {
+      try {
+        const res = await fetch(`/api/projects/${projectId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selectedModel: modelId })
+        })
+        if (!res.ok) {
+          console.error("Failed to update project model in DB")
+        }
+      } catch (err) {
+        console.error("Error updating project model:", err)
+      }
+    }
+  }
+
+  // Auto Model: intelligently pick best model based on the current prompt content
+  const handleAutoModelSelect = async () => {
+    const prompt = message.trim().toLowerCase()
+    let pickedModel = "gemini" // default fallback
+
+    // Complexity indicators
+    const complexIndicators = [
+      "complex", "architecture", "advanced", "optimize", "refactor",
+      "typescript", "professional", "enterprise", "scalable", "microservices",
+      "database", "authentication", "payment", "integration", "api",
+      "dashboard", "analytics", "real-time", "websocket", "collaborative",
+      "e-commerce", "marketplace", "social network", "saas", "platform",
+      "machine learning", "ai", "algorithm", "data processing", "etl",
+      "high-performance", "concurrent", "distributed", "cloud", "serverless"
+    ]
+
+    const simpleIndicators = [
+      "simple", "basic", "landing page", "portfolio", "blog", "static",
+      "minimal", "quick", "prototype", "mvp", "demo", "personal", "resume",
+      "brochure", "showcase", "gallery", "single page", "spa simple",
+      "todo", "calculator", "converter", "timer", "notes", "diary"
+    ]
+
+    const dataAnalysisIndicators = [
+      "data", "analysis", "research", "report", "compare", "visualization",
+      "chart", "graph", "statistics", "metrics", "insights", "trends",
+      "survey", "poll", "dataset", "csv", "excel", "processing"
+    ]
+
+    const creativeIndicators = [
+      "creative", "design", "beautiful", "stunning", "modern", "elegant",
+      "animated", "interactive", "3d", "visual", "aesthetic", "polished",
+      "premium", "luxury", "artistic", "unique", "custom", "branded"
+    ]
+
+    const codeHeavyIndicators = [
+      "full-stack", "backend", "frontend", "react", "vue", "angular", "svelte",
+      "nextjs", "nuxt", "express", "fastapi", "django", "rails", "laravel",
+      "graphql", "rest api", "oauth", "jwt", "stripe", "paypal",
+      "aws", "gcp", "azure", "docker", "kubernetes", "ci/cd"
+    ]
+
+    // Count matches for each category
+    const complexScore = complexIndicators.filter(word => prompt.includes(word)).length
+    const simpleScore = simpleIndicators.filter(word => prompt.includes(word)).length
+    const dataScore = dataAnalysisIndicators.filter(word => prompt.includes(word)).length
+    const creativeScore = creativeIndicators.filter(word => prompt.includes(word)).length
+    const codeScore = codeHeavyIndicators.filter(word => prompt.includes(word)).length
+
+    // Determine the best model based on scores and prompt characteristics
+    const hasSubscription = balanceData?.subscriptionTier !== "none"
+
+    if (simpleScore > 0 && complexScore === 0 && codeScore === 0) {
+      // Simple projects - use fast, efficient models
+      pickedModel = "gemini"
+    } else if (dataScore > 0 || prompt.includes("analysis") || prompt.includes("report")) {
+      // Data analysis tasks
+      pickedModel = hasSubscription ? "claude-haiku-4.5" : "glm-4.5-flash"
+    } else if (creativeScore > 0 && complexScore === 0) {
+      // Creative but simple projects
+      pickedModel = "claude-sonnet-4.6"
+    } else if (complexScore >= 2 || codeScore >= 2) {
+      // Complex projects - use best available models
+      if (hasSubscription) {
+        // Premium users get the best models for complex tasks
+        if (complexScore >= 4 || codeScore >= 3) {
+          pickedModel = "claude-opus-4.6" // Most capable for very complex tasks
+        } else {
+          pickedModel = "claude-sonnet-4.6" // Great balance for complex tasks
+        }
+      } else {
+        // Free users get capable but lighter models
+        pickedModel = "claude-sonnet-4.6"
+      }
+    } else if (complexScore === 1 || codeScore === 1) {
+      // Moderately complex
+      pickedModel = hasSubscription ? "claude-sonnet-4.6" : "gpt-5.2"
+    } else if (prompt.length > 500) {
+      // Long, detailed prompts suggest complexity
+      pickedModel = hasSubscription ? "claude-sonnet-4.6" : "gemini"
+    } else {
+      // Default for unclear cases
+      pickedModel = "gemini"
+    }
+
+    // Special cases for specific project types
+    if (prompt.includes("game") || prompt.includes("three.js") || prompt.includes("webgl")) {
+      pickedModel = hasSubscription ? "claude-opus-4.6" : "claude-sonnet-4.6"
+    } else if (prompt.includes("mobile app") || prompt.includes("react native") || prompt.includes("flutter")) {
+      pickedModel = hasSubscription ? "claude-sonnet-4.6" : "gpt-5.2"
+    } else if (prompt.includes("chatbot") || prompt.includes("ai assistant") || prompt.includes("llm")) {
+      pickedModel = hasSubscription ? "claude-opus-4.6" : "claude-sonnet-4.6"
+    }
+
+    await handleModelSelect(pickedModel)
+    setIsAutoSelected(true) // Mark as auto-selected
+    setShowModelHover(false)
+    setShowMenu(false)
+  }
+  const parseAndSetPendingMigrations = (content: string) => {
+    const migrations: string[] = []
+    // Match both Supabase migrations and Neon schema files
+    const regex = /```sql\s*file="(?:supabase\/migrations\/|lib\/db\/)[^"]+"\s*([\s\S]*?)```/g
+    let match
+    while ((match = regex.exec(content)) !== null) {
+      migrations.push(match[1].trim())
+    }
+    setPendingMigrations(migrations)
+  }
+  const handleExecuteMigrations = async () => {
+    const isNeon = !!databaseCredentials.neonUrl
+    if (!isNeon && !tempAccessToken) return
+
+    setIsSavingCredentials(true)
+    try {
+      for (const sql of pendingMigrations) {
+        const res = await fetch(`/api/projects/${projectId}/execute-sql`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sql,
+            accessToken: isNeon ? "neon-handled" : tempAccessToken
+          }),
+        })
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}))
+          throw new Error(errData.error || "Failed to execute migration")
+        }
+      }
+      alert("Database schema updated successfully!")
+      setPendingMigrations([])
+      setShowTokenModal(false)
+      setTempAccessToken("")
+    } catch (err) {
+      alert((err as Error).message)
+    } finally {
+      setIsSavingCredentials(false)
+    }
+  }
+  const handleSubmit = async (e?: React.FormEvent, textOverride?: string) => {
+    e?.preventDefault()
+    if (isLoading || isListening) return
+
+    if (editingMessage && onSaveEdit) {
+      onSaveEdit(editingMessage.id, message)
+      return
+    }
+
+    const submitText = textOverride || message
+    const hasAttachments = uploadedFiles.length > 0 || pastedContents.length > 0 || !!selectedImage || (isDesignActive && designConfig)
+    if (!submitText.trim() && !hasAttachments)
+      return
+
+    if (!isAuthenticated) {
+      setShowLoginDialog(true)
+      return
+    }
+    const selectedModelOption = MODEL_OPTIONS.find((m) => m.id === selectedModel)
+    const hasSubscription = balanceData?.subscriptionTier !== "none"
+    if (selectedModelOption?.isPremium && !hasSubscription) {
+      setShowPremiumAlert(true)
+      return
+    }
+    let userMessage = submitText.trim()
+    if (uploadedFiles.length > 0) {
+      const fileSections = uploadedFiles
+        .map(
+          (file) =>
+            `\n\n## File: ${file.name}\n\`\`\`${file.type.split("/")[1] || "text/plain"}\n${file.content}\n\`\`\``,
+        )
+        .join("")
+      userMessage = userMessage ? `${userMessage}${fileSections}` : fileSections.slice(1)
+    }
+    if (pastedContents.length > 0) {
+      const pastedSections = pastedContents.map((p) => `\n\n## Pasted Text\n\`\`\`text\n${p.content}\n\`\`\``).join("")
+      userMessage += pastedSections
+    }
+    // Append database before design to ensure design is the last section
+    if (credentialsSaved && databaseCredentials.supabaseUrl && databaseCredentials.anonKey) {
+      userMessage += `\n\n## Database Connection\nVITE_SUPABASE_URL=${databaseCredentials.supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${databaseCredentials.anonKey}`
+    }
+    if (credentialsSaved && databaseCredentials.neonUrl) {
+      userMessage += `\n\n## Database Connection (Neon)\nDATABASE_URL=${databaseCredentials.neonUrl}`
+    }
+    if (isDesignActive && designConfig && !message.includes("Capture from URL:")) {
+      userMessage += `\n\n## Design System: ${selectedDesign || "Custom"}\n${JSON.stringify(designConfig, null, 2)}`
+    }
+    if (!projectId) {
+      setPendingSubmitData({
+        userMessage,
+        selectedImage: selectedImage ? { ...selectedImage } : null,
+        isDiscussMode,
+        selectedModel,
+        isAutomated,
+        isFalborDb,
+        isNeonDb,
+        selectedFramework,
+      })
+
+      // Automatically send message without asking about database
+      await createProject(isFalborDb || isNeonDb)
+      return
+    }
+
+    // If plan mode is enabled on landing flow, create project first then redirect in createProject()
+    setIsLoading(true)
+    try {
+      if (!isAutomated) {
+        const deductRes = await fetch("/api/user/credits", {
+          method: "POST",
+        })
+        if (!deductRes.ok) {
+          const errData = await deductRes.json().catch(() => ({}))
+          if (deductRes.status === 401) {
+            alert("Please sign in to continue.")
+            return
+          }
+          if (deductRes.status === 402) {
+            alert("Insufficient balance. Please wait for regeneration or upgrade.")
+            return
+          }
+          alert(errData.error || "Failed to process your request. Please try again.")
+          return
+        }
+        await refetchBalance()
+      }
+      localStorage.removeItem(draftKey)
+      localStorage.removeItem(filesKey)
+      localStorage.removeItem(pastedKey)
+      setMessage("")
+      setSelectedImage(null)
+      setImagePreview(null)
+      setImageName("")
+      setImageSize(0)
+      setUploadedFiles([])
+      setPastedContents([])
+      setTasks([])
+      setIsDesignActive(false)
+      setShowTaskPanel(true)
+      if (projectId && onNewMessage) {
+        const tempUser: Message = {
+          id: `temp-${Date.now()}`,
+          projectId,
+          role: "user",
+          content: userMessage,
+          hasArtifact: false,
+          createdAt: new Date(),
+          thinking: null,
+          versionName: null,
+          searchQueries: null,
+          isAutomated: false,
+          tokensUsed: null,
+          cost: null,
+          sessionId,
+          imageData: null,
+          metadata: null,
+        }
+        onNewMessage(tempUser)
+        const tempAssistantId = `temp-assistant-${Date.now()}`
+        const tempAssistant: Message = {
+          id: tempAssistantId,
+          projectId,
+          role: "assistant",
+          content: "",
+          hasArtifact: false,
+          createdAt: new Date(),
+          thinking: null,
+          versionName: null,
+          searchQueries: null,
+          isAutomated: false,
+          tokensUsed: null,
+          cost: null,
+          sessionId,
+          imageData: null,
+          metadata: null,
+        }
+        onNewMessage(tempAssistant)
+        console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
+        abortControllerRef.current = new AbortController()
+        try {
+          const effectiveModel = balanceData?.subscriptionTier === "none" ? "gemini-3.1-flash-lite" : selectedModel
+          const res = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              projectId,
+              message: userMessage,
+              imageData: selectedImage,
+              uploadedFiles: null,
+              discussMode: isDiscussMode,
+              isAutomated,
+              selectedModel: effectiveModel,
+              selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
+              sessionId,
+            }),
+            signal: abortControllerRef.current.signal,
+          })
+          if (!res.ok) {
+            throw new Error(`API returned ${res.status}: ${res.statusText}`)
+          }
+          const reader = res.body?.getReader()
+          if (!reader) {
+            throw new Error("No response body reader available")
+          }
+          const decoder = new TextDecoder()
+          let accumulated = ""
+          let lineBuffer = ""
+          let streamError = false
+          while (true) {
+            try {
+              const { done, value } = await reader.read()
+              if (done) {
+                console.log("[ChatInput] Stream completed")
+                break
+              }
+              const chunk = decoder.decode(value, { stream: true })
+              lineBuffer += chunk
+              const lines = lineBuffer.split("\n")
+              lineBuffer = lines[lines.length - 1]
+              for (let i = 0; i < lines.length - 1; i++) {
+                const line = lines[i]
+                if (line.startsWith("data: ")) {
+                  try {
+                    const data = JSON.parse(line.slice(6))
+                    if (data.error) {
+                      console.error("[ChatInput] Stream error:", data.error)
+                      streamError = true
+                      alert(`Error: ${data.error}`)
+                      break
+                    }
+                    if (data.text) {
+                      accumulated += data.text
+                      parseTasksFromContent(accumulated)
+                      parseScannerLogsFromContent(accumulated)
+                      onNewMessage({
+                        ...tempAssistant,
+                        content: accumulated,
+                        id: tempAssistantId,
+                        isAutomated: false,
+                      })
+                    }
+                    if (data.done) {
+                      console.log("[ChatInput] Received done signal, message ID:", data.messageId)
+
+                      // 1. Sync user message ID if server provided one
+                      if (data.userMessageId) {
+                        onNewMessage({
+                          ...tempUser,
+                          id: data.userMessageId,
+                          sessionId
+                        })
+                      }
+
+                      // 2. Finalize assistant message
+                      const finalContent = accumulated.trim() ? accumulated : (data.content || accumulated)
+                      onNewMessage({
+                        id: data.messageId || `final-${Date.now()}`,
+                        projectId,
+                        role: "assistant",
+                        content: finalContent,
+                        hasArtifact: data.hasArtifact ?? false,
+                        createdAt: new Date(),
+                        thinking: null,
+                        versionName: data.versionName || null,
+                        searchQueries: null,
+                        isAutomated: false,
+                        tokensUsed: data.tokensUsed || null,
+                        cost: data.cost || null,
+                        sessionId,
+                        imageData: data.imageData || null,
+                        metadata: data.metadata || null,
+                      })
+                      router.refresh()
+                    }
+                  } catch (parseError) {
+                    console.error("[ChatInput] JSON parse error:", parseError, "Line:", line)
+                  }
+                }
+              }
+              if (streamError) break
+            } catch (readError) {
+              console.error("[ChatInput] Stream read error:", readError)
+              break
+            }
+          }
+          if (!streamError) {
+            parseAndSetPendingMigrations(accumulated)
+          }
+        } catch (fetchError) {
+          if (fetchError instanceof Error && fetchError.name === "AbortError") {
+            console.log("[ChatInput] Request aborted by user")
+          } else {
+            console.error("[ChatInput] Fetch error:", fetchError)
+            alert(`Network error: ${fetchError instanceof Error ? fetchError.message : String(fetchError)}`)
+          }
+        } finally {
+          abortControllerRef.current = null
+        }
+      } else if (projectId) {
+        abortControllerRef.current = new AbortController()
+        const effectiveModel = balanceData?.subscriptionTier === "none" ? "gemini-3.1-flash-lite" : selectedModel
+        await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectId,
+            message: userMessage,
+            imageData: selectedImage,
+            uploadedFiles: null,
+            discussMode: isDiscussMode,
+            isAutomated,
+            selectedModel: effectiveModel,
+            selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
+            sessionId,
+          }),
+          signal: abortControllerRef.current.signal,
+        })
+        abortControllerRef.current = null
+      }
+    } catch (err) {
+      console.error("[ChatInput] Submit error:", err)
+      alert("An error occurred while sending your message. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault()
+      handleSubmit(e)
+    }
+    if (e.key === "Escape" && showSkillSelector) {
+      setShowSkillSelector(false)
+    }
+  }
+  const handleDismissError = () => {
+    onDismissError?.()
+  }
+  useImperativeHandle(
+    ref,
+    () => ({
+      insertPrompt: (prompt: string) => {
+        setMessage((prev) => {
+          const newMessage = prev + (prev.trim() ? "\n\n" : "") + prompt
+          localStorage.setItem(draftKey, newMessage)
+          return newMessage
+        })
+        setTimeout(() => {
+          textareaRef.current?.focus()
+          if (textareaRef.current) {
+            textareaRef.current.scrollTop = textareaRef.current.scrollHeight
+          }
+        }, 0)
+      },
+    }),
+    [draftKey],
+  )
+  const openFileModal = (file: AttachedFile | PastedContent, isPasted: boolean) => {
+    setSelectedFile({
+      id: file.id,
+      name: isPasted ? "Pasted Text" : (file as AttachedFile).name,
+      content: isPasted ? (file as PastedContent).content : (file as AttachedFile).content,
+      type: isPasted ? "text/plain" : (file as AttachedFile).type,
+      isPasted,
+    })
+    setEditedContent(isPasted ? (file as PastedContent).content : (file as AttachedFile).content)
+    setIsEditing(false)
+  }
+  const handleSaveEdit = () => {
+    if (!selectedFile) return
+    if (selectedFile.isPasted) {
+      setPastedContents((prev) => prev.map((p) => (p.id === selectedFile.id ? { ...p, content: editedContent } : p)))
+    } else {
+      setUploadedFiles((prev) => prev.map((f) => (f.id === selectedFile.id ? { ...f, content: editedContent } : f)))
+    }
+    setIsEditing(false)
+  }
+  const handleDownload = () => {
+    if (!selectedFile) return
+    const blob = new Blob([selectedFile.content], { type: selectedFile.type })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = selectedFile.name
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+  const handleCopy = () => {
+    if (!selectedFile) return
+    navigator.clipboard.writeText(selectedFile.content)
+    alert("Content copied to clipboard.")
+  }
+  const getLanguageFromType = (type: string, name: string, content?: string): string => {
+    const ext = name.split(".").pop()?.toLowerCase()
+    if (ext) {
+      switch (ext) {
+        case "js":
+        case "jsx":
+          return "javascript"
+        case "ts":
+        case "tsx":
+          return "typescript"
+        case "py":
+          return "python"
+        case "css":
+          return "css"
+        case "html":
+          return "html"
+        case "json":
+          return "json"
+        case "md":
+          return "markdown"
+      }
+    }
+    if (content && content.trimStart().startsWith("<") && (content.includes("{") || content.includes("}"))) {
+      return "typescript"
+    }
+    return type.startsWith("text/") ? "text" : "plaintext"
+  }
+  const formRoundedClass = connected ? "rounded-t-[11px]" : "rounded-sm"
+  const formBorderClass = connected ? "border-b-0" : "border-3"
+  const currentModel = MODEL_OPTIONS.find((m) => m.id === selectedModel) || MODEL_OPTIONS[0]
+  const hasSubscription = balanceData?.subscriptionTier !== "none"
+  return (
+    <div className="">
+      {pendingMigrations.length > 0 && credentialsSaved && projectId && (
+        <div className="w-full bg-blue-50 rounded-lg p-3 flex items-center justify-between mb-3">
+          <p className="text-sm text-blue-900">
+            Detected {pendingMigrations.length} database migrations. Would you like to apply them to your Supabase
+            project?
+          </p>
+          <Button
+            size="sm"
+            onClick={() => setShowTokenModal(true)}
+            className="h-8 px-3 text-xs bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Apply
+          </Button>
+        </div>
+      )}
+      <div className={hasSubscription ? "bg-[#dbd9d9b2] p-[5px] rounded-[12px]" : ""}>
+        <form
+          onSubmit={handleSubmit}
+          className={`relative p-1 rounded-lg`}
+          style={{
+            backgroundColor: "#ffffff",
+            border: "1px solid #8373732c",
+            transition: "background-image 200ms ease",
+            backgroundImage: `
+      linear-gradient(#ffffff, #ffffff),
+      /* TOP border (colored section only) */
+      linear-gradient(
+        to right,
+        ${isActive ? "#888888ff" : "rgba(158, 158, 158, 1)"} 0%,
+        rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 18%,
+        rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 35%,
+        rgba(219, 219, 217, 0.7) 50%,
+        #dbd9d9b2 60%
+      ),
+      /* LEFT border (colored section only) */
+      linear-gradient(
+        to bottom,
+        ${isActive ? "#888888ff" : "rgba(158, 158, 158, 1)"} 0%,
+        rgba(158, 158, 158, ${isActive ? "1" : "0.45"}) 22%,
+        rgba(158, 158, 158, ${isActive ? "0.85" : "0.25"}) 40%,
+        rgba(219, 219, 217, 0.7) 55%,
+        #dbd9d9b2 65%
+      )
+    `,
+            backgroundOrigin: "padding-box, border-box, border-box",
+            backgroundClip: "padding-box, border-box, border-box",
+          }}
+        >
+          {showSkillSelector && (
+            <SkillSelector
+              isOpen={showSkillSelector}
+              onClose={() => setShowSkillSelector(false)}
+              showMcp={true}
+              onSelect={(type, value, fullData) => {
+                const before = message.slice(0, mentionStartIndex)
+                const after = message.slice(textareaRef.current?.selectionStart || 0)
+                let newValue = ""
+                if (type === 'skill') {
+                  newValue = value
+                } else if (type === 'mcp') {
+                  newValue = `@${value}`
+                } else if (type === 'template') {
+                  newValue = `@${value}`
+                }
+                setMessage(before + newValue + after)
+                setShowSkillSelector(false)
+                textareaRef.current?.focus()
+              }}
+            />
+          )}
+
+          {/* SCANNER PROGRESS PANEL */}
+          {isScanning && scannerLogs.length > 0 && (
+            <div className="w-full mb-3 px-1">
+              <div className="rounded-lg border border-blue-100 bg-blue-50/40 overflow-hidden shadow-sm">
+                <div className="px-3 py-2 flex items-center justify-between border-b border-blue-100 bg-blue-50/80">
+                  <div className="flex items-center gap-2">
+                    <Scan className="w-4 h-4 text-blue-600 animate-pulse" />
+                    <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">Deep Analytics Mode</span>
+                  </div>
+                  {scannerLogs.every(l => l.status === 'success') && !effectiveIsLoading ? (
+                    <Badge className="bg-green-100 text-green-700 border-green-200 text-[9px] h-4">Complete</Badge>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] text-blue-500 animate-pulse font-medium">Scanning...</span>
+                      <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
+                    </div>
+                  )}
+                </div>
+                <div className="p-2 space-y-1.5 max-h-40 overflow-y-auto chat-messages-scroll">
+                  {scannerLogs.map((log, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px] animate-in fade-in slide-in-from-left-1 duration-300">
+                      {log.status === 'loading' ? (
+                        <div className="mt-0.5"><Loader2 className="w-3 h-3 animate-spin text-blue-500" /></div>
+                      ) : log.status === 'success' ? (
+                        <CheckCircle2 className="w-3 h-3 mt-0.5 text-green-500" />
+                      ) : (
+                        <Circle className="w-3 h-3 mt-0.5 text-blue-200" />
+                      )}
+                      <span className={cn(
+                        "flex-1 leading-relaxed",
+                        log.status === 'loading' ? "text-blue-700 font-semibold" : "text-gray-600"
+                      )}>{log.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ERROR BUTTON & PANEL */}
+          {previewError && (
+            <div className="w-full mb-3 px-1">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowErrorPanel(!showErrorPanel)}
+                className={cn(
+                  "w-full flex items-center justify-between h-10 bg-white hover:bg-white hover:text-red-700 text-red-600 border-red-100 transition-all duration-300 shadow-sm",
+                  showErrorPanel ? "rounded-t-xl rounded-b-none border-b-0" : "rounded-xl"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <div className="p-1 bgColor-red-50 rounded-lg">
+                    <Bug size={18} className="text-red-500" />
+                  </div>
+                  <span className="text-xs font-bold tracking-tight">Runtime Error Identified</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-[10px] font-mono border-red-100 text-red-400 px-1.5 py-0 h-4 uppercase">Fix Available</Badge>
+                  <ChevronDown className={cn("w-4 h-4 transition-transform duration-500", showErrorPanel && "rotate-180")} />
+                </div>
+              </Button>
+
+              <div className={cn(
+                "grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                showErrorPanel ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
+              )}>
+                <div className="overflow-hidden border border-red-100 border-t-0 rounded-b-xl bg-white shadow-inner">
+                  <div className="p-4 space-y-4">
+                    <div className="bg-red-50/50 p-3 rounded-lg border border-red-100/50 text-[11px] font-mono text-red-700 leading-relaxed shadow-sm">
+                      {previewError.file && (
+                        <div className="flex items-center gap-1.5 font-bold underline mb-1.5 text-red-800">
+                          <FileText size={12} />
+                          {previewError.file}{previewError.line ? `:${previewError.line}` : ''}
+                        </div>
+                      )}
+                      {previewError.message}
+                    </div>
+                    <div className="flex gap-3">
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs h-9 gap-2 shadow-[0_2px_10px_-3px_rgba(220,38,38,0.5)] transition-all hover:-translate-y-0.5"
+                        onClick={() => handleFixError(false)}
+                      >
+                        <StarsIcon className="w-4 h-4" />
+                        Quick Fix with AI
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-blue-200 text-blue-600 hover:bg-blue-50 text-xs h-9 gap-2 shadow-sm transition-all hover:-translate-y-0.5"
+                        onClick={() => handleFixError(true)}
+                      >
+                        <Globe className="w-4 h-4 text-blue-500" />
+                        Deep Online Scan
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Separator line between Error and Task buttons if both are visible */}
+              {(effectiveIsLoading || tasks.length > 0) && (
+                <div className="flex items-center justify-center my-4 px-8">
+                  <div className="h-[1px] bg-gradient-to-r from-transparent via-gray-200/60 to-transparent w-full" />
+                </div>
+              )}
+            </div>
+          )}
+
+          {(effectiveIsLoading || tasks.length > 0) && (
+            <div className="w-full">
+
+              {/* TOGGLE BUTTON */}
+              {/* <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowTaskPanel(!showTaskPanel)}
+                className={cn(
+                  "w-full flex items-center justify-between h-9 bg-white hover:bg-white hover:text-black text-black transition-all duration-300",
+                  showTaskPanel
+                    ? "rounded-t-md rounded-b-none border-b-0"
+                    : "rounded-md"
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <List size={20} />
+                  <span className="text-xs font-medium">
+                    Task {tasks.filter(t => t.status === "success").length} of {tasks.length} complete
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {tasks.length > 0 && (
+                    <Badge>
+                      {tasks.filter(t => t.status === "success").length}/{tasks.length}
+                      {tasks.every(t => t.status === "success")
+                        ? " Complete"
+                        : " In Progress"}
+                      <ChevronDown
+                        className={cn(
+                          "w-4 h-4 transition-transform duration-300",
+                          showTaskPanel && "rotate-180"
+                        )}
+                      />
+                    </Badge>
+                  )}
+
+                  {effectiveIsLoading && tasks.length === 0 && (
+                    <Badge>
+                      <div className="w-3 h-3 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                      Generating...
+                    </Badge>
+                  )}
+
+                </div>
+              </Button> */}
+
+              {/* TASK PANEL (SMOOTH GRID ANIMATION) */}
+              {/* <div
+                className={cn(
+                  "grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+                  showTaskPanel
+                    ? "grid-rows-[1fr] opacity-100 translate-y-0"
+                    : "grid-rows-[0fr] opacity-0 -translate-y-1"
+                )}
+              >
+                <div className="overflow-hidden">
+                  <div className="rounded-b-md bg-white p-2 space-y-1 max-h-32 overflow-y-auto">
+
+                    {tasks.length === 0 && effectiveIsLoading && (
+                      <div className="flex items-center gap-3 p-2 rounded-md border bg-gray-50 border-gray-100">
+                        <Loader2 className="w-4 h-4 animate-spin text-blue-400 flex-shrink-0" />
+                        <span className="text-sm text-gray-500">
+                          Analyzing your request and planning tasks...
+                        </span>
+                      </div>
+                    )}
+
+                    {tasks.map((task, idx) => (
+                      <div
+                        key={`task-${idx}-${task.text}`}
+                        className="flex items-center gap-3 px-2 py-2 rounded-md border transition-all duration-300"
+                      >
+                        <div className="flex-shrink-0 self-center">
+                          {task.status === "loading" ? (
+                            <Loader className="w-4 h-4 animate-spin text-gray-900" />
+                          ) : task.status === "success" ? (
+                            <CheckCircle2 className="w-4 h-4 text-gray-900" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-gray-900" />
+                          )}
+                        </div>
+
+                        <span
+                          className={cn(
+                            "text-[11px] leading-relaxed",
+                            task.status === "success"
+                              ? "text-gray-900"
+                              : task.status === "loading"
+                                ? "text-blue-700 font-medium"
+                                : "text-gray-700 font-medium"
+                          )}
+                        >
+                          {task.text}
+                        </span>
+                      </div>
+                    ))}
+
+                  </div>
+                </div>
+              </div> */}
+
+            </div>
+          )}
+          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0 || isDesignActive) && (
+            <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
+              {isDesignActive && designConfig && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-100 border-blue-200 py-1"
+                >
+                  <Palette className="w-3 h-3" />
+                  Design: {selectedDesign || "Custom"}
+                  <button
+                    onClick={() => setIsDesignActive(false)}
+                    className="ml-1 hover:text-blue-900"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
+
+              {selectedMcpIds.map(id => {
+                const mcp = mcpConnections.find(c => c.id === id)
+                if (!mcp) return null
+                return (
+                  <Badge
+                    key={id}
+                    variant="secondary"
+                    className="gap-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border-indigo-200 py-1"
+                  >
+                    <Database className="w-3 h-3" />
+                    @{mcp.name}
+                    <button
+                      onClick={() => setSelectedMcpIds(prev => prev.filter(i => i !== id))}
+                      className="ml-1 hover:text-indigo-900"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </Badge>
+                )
+              })}
+              {pastedContents.map((content) => (
+                <PastedContentButton
+                  key={content.id}
+                  content={content}
+                  onClick={() => openFileModal(content, true)}
+                  onRemove={() => setPastedContents((prev) => prev.filter((c) => c.id !== content.id))}
+                />
+              ))}
+              {uploadedFiles.map((file) => (
+                <FilePreviewButton
+                  key={file.id}
+                  file={file}
+                  onClick={() => openFileModal(file, false)}
+                  onRemove={() => setUploadedFiles((prev) => prev.filter((f) => f.id !== file.id))}
+                />
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => {
+              if (isViewer) return
+              const newMessage = e.target.value
+              const cursorPosition = e.target.selectionStart
+              setMessage(newMessage)
+              localStorage.setItem(draftKey, newMessage)
+
+              // @ Mention Logic
+              const textBeforeCursor = newMessage.slice(0, cursorPosition)
+              const atIndex = textBeforeCursor.lastIndexOf("@")
+
+              if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
+                const afterAt = textBeforeCursor.slice(atIndex + 1)
+                if (!afterAt.includes(" ")) {
+                  setMentionStartIndex(atIndex)
+                  setShowSkillSelector(true)
+                } else {
+                  setShowSkillSelector(false)
+                }
+              } else {
+                setShowSkillSelector(false)
+              }
+
+              if (newMessage.trim().length > 0) {
+                setIsActive(true)
+              }
+            }}
+            onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
+            onFocus={() => {
+              setIsFocused(true)
+              if (message.trim().length > 0) {
+                setIsActive(true)
+              }
+            }}
+            onBlur={() => {
+              setIsFocused(false)
+              if (message.trim().length === 0) {
+                setIsActive(false)
+              }
+            }}
+            placeholder={
+              isViewer
+                ? "Viewing mode - messaging is disabled"
+                : isDailyLimitReached
+                  ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
+                  : isDiscussMode ? "Discuss anything..." : placeholder
+            }
+            className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={isLoading || isDailyLimitReached || isViewer}
+          />
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
+            {editingMessage && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={onCancelEdit}
+                className="absolute top-1/2 left-7.5 transform -translate-y-1/2 h-7 px-3 text-xs text-black BackgroundStyleButton ml-2"
+              >
+                Cancel
+              </Button>
+            )}
+            {isListening ? (
+              <div className="flex-1 relative h-10 mr-2 p-[-14px]">
+                <canvas ref={canvasRef} className="absolute inset-0 w-full h-full bg-gray-100 rounded" />
+              </div>
+            ) : (
+              <div className="flex items-center">
+                <div className="relative flex items-center" ref={menuRef}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div
+                        onClick={() => {
+                          fileInputRef.current?.click()
+                          setShowMenu(false)
+                        }}
+                        className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
+                      >
+                        <img src="/icons/attachment.png" className="w-4 h-4 " alt="" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{isViewer ? "Viewing mode" : "Attachment & Images"}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  {menuMode === "main" ? (
+                    <div className="space-y-0.5">
+                      {/* <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            onClick={() => {
+                              if (!message.includes("Capture from URL:")) {
+                                setMenuMode("design")
+                              }
+                            }}
+                            className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
+                          >
+                            <Palette className="h-4 w-4 text-black/90" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{isViewer ? "Viewing mode" : "System Design"}</p>
+                        </TooltipContent>
+                      </Tooltip> */}
+                    </div>
+                  ) : (
+                    <div className="space-y-0.5 bg-white border border-[#cfcfd1] rounded-md p-0.5 w-[200px]">
+                      <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-xs rounded-sm BackgroundStyle cursor-default w-full">
+                        <ArrowLeft className="h-3 w-3 mr-2" />
+                        Back
+                      </div>
+                      {designSystems.map((system) => (
+                        <div
+                          key={system.name}
+                          onClick={() => {
+                            setSelectedDesign(system.name)
+                            setDesignConfig(designPresets[system.name])
+                            setIsDesignActive(true)
+                            setShowMenu(false)
+                          }}
+                          className="flex items-center px-2 py-1.5 text-xs rounded-sm BackgroundStyle cursor-default w-full"
+                        >
+                          <div className={`h-3 w-3 rounded mr-2 ${system.previewColor}`} />
+                          {system.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".ts,.tsx,.js,.jsx,.py,.css,.html,.json,.md,.txt,image/*"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+
+            <div className="flex items-center gap-px">
+              {/* Standalone Enhance Prompt Button */}
+              {mounted && balanceData?.subscriptionTier !== "none" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      type="button"
+                      className="h-7 px-2.5 text-[12px] shadow-none rounded-md bg-white text-black ml-2 hover:bg-[#e7e7e7] transition-colors cursor-pointer"
+                      disabled={isLoading || isViewer}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <Cpu className="w-4 h-4 mr-0.5" />
+                      <span className="truncate max-w-[100px]">
+                        {currentModel.label}
+                        {currentModel.id === 'falmax' && (
+                          <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
+                        )}
+                      </span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48 max-h-[400px] overflow-y-auto bg-white border border-gray-200 shadow-md border border-[#cfcfd1] z-[100]">
+                    <TooltipProvider>
+                      {MODEL_OPTIONS.map((model) => (
+                        <Tooltip key={model.id}>
+                          <TooltipTrigger asChild>
+                            <DropdownMenuItem
+                              onClick={() => handleModelSelect(model.id)}
+                              className={cn(
+                                "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7]",
+                                selectedModel === model.id && "bg-[#e7e7e7]"
+                              )}
+                            >
+                              <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0">
+                                <img src={model.iconUrl || "/placeholder.svg"} alt="" className="w-full h-full object-cover" />
+                              </div>
+                              <span className="text-sm font-medium">
+                                {model.label}
+                                {model.id === 'falmax' && (
+                                  <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
+                                )}
+                              </span>
+                              {model.isPremium && !hasSubscription && (
+                                <Lock className="w-3 h-3 ml-auto text-gray-700" />
+                              )}
+                            </DropdownMenuItem>
+                          </TooltipTrigger>
+                          {model.description && (
+                            <TooltipContent side="right" className="max-w-[220px] text-xs p-3">
+                              <p className="mb-2 text-white/90">{model.description}</p>
+                              {model.subModels && model.subModels.length > 0 && (
+                                <div className="flex flex-col gap-1.5">
+                                  {model.subModels.map((sub) => (
+                                    <div key={sub.id} className="flex items-center gap-1.5">
+                                      <div className="w-3.5 h-3.5 rounded-full overflow-hidden flex-shrink-0">
+                                        <img src={sub.iconUrl} alt={sub.label} className="w-full h-full object-cover" />
+                                      </div>
+                                      <span className="text-[11px] text-white/90">
+                                        {sub.label}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      ))}
+                    </TooltipProvider>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+              <div
+                className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                onMouseEnter={() => setShowDatabaseHover(true)}
+                onMouseLeave={() => setShowDatabaseHover(false)}
+                onClick={(e) => {
+                  if (projectId && onOpenDatabase) {
+                    onOpenDatabase()
+                  }
+                }}
+              >
+                <img src="/icons/database.png" className="w-4 h-4 " alt="" />
+                {/* {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
+                    {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>} */}
+
+                {showDatabaseHover && (!projectId || !onOpenDatabase) && (
+                  <div
+                    className="absolute z-50 w-46
+                              focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
+                              data-[variant=destructive]:focus:bg-destructive/10
+                              dark:data-[variant=destructive]:focus:bg-destructive/20 
+                              data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive
+                              [&_svg:not([class*='text-'])]:text-muted-foreground 
+                              items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
+                              outline-hidden select-none data-[disabled]:pointer-events-none 
+                              data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
+                              [&_svg:not([class*='size-'])]:size-4 bg-white shadow-md border border-[#cfcfd1] rounded-md p-0.5"
+                    onMouseEnter={() => setShowDatabaseHover(true)}
+                    onMouseLeave={() => setShowDatabaseHover(false)}
+                  >
+                    <TooltipProvider>
+                      {/* <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <div
+                                        className="flex items-center w-full px-2 h-8 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
+                                        onClick={(e) => { e.stopPropagation(); setIsNeonDb(true); setIsFalborDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                                      >
+                                        <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
+                                        <span className="flex-1 text-left">Falbor Database Max</span>
+                                        {isNeonDb && <Check className="h-4 w-4 text-black" />}
+                                      </div>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                      <p>Use the professional Neon-powered database (Recommended)</p>
+                                    </TooltipContent>
+                                  </Tooltip> */}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="flex items-center w-full px-2 py-1.5 h-8 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setIsNeonDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                          >
+                            <img src="/icons/falbor.png" className="w-6 h-6 mr-2" alt="" />
+                            <span className="flex-1 text-left">Falbor Database</span>
+                            {isFalborDb && <Check className="h-4 w-4 text-black" />}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Use the Falbor built-in database (Supabase)</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
+                          >
+                            <img src="/icons/supabase.png" className="w-6 h-6 mr-2" alt="" />
+                            <span className="flex-1 text-left">Connect Supabase</span>
+                            {!isFalborDb && !isNeonDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Connect your own Supabase database</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div
+                            className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
+                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
+                          >
+                            <img src="/icons/database-off.png" className="w-6 h-6 mr-2" alt="" />
+                            <span className="flex-1 text-left">Create without DB</span>
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">
+                          <p>Proceed without connecting any database</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  </div>
+                )}
+              </div>
+              {/* Voice Input Button */}
+              {!isListening && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={handleVoiceToggle}
+                      className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                      title="Voice input"
+                      disabled={isLoading}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <AudioLinesIcon className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Voice input</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {!isImproving && message.trim() && !isLoading && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={handleImprovePrompt}
+                      className="h-7 w-7 p-0.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <img src="/icons/Improving.png" alt="" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Enhance prompt</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {isImproving && (
+                <div className="h-7 w-7 flex items-center justify-center">
+                  <div className="w-4 h-4 border-2 border-[#0099ff]/20 border-t-[#0099ff] rounded-full animate-spin" />
+                </div>
+              )}
+              {/* Send/Submit Button */}
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type={isListening || effectiveIsLoading ? "button" : "submit"}
+                      onClick={isListening ? stopVoiceInput : undefined}
+                      size={isProvisioning || editingMessage ? "default" : "icon"}
+                      className={cn(
+                        "h-7 p-1.5 rounded-md mr-1 transition-colors w-7",
+                        (isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-white hover:bg-black/5 border border-black/20")),
+                        (!effectiveIsLoading && !isListening &&
+                          ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
+                            !isAuthenticated || isViewer)) ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+                      )}
+                      disabled={isLoading || isDailyLimitReached || isViewer}
+                    >
+                      {effectiveIsLoading || isProvisioning ? (
+                        <div className="w-3 h-3 border-2 border-[#0099ff] border-t-[#0099ff]/30 rounded-full animate-spin" />
+                      ) : isListening ? (
+                        <Circle className="w-4 h-4 text-white" />
+                      ) : isViewer ? (
+                        <Lock className="w-3.5 h-3.5 text-red-500" />
+                      ) : (
+                        <ArrowUp className="w-6 h-6 text-black" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  {isViewer && (
+                    <TooltipContent side="top" align="center" className="bg-white text-black border shadow-md font-medium">
+                      <p className="flex items-center gap-2">
+                        <Lock className="w-3 h-3 text-red-500" />
+                        You cannot send messages.
+                      </p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+        </form>
+
+        {/* Upgrade Banner & Daily Limit Indicator */}
+        {!hasSubscription && (
+          <div className="mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] bg-[#dbd9d9b2]/80 flex items-center justify-between">
+            <div className="flex flex-col gap-0.5 ml-2">
+              <p className="text-[13px] text-zinc-600 font-medium">
+                {isDailyLimitReached
+                  ? `Credits renew in ${formatTime(dailyResetTimer)}`
+                  : `You have`} {5 - (balanceData?.dailyMessageCount || 0)} messages left for today.
+              </p>
+              {!isDailyLimitReached && (
+                <div className="flex items-center gap-1.5">
+                  {/* <div className="flex gap-0.5">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className={cn(
+                          "w-3 h-1 rounded-full",
+                          i <= (balanceData?.dailyMessageCount || 0) ? "bg-zinc-400" : "bg-zinc-200"
+                        )}
+                      />
+                    ))}
+                  </div> */}
+                </div>
+              )}
+            </div>
+            <Link href="/pricing">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-[12px] bg-[#0099ff]/20 text-[#0099ff] mr-1 flex items-center gap-1.5"
+              >
+                Upgrade Plan
+              </Button>
+            </Link>
+          </div>
+        )}
+      </div>
+      <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
+        <DialogContent>
+          <DialogTitle>Confirm Build</DialogTitle>
+          <p>Are you sure you want to build this project without a database connection?</p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowConfirmation(false)
+                setShowDatabaseModal(true)
+              }}
+            >
+              No, connect a database
+            </Button>
+            <Button
+              onClick={() => {
+                setShowConfirmation(false)
+                createProject(false)
+              }}
+            >
+              Yes, continue without database
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={!!selectedFile} onOpenChange={() => setSelectedFile(null)}>
+        <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto p-0 z-[9999]">
+          <div className="flex justify-between items-center mb-4 px-4 py-2">
+            <DialogTitle>{selectedFile?.name}</DialogTitle>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={handleDownload}>
+                <Download className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={handleCopy}>
+                <Copy className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+                <Edit className="w-4 h-4" />
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedFile(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+            {selectedFile?.type.startsWith("image/") ? (
+              <img
+                src={selectedFile.content || "/placeholder.svg"}
+                alt={selectedFile.name}
+                className="max-w-full max-h-[60vh] object-contain mx-auto"
+              />
+            ) : (
+              <Editor
+                height="60vh"
+                language={getLanguageFromType(
+                  selectedFile?.type || "",
+                  selectedFile?.name || "",
+                  selectedFile?.content,
+                )}
+                value={isEditing ? editedContent : selectedFile?.content}
+                theme="vs-light"
+                options={{
+                  readOnly: !isEditing,
+                  minimap: { enabled: false },
+                  scrollbar: { vertical: "auto" },
+                  wordWrap: "on",
+                }}
+                onChange={(value) => {
+                  if (isEditing) setEditedContent(value || "")
+                }}
+              />
+            )}
+          </motion.div>
+          {isEditing && !selectedFile?.type.startsWith("image/") && (
+            <Button onClick={handleSaveEdit} className="mt-4">
+              Save Changes
+            </Button>
+          )}
+        </DialogContent>
+      </Dialog>
+      <SupabaseConnectModal
+        open={showDatabaseModal}
+        onOpenChange={setShowDatabaseModal}
+        credentialsSaved={credentialsSaved}
+        databaseCredentials={databaseCredentials}
+        selectedProjectRef={selectedProjectRef}
+        projects={projects}
+        onDisconnect={handleDisconnectDatabase}
+        onConnect={handleSupabaseOAuthConnect}
+        isAuthenticated={isAuthenticated}
+      />
+      <GoogleDriveModal
+        isOpen={showGoogleDriveModal}
+        onClose={() => setShowGoogleDriveModal(false)}
+        onSelect={(files: any[]) => {
+          const newFiles = files.map((f: any) => ({
+            id: f.id,
+            name: f.name,
+            type: f.mimeType,
+            size: f.sizeBytes || 0,
+            content: `[File imported from Google Drive: ${f.name}]`,
+            uploadStatus: "complete" as const,
+            preview: f.iconUrl || f.thumbnailUrl
+          }))
+          setUploadedFiles(prev => [...prev, ...newFiles])
+        }}
+      />
+      <Dialog open={showTokenModal} onOpenChange={setShowTokenModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogTitle>Apply Migrations</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            Enter your Supabase personal access token to apply the migrations.
+          </p>
+          <Input
+            type="password"
+            placeholder="sbp_xxxxxxxxxxxxxxxxxxxxxxxx"
+            value={tempAccessToken}
+            onChange={(e) => setTempAccessToken(e.target.value)}
+          />
+          <Button onClick={handleExecuteMigrations} disabled={!tempAccessToken || isSavingCredentials}>
+            {isSavingCredentials ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Applying...
+              </>
+            ) : (
+              "Apply Migrations"
+            )}
+          </Button>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showDesignModal} onOpenChange={setShowDesignModal}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogTitle>Custom Design System</DialogTitle>
+          <div className="space-y-4 mt-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Primary Color</Label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={tempConfig.primaryColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, primaryColor: e.target.value })}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input
+                    value={tempConfig.primaryColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, primaryColor: e.target.value })}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Secondary Color</Label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={tempConfig.secondaryColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, secondaryColor: e.target.value })}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input
+                    value={tempConfig.secondaryColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, secondaryColor: e.target.value })}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Background Color</Label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={tempConfig.backgroundColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, backgroundColor: e.target.value })}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input
+                    value={tempConfig.backgroundColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, backgroundColor: e.target.value })}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label>Text Color</Label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={tempConfig.textColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, textColor: e.target.value })}
+                    className="w-10 h-10 rounded cursor-pointer"
+                  />
+                  <Input
+                    value={tempConfig.textColor}
+                    onChange={(e) => setTempConfig({ ...tempConfig, textColor: e.target.value })}
+                    className="flex-1"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowDesignModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setDesignConfig(tempConfig)
+                  setShowDesignModal(false)
+                }}
+              >
+                Apply Design
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showPremiumAlert} onOpenChange={setShowPremiumAlert}>
+        <DialogContent>
+          <DialogTitle className="flex items-center gap-2">
+            <Crown className="w-5 h-5 text-amber-500" />
+            Premium Model
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            This model requires a premium subscription. Please upgrade your plan to access premium models.
+          </p>
+          <div className="flex justify-end">
+            <Button onClick={() => setShowPremiumAlert(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
+        <DialogContent>
+          <DialogTitle>Sign In Required</DialogTitle>
+          <p className="text-sm text-muted-foreground">Please sign in to use this feature.</p>
+          <div className="flex justify-end">
+            <Button onClick={() => setShowLoginDialog(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+
+    </div >
+  )
+})
+export function ChatInput(props: ChatInputProps) {
+  return <ChatInputImpl {...props} />
+}

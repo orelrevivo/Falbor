@@ -1,0 +1,2705 @@
+import { auth } from "@clerk/nextjs/server"
+import { GoogleGenerativeAI } from "@google/generative-ai"
+import { db } from "@/config/db"
+import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, projectNeon, userCredits, projectSecrets, userMcpConnections, userApiUsage, projectCollaborators } from "@/config/schema"
+import { eq, asc, and } from "drizzle-orm"
+import { getSystemPrompt, FALMAX_PROMPTS } from "@/lib/common/prompts/prompt"
+import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
+import { pusherServer } from "@/lib/pusher"
+import { SECURITY_SYSTEM_PROMPT } from "@/lib/common/prompts/security-prompt"
+import { discordActions, gmailActions, githubActions, linkedinActions, twitterActions, slackActions, spotifyActions } from "@/lib/mcp/actions"
+import { freepikActions } from "@/lib/freepik/actions"
+import { getUserSkillsForAIContext } from "@/app/actions/skills"
+import { runMigration } from "@/lib/supabase/management-api"
+
+const GREETING_KEYWORDS = ["hello", "hi", "hey", "greetings", "good morning", "good afternoon", "good evening"]
+const QUESTION_KEYWORDS = ["what is", "who is", "where is", "when is", "why is", "how does", "explain", "tell me about"]
+
+const CODE_KEYWORDS = [
+  "build",
+  "create",
+  "make",
+  "website",
+  "app",
+  "component",
+  "function",
+  "page",
+  "form",
+  "dashboard",
+  "api",
+  "code",
+  "implement",
+  "develop",
+  "generate code",
+  "write code",
+  "install",
+  "npm",
+  "package",
+  "dependency",
+]
+
+const ZAI_MODELS = {
+  "glm-4.7-flash": "glm-4.7-flash",
+  "glm-4.6v": "glm-4.6v",
+  "glm-5-turbo": "glm-5-turbo",
+  "glm-4.5-flash": "glm-4.5-flash",
+}
+
+// Define Model Fallback Chains for "No-429" Architecture
+const MODEL_FALLBACK_CHAIN: Record<string, string[]> = {
+  "gemini": ["google/gemini-2.0-flash-lite-preview:free", "google/gemini-2.0-flash-001"],
+  "google/gemini-2.0-pro-exp-02-05:free": ["google/gemini-2.0-flash-001", "openai/gpt-4o-mini"],
+  "google/gemini-2.0-flash-thinking-exp-1219:free": ["google/gemini-2.0-flash-001"],
+  "zai-pro": ["deepseek/deepseek-chat", "meta-llama/llama-3.1-405b-instruct"],
+  "zai-mini": ["google/gemini-2.0-flash-lite-preview", "anthropic/claude-3-haiku"],
+  "falmax": ["gemini", "google/gemini-2.0-flash-001"],
+};
+
+const OPENROUTER_MODELS = {
+  "gpt-5.2": "openai/gpt-5.2",
+  "gpt-5.1-codex": "openai/gpt-5.1-codex-max",
+  "gpt-5.4-pro": "openai/gpt-5.4-pro",
+  "gpt-5.4": "openai/gpt-5.4",
+  "claude-sonnet-4.6": "anthropic/claude-sonnet-4.6",
+  "claude-opus-4.6": "anthropic/claude-opus-4.6",
+  "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
+  "claude-opus-4.5": "anthropic/claude-opus-4.5",
+  "claude-sonnet-4.5": "anthropic/claude-sonnet-4.5",
+  "claude-opus-4": "anthropic/claude-opus-4",
+  "claude-3.5-haiku": "anthropic/claude-3.5-haiku",
+  "claude-3.5-sonnet": "anthropic/claude-3.5-sonnet",
+  "grok-4.1-fast": "x-ai/grok-4.1-fast",
+  "grok-4-fast": "x-ai/grok-4-fast",
+  "grok-code-fast-1": "x-ai/grok-code-fast-1",
+  "grok-4": "x-ai/grok-4",
+  "grok-3-mini": "x-ai/grok-3-mini",
+  "gemini-3.1-flash-lite": "google/gemini-3.1-flash-lite-preview",
+  "gemini-2.0-flash": "google/gemini-2.0-flash-001",
+  "qwen-3.5-35b": "qwen/qwen3.5-35b-a3b",
+  "qwen-3.5-27b": "qwen/qwen3.5-27b",
+  "nemotron-3-super-120b": "nvidia/nemotron-3-super-120b-a12b:free",
+  "gpt-oss-120b": "openai/gpt-oss-120b",
+  "gemma-3-12b-it": "google/gemma-3-12b-it:free",
+  "moonshotai/kimi-k2.5": "moonshotai/kimi-k2.5",
+  "moonshotai/kimi-k2-thinking": "moonshotai/kimi-k2-thinking",
+  "minimax/minimax-m2.7": "minimax/minimax-m2.7",
+  "minimax/minimax-m2.5": "minimax/minimax-m2.5",
+  "falmax": "falmax",
+}
+
+async function dispatchMcpTool(name: string, args: any, userId: string, projectId?: string, assistantMsgId?: string): Promise<any> {
+  console.log(`[MCP] Dispatching tool: ${name}`, args)
+  switch (name) {
+    // Discord
+    case "discord_send_message":
+      return await discordActions.sendMessage(userId, args.channelId, args.content)
+    case "discord_get_messages":
+      return await discordActions.getMessages(userId, args.channelId, args.limit)
+    case "discord_get_guilds":
+      return await discordActions.getGuilds(userId)
+    case "discord_get_channels":
+      return await discordActions.getChannels(userId, args.guildId)
+    case "discord_create_dm":
+      return await discordActions.createDM(userId, args.recipientId)
+    case "discord_delete_message":
+      return await discordActions.deleteMessage(userId, args.channelId, args.messageId)
+
+    // Gmail
+    case "gmail_list_messages":
+      return await gmailActions.listMessages(userId, args.q, args.maxResults)
+    case "gmail_get_message":
+      return await gmailActions.getMessage(userId, args.id)
+    case "gmail_send_message":
+      return await gmailActions.sendMessage(userId, args.to, args.subject, args.body)
+    case "gmail_delete_message":
+      return await gmailActions.deleteMessage(userId, args.id)
+
+    // GitHub
+    case "github_get_user":
+      return await githubActions.getUser(userId)
+    case "github_list_repos":
+      return await githubActions.listRepos(userId, args.type, args.sort)
+    case "github_get_repo":
+      return await githubActions.getRepo(userId, args.owner, args.repo)
+    case "github_create_repo":
+      return await githubActions.createRepo(userId, args.name, args.description, args.isPrivate)
+    case "github_get_repo_contents":
+      return await githubActions.getRepoContents(userId, args.owner, args.repo, args.path)
+    case "github_create_issue":
+      return await githubActions.createIssue(userId, args.owner, args.repo, args.title, args.body)
+
+    // LinkedIn
+    case "linkedin_get_profile":
+      return await linkedinActions.getProfile(userId)
+    case "linkedin_share_post":
+      return await linkedinActions.sharePost(userId, args.text, args.visibility)
+
+    // Twitter/X
+    case "twitter_get_me":
+      return await twitterActions.getMe(userId)
+    case "twitter_get_user_tweets":
+      return await twitterActions.getUserTweets(userId, args.twitterUserId, args.maxResults)
+    case "twitter_create_tweet":
+      return await twitterActions.createTweet(userId, args.text)
+    case "twitter_delete_tweet":
+      return await twitterActions.deleteTweet(userId, args.tweetId)
+
+    // Slack
+    case "slack_get_user_info":
+      return await slackActions.getUserInfo(userId)
+    case "slack_list_channels":
+      return await slackActions.listChannels(userId, args.types)
+    case "slack_post_message":
+      return await slackActions.postMessage(userId, args.channel, args.text, args.threadTs)
+    case "slack_get_channel_history":
+      return await slackActions.getChannelHistory(userId, args.channel, args.limit)
+
+    // Spotify
+    case "spotify_get_current_user":
+      return await spotifyActions.getCurrentUser(userId)
+    case "spotify_get_currently_playing":
+      return await spotifyActions.getCurrentlyPlaying(userId)
+    case "spotify_get_user_playlists":
+      return await spotifyActions.getUserPlaylists(userId, args.limit)
+    case "spotify_create_playlist":
+      return await spotifyActions.createPlaylist(userId, args.name, args.description, args.isPublic)
+    case "spotify_search_tracks":
+      return await spotifyActions.searchTracks(userId, args.query, args.limit)
+    case "spotify_add_tracks_to_playlist":
+      return await spotifyActions.addTracksToPlaylist(userId, args.playlistId, args.trackUris)
+    case "spotify_play_track":
+      return await spotifyActions.playTrack(userId, args.trackUri, args.deviceId)
+
+    // Freepik
+    case "freepik_search_icons":
+      return await freepikActions.searchIcons(args.query, args.limit)
+    case "freepik_download_icon":
+      if (!projectId || !assistantMsgId) return { success: false, error: "Missing project/message context for download" }
+      return await freepikActions.downloadIcon(projectId, assistantMsgId, args.iconId, args.fileName)
+
+    default:
+      console.error(`[MCP] Tool NOT found: ${name}`)
+      return { success: false, error: `Tool ${name} not found.` }
+  }
+}
+
+async function executeActionTags(content: string, userId: string, projectId?: string, assistantMsgId?: string) {
+  const actionRegex = /<Action>(\w+)\(([\s\S]*?)\)<\/Action>/g;
+  let match;
+  while ((match = actionRegex.exec(content)) !== null) {
+    const toolName = match[1];
+    try {
+      const args = JSON.parse(match[2]);
+      console.log(`[MCP/TagFallback] Auto-executing action: ${toolName}`, args);
+      await dispatchMcpTool(toolName, args, userId, projectId, assistantMsgId);
+    } catch (e) {
+      console.error(`[MCP/TagFallback] Failed to execute ${toolName}:`, e);
+    }
+  }
+}
+
+export async function POST(request: Request) {
+  const { userId } = await auth()
+
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 })
+  }
+
+  let body: any
+  try {
+    body = await request.json()
+  } catch (e) {
+    return new Response(JSON.stringify({ error: "Invalid JSON" }), { status: 400 })
+  }
+
+  const {
+    projectId: incomingProjectId,
+    message,
+    imageData,
+    uploadedFiles,
+    discussMode = false,
+    isAutomated = false,
+    selectedModel: initialSelectedModel = "gemini",
+    supabaseUrl,
+    anonKey,
+    selectedMcps = [],
+    securityMode = false,
+    targetProjectId = null,
+    sessionId = "main",
+    userMessageId: incomingUserMessageId = null,
+    saveOnly = false,
+    metadata: incomingMetadata = null,
+  } = body
+
+  if (!message) {
+    return new Response(JSON.stringify({ error: "Missing message" }), { status: 400 })
+  }
+
+  // Fetch User Credits and enforce model restrictions
+  let credits: any = null
+  try {
+    credits = await db.select().from(userCredits).where(eq(userCredits.userId, userId)).then(r => r[0])
+    if (!credits) {
+      const [newCredits] = await db.insert(userCredits).values({
+        userId,
+        subscriptionTier: 'none',
+        balance: 150,
+        lastRegenTime: new Date(),
+      }).returning()
+      credits = newCredits
+    }
+  } catch (err) {
+    console.error("Failed to fetch user credits:", err)
+  }
+
+  let selectedModel = initialSelectedModel
+  if (credits?.subscriptionTier === 'none') {
+    selectedModel = "gemini-3.1-flash-lite"
+  }
+
+  let projectId = incomingProjectId
+  let isNewProject = false
+
+  if (!projectId) {
+    isNewProject = true
+    const [newProject] = await db
+      .insert(projects)
+      .values({
+        userId,
+        title: message.length > 50 ? `${message.substring(0, 47)}...` : message,
+        selectedModel: selectedModel,
+        isAutomated,
+      })
+      .returning({ id: projects.id })
+    projectId = newProject.id
+
+    // Save credentials if provided
+    if (supabaseUrl && anonKey) {
+      await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/projects/${projectId}/supabase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          supabaseUrl,
+          anonKey,
+        }),
+      })
+    }
+  }
+
+  let project: any
+  try {
+    ;[project] = await db.select().from(projects).where(eq(projects.id, projectId))
+  } catch (e) {
+    console.error("[API/Chat] DB select error:", e)
+    return new Response(JSON.stringify({ error: "Database error" }), { status: 500 })
+  }
+
+  if (!project || project.userId !== userId) {
+    // Check if user is an authorized collaborator
+    const [collaborator] = await db
+      .select()
+      .from(projectCollaborators)
+      .where(
+        and(
+          eq(projectCollaborators.projectId, projectId),
+          eq(projectCollaborators.userId, userId),
+          eq(projectCollaborators.status, "accepted")
+        )
+      )
+
+    if (!collaborator) {
+      // If project is public, we still allow viewing, but NOT posting (POST requests are for sending messages)
+      console.warn(`[API/Chat] Unauthorized access attempt by user ${userId} to project ${projectId}`)
+      return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403 })
+    }
+
+    // Role-based post restriction (POST handler is for sending messages)
+    if (collaborator.role === "viewer") {
+      console.warn(`[API/Chat] Viewer role attempt to send message by user ${userId} in project ${projectId}`)
+      return new Response(JSON.stringify({ error: "Permission denied: Viewers cannot send messages" }), { status: 403 })
+    }
+  }
+
+  let history: any[]
+  try {
+    history = (await db.select().from(messagesTable).where(
+      and(
+        eq(messagesTable.projectId, projectId),
+        eq(messagesTable.sessionId, sessionId)
+      )
+    ).orderBy(asc(messagesTable.createdAt))) ?? []
+  } catch (e) {
+    console.error("[API/Chat] History fetch error:", e)
+    return new Response(JSON.stringify({ error: "Database error" }), { status: 500 })
+  }
+
+  let userMessageId: string | undefined
+  const lastMsg = history[history.length - 1]
+  if (history.length === 0 || !(lastMsg?.role === "user" && lastMsg.content === message)) {
+    try {
+      const [inserted] = await db.insert(messagesTable).values({
+        projectId,
+        sessionId,
+        role: "user",
+        content: message,
+        isAutomated,
+        imageData: imageData?.data || null,
+        metadata: {
+          ...(incomingMetadata || {}),
+          ...(uploadedFiles ? { uploadedFiles } : {}),
+        },
+      }).returning({ id: messagesTable.id })
+      userMessageId = inserted.id
+      history.push({ role: "user", content: message, id: userMessageId, sessionId })
+
+      // Broadcast user message to Pusher so other collaborators see it (Background)
+      pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
+        type: 'MSG_USER',
+        message: {
+          id: userMessageId,
+          role: "user",
+          content: message,
+          createdAt: new Date().toISOString()
+        },
+        projectId
+      }).catch(err => console.warn("[Pusher] Failed to broadcast user message:", err))
+    } catch (e) {
+      console.error("[API/Chat] User insert error:", e)
+      return new Response(JSON.stringify({ error: "Failed to save message" }), { status: 500 })
+    }
+  } else {
+    userMessageId = lastMsg.id
+    console.log("[API/Chat] Skipping duplicate user message insert")
+  }
+
+  if (saveOnly) {
+    return new Response(JSON.stringify({
+      success: true,
+      messageId: userMessageId,
+      sessionId
+    }), { status: 200 })
+  }
+
+  const responseStream = await handleModelRequest(
+    history,
+    message,
+    imageData,
+    projectId,
+    userId,
+    discussMode,
+    isAutomated,
+    selectedModel,
+    supabaseUrl,
+    anonKey,
+    selectedMcps,
+    project,
+    userMessageId,
+    securityMode,
+    targetProjectId,
+    sessionId,
+    request,
+    body,
+    incomingProjectId,
+  )
+
+  if (responseStream instanceof Response) {
+    return responseStream
+  }
+
+  return new Response(responseStream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  })
+}
+
+function detectMessageType(message: string): "greeting" | "question" | "build" {
+  const lowerMessage = message.toLowerCase().trim()
+
+  // 1. CODE_KEYWORDS always take priority — if ANY code keyword is present, it's a build request.
+  // This prevents messages like "Hi, build me a website" from being classified as a greeting.
+  const hasCodeKeyword = CODE_KEYWORDS.some((kw) => lowerMessage.includes(kw))
+  if (hasCodeKeyword) {
+    return "build"
+  }
+
+  // 2. Check if it's a simple greeting (short and matches greeting keywords, AND no code keywords)
+  if (lowerMessage.length < 50 && GREETING_KEYWORDS.some((kw) => lowerMessage.includes(kw))) {
+    return "greeting"
+  }
+
+  // 3. Check if it's a question
+  if (QUESTION_KEYWORDS.some((kw) => lowerMessage.includes(kw))) {
+    return "question"
+  }
+
+  // 4. Default to build request for unknown intents that aren't greetings or simple questions
+  return "build"
+}
+
+/**
+ * Design Intelligence: Auto-detects the type of website being requested
+ * and returns a design hint string to inject into the system prompt so
+ * the AI selects the right palette, fonts, and design patterns.
+ */
+function detectDesignContext(message: string): string {
+  const lower = message.toLowerCase()
+
+  const SITE_TYPES: Array<{ keywords: string[]; type: string; palette: string; fonts: string }> = [
+    {
+      keywords: ["blog", "article", "editorial", "magazine", "journal", "writing", "posts"],
+      type: "Blog / Content Site",
+      palette: "Blog palette (deep navy #1a1a2e, coral accent #e94560, off-white #fafafa background)",
+      fonts: "Playfair Display for headings + Source Sans 3 for body text (editorial elegance)"
+    },
+    {
+      keywords: ["store", "shop", "ecommerce", "e-commerce", "product", "cart", "checkout", "marketplace"],
+      type: "E-Commerce / Store",
+      palette: "E-Commerce palette (slate #0f172a, amber #f59e0b for prices, emerald #059669 for CTAs)",
+      fonts: "Plus Jakarta Sans for both headings and body (clean, professional)"
+    },
+    {
+      keywords: ["portfolio", "personal site", "resume", "cv", "showcase", "my work", "about me"],
+      type: "Portfolio / Personal",
+      palette: "Portfolio palette (near-black #18181b, violet accent #a78bfa, warm white #fafaf9)",
+      fonts: "DM Sans for both headings and body (minimal, elegant)"
+    },
+    {
+      keywords: ["dashboard", "saas", "admin", "panel", "analytics", "crm", "management", "platform"],
+      type: "SaaS / Dashboard",
+      palette: "SaaS palette (indigo #6366f1, slate canvas #f1f5f9, white surfaces)",
+      fonts: "Inter for both headings and body (clean, data-focused)"
+    },
+    {
+      keywords: ["landing", "startup", "launch", "marketing", "waitlist", "coming soon", "hero"],
+      type: "Landing Page / Marketing",
+      palette: "Landing Page palette (sky blue #0ea5e9, dark headlines #0f172a, orange CTAs #f97316)",
+      fonts: "Sora for headings + DM Sans for body (modern startup feel)"
+    },
+    {
+      keywords: ["dark mode", "dark theme", "developer", "dev tool", "terminal", "code", "hacker"],
+      type: "Dark Mode / Tech",
+      palette: "Dark palette (zinc-950 #09090b background, violet #a78bfa accent, cyan #22d3ee highlights)",
+      fonts: "Space Grotesk for headings + Inter for body (tech-focused)"
+    },
+    {
+      keywords: ["restaurant", "food", "menu", "café", "cafe", "bakery", "recipe", "cooking"],
+      type: "Restaurant / Food",
+      palette: "Restaurant palette (amber-brown #92400e, red CTAs #dc2626, cream #fffbeb background)",
+      fonts: "Playfair Display for headings + Inter for body (warm, inviting)"
+    },
+    {
+      keywords: ["medical", "health", "doctor", "clinic", "hospital", "wellness", "fitness", "gym"],
+      type: "Medical / Health",
+      palette: "Health palette (teal #0891b2, mint-white #f0fdfa, deep cyan text #164e63)",
+      fonts: "Manrope for headings + Inter for body (trustworthy, clean)"
+    }
+  ]
+
+  for (const siteType of SITE_TYPES) {
+    if (siteType.keywords.some(kw => lower.includes(kw))) {
+      return `\n\n### AUTO-DETECTED DESIGN CONTEXT ###
+Site type detected: **${siteType.type}**
+Recommended palette: ${siteType.palette}
+Recommended fonts: ${siteType.fonts}
+Apply this palette and font pair automatically. Define ALL colors as CSS variables in :root in src/index.css. Import the fonts via Google Fonts in index.html. Maintain 100% consistency across all components.
+### END DESIGN CONTEXT ###`
+    }
+  }
+
+  // Default: Landing Page style (most universal)
+  return `\n\n### AUTO-DETECTED DESIGN CONTEXT ###
+No specific site type detected. Use the **Landing Page / Marketing** palette as default:
+Palette: Sky blue #0ea5e9 primary, dark #0f172a headlines, orange #f97316 CTAs, white background, slate-50 #f8fafc surfaces.
+Fonts: Sora for headings + DM Sans for body. Import via Google Fonts.
+Define ALL colors as CSS variables in :root. Maintain 100% design consistency.
+### END DESIGN CONTEXT ###`
+}
+
+async function handleModelRequest(
+  history: any[],
+  message: string,
+  imageData: any,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  selectedModel: string,
+  supabaseUrl?: string,
+  anonKey?: string,
+  selectedMcps: any[] = [],
+  project?: any,
+  userMessageId?: string,
+  securityMode = false,
+  targetProjectId?: string | null,
+  sessionId = "main",
+  request?: Request,
+  body?: any,
+  incomingProjectId?: string | null,
+) {
+
+  const messageType = detectMessageType(message)
+  const isCodeRequest =
+    messageType === "build" || CODE_KEYWORDS.some((keyword) => message.toLowerCase().includes(keyword))
+
+  console.log(
+    `[${selectedModel}] Message type: ${messageType}, Code request: ${isCodeRequest} for: "${message.substring(0, 50)}..."`,
+  )
+
+  let effectiveMessage = message
+
+  // Parallelize database and context fetching to minimize latency
+  const [supabaseResult, neonResult, secretsResult, customKnowledgePrompt, userSkills] = await Promise.all([
+    // Supabase Credentials
+    (async () => {
+      try {
+        const contextId = targetProjectId || projectId
+        const [fetched] = await db.select().from(projectSupabase).where(eq(projectSupabase.projectId, contextId))
+        return fetched
+      } catch (err) {
+        console.error("Failed to fetch database credentials:", err)
+        return null
+      }
+    })(),
+    // Neon Credentials
+    (async () => {
+      try {
+        const contextId = targetProjectId || projectId
+        const [fetched] = await db.select().from(projectNeon).where(eq(projectNeon.projectId, contextId))
+        return fetched
+      } catch (err) {
+        console.error("Failed to fetch Neon database credentials:", err)
+        return null
+      }
+    })(),
+    // Project Secrets
+    (async () => {
+      try {
+        const contextId = targetProjectId || projectId
+        return await db.select().from(projectSecrets).where(eq(projectSecrets.projectId, contextId))
+      } catch (err) {
+        console.error("Failed to fetch project secrets:", err)
+        return []
+      }
+    })(),
+    // Custom Knowledge
+    getCustomKnowledge(userId),
+    // Enabled Skills
+    getUserSkillsForAIContext(userId)
+  ])
+
+  let supabaseConfig: any = supabaseResult
+  let neonConfig: any = neonResult
+  let fetchedSecrets: any[] = secretsResult
+
+  if (supabaseConfig && supabaseConfig.anonKey && supabaseConfig.anonKey !== "pending") {
+    const { supabaseUrl: url, anonKey: key, serviceRoleKey: role } = supabaseConfig
+    console.log(`[Chat] Injecting Supabase credentials for project ${projectId}`)
+    effectiveMessage += `\n\n## Supabase Credentials (Managed by Falbor)\nThis project uses a managed Supabase database. Use these credentials for ALL database operations in your code:\nVITE_SUPABASE_URL=${url}\nVITE_SUPABASE_ANON_KEY=${key}\nSUPABASE_SERVICE_ROLE_KEY=${role}\n\nIMPORTANT: Always use these exact values. NEVER use placeholder or example values.`
+  }
+
+  if (neonConfig) {
+    const { databaseUrl: url } = neonConfig
+    console.log(`[Chat] Injecting Neon credentials for project ${projectId}`)
+    effectiveMessage += `\n\n## Neon Database Connection (Managed by Falbor Max)\nThis project uses a managed Neon database. Use this connection string for ALL database operations in your code:\nDATABASE_URL=${url}\nVITE_DATABASE_URL=${url}\n\nIMPORTANT: Always use this exact value. NEVER use placeholder or example values.`
+  }
+
+  if (fetchedSecrets.length > 0) {
+    console.log(`[Chat] Injecting ${fetchedSecrets.length} secrets for project ${projectId}`)
+    let secretsPrompt = "\n\n## Project Secrets (Environment Variables)\nThe following secrets are configured for this project. Use these names in your code and .env file. The values are provided here for your internal knowledge to ensure correct configuration."
+    fetchedSecrets.forEach(secret => {
+      secretsPrompt += `\n${secret.name}=${secret.value}`
+    })
+    effectiveMessage += secretsPrompt
+  }
+
+  // Prepare Supabase Context for System Prompt
+  const supabaseContext = supabaseConfig ? {
+    isConnected: true,
+    hasSelectedProject: true,
+    credentials: {
+      anonKey: supabaseConfig.anonKey,
+      supabaseUrl: supabaseConfig.supabaseUrl
+    }
+  } : undefined
+
+  // Prepare Neon Context for System Prompt
+  const neonContext = neonConfig ? {
+    isConnected: true,
+    databaseUrl: neonConfig.databaseUrl
+  } : undefined
+
+  let systemPrompt = securityMode
+    ? SECURITY_SYSTEM_PROMPT
+    : (discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext, neonContext))
+
+  // Inject Design Intelligence — auto-detect site type and recommend palette/fonts
+  if (!discussMode && !securityMode && isCodeRequest) {
+    const designContext = detectDesignContext(message)
+    systemPrompt += designContext
+  }
+
+  const contextId = targetProjectId || projectId
+
+  // GitHub Project Awareness
+  if (project.isGithubClone && project.githubUrl) {
+    let gitContext = `\n\n## GitHub Integration Context
+This project is connected to a GitHub repository: ${project.githubUrl}
+- **Owner**: ${project.githubOwner}
+- **Repo**: ${project.githubRepoName}
+- **Branch**: ${project.githubBranch || "main"}
+- **Status**: ${project.isGitAdopted ? "Adopted (User owned)" : "Cloned (Public/Read-Only)"}
+
+### Git-Aware Workflow:
+1. **SCAN BEFORE EDIT**: Use <FileSearch> to map out the structure before making changes.
+2. **SMART EDITS**: Since this is a real GitHub project, protect the existing architecture. ONLY modify relevant files.
+3. **COMMIT ACCESS**: ${project.isGitAdopted ? "You have permission to propose commits that the user can push back to GitHub." : "This repo is currently read-only. Suggest changes the user can manually apply or adopt."}`
+
+    try {
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, contextId))
+      if (projectFiles.length > 0) {
+        const filePaths = projectFiles.map((f: any) => f.path)
+        gitContext += `\n\n### Repository Structure:\n${filePaths.join("\n")}`
+
+        const mentionedFiles = projectFiles.filter((f: any) => {
+          const fileName = f.path.split("/").pop() || f.path
+          return message.includes(f.path) || message.includes(fileName)
+        })
+
+        if (mentionedFiles.length > 0) {
+          gitContext += `\n\n### Mentioned Files Content (for your reference):\n`
+          mentionedFiles.forEach((f: any) => {
+            const content = f.content.length > 15000 ? f.content.substring(0, 15000) + "\n...[TRUNCATED]" : f.content
+            gitContext += `\n--- ${f.path} ---\n${content}\n`
+          })
+        } else {
+          gitContext += `\n\n*(Note: No specific files were mentioned in the user's prompt. If you need file contents to make accurate edits, ask the user or guess the file names to get them in the next turn.)*`
+        }
+      }
+    } catch (err) {
+      console.error("[Chat] Failed to attach project files to Git context", err)
+    }
+
+    effectiveMessage += gitContext
+  }
+
+  // Super Security Agent Context Injection
+  if (securityMode && contextId) {
+    try {
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, contextId))
+      const domain = project.deploymentConfig?.deploymentUrl || "Not deployed yet"
+
+      // Basic framework detection from files
+      let framework = "Unknown"
+      if (projectFiles.some(f => f.path.includes("next.config"))) framework = "Next.js"
+      else if (projectFiles.some(f => f.path.includes("vite.config"))) framework = "Vite/React"
+      else if (projectFiles.some(f => f.path.includes("package.json"))) framework = "Node.js/NPM"
+
+      let securityContext = `\n\n## SECURITY PROJECT CONTEXT
+You are auditing the following project:
+- **Project Name**: ${project.title}
+- **Domain**: ${domain}
+- **Framework**: ${framework}
+- **File Structure**:
+${projectFiles.map(f => `- ${f.path}`).slice(0, 100).join("\n")}${projectFiles.length > 100 ? "\n- ... (and more)" : ""}
+
+### Security Directives:
+1. **Analyze Files**: If the user asks for a scan, analyze the contents of the files above for common vulnerabilities (secrets, injection, missing headers).
+2. **Context-Aware Fixes**: When proposing fixes, use the specific paths and framework context provided above.
+3. **Badge Generation**: If you complete a comprehensive audit and the user is satisfied, include a "Security Score" (0-100) and list of "Findings" in your response. This will trigger the trust badge generation.`
+
+      systemPrompt += securityContext
+    } catch (err) {
+      console.error("[Security] Failed to attach project context", err)
+    }
+  }
+
+
+
+  // Append context if it's an iteration
+  if (history.length > 1) {
+    systemPrompt += `\n\n### ITERATION MODE (STRICTLY ENFORCED) ###
+You are continuing work on an existing project. Follow these rules without exception:
+
+1. **IDENTIFY FIRST**: Before writing any code, use <FileSearch> to identify which specific file(s) contain the error or need changes.
+2. **ONLY output the file(s) that need to change** — do NOT rewrite files that are already working.
+3. **If the user reports an error**, trace the error to its source file and ONLY output that file with the fix applied.
+4. **NEVER rewrite all files from scratch** — doing so wastes the user's credits and is strictly forbidden.
+5. **Preserve existing design, colors, and layout** unless the user explicitly requests changes.
+6. **Error-fix workflow**: <FileSearch query="error location"> → identify the broken file → output ONLY that fixed file.
+
+Violating these rules by outputting unrelated files is STRICTLY FORBIDDEN.
+### END ITERATION MODE ###`
+  }
+
+  // Optimization for Email Template Edits
+  if (message.includes("@Email/")) {
+    systemPrompt += `\n\n### EMAIL EDIT MODE ###
+When editing an email template, focus ONLY on the template content.
+1. Use the "email_template/template_id" file path.
+2. DO NOT create redundant React components for the email unless explicitly asked.
+3. Be CONCISE in your thinking.
+### END EMAIL EDIT MODE ###`
+  }
+
+  // Add custom knowledge at the end
+  systemPrompt += customKnowledgePrompt
+
+  // Inject enabled skills context
+  if (userSkills.length > 0) {
+    let skillsPrompt = "\n\n## ENABLED SKILLS ###\nYou have access to the following skills that extend your capabilities. When a user mentions a skill or asks for something related to a skill's domain, automatically use that skill's instructions and capabilities:\n\n"
+    userSkills.forEach(skill => {
+      skillsPrompt += `\n--- ${skill.name} (@${skill.slug}) ---\n${skill.instructions}\n`
+      if (skill.modelConfig) {
+        skillsPrompt += `Configuration: ${JSON.stringify(skill.modelConfig)}\n`
+      }
+    })
+    skillsPrompt += "\n### END ENABLED SKILLS ###\n"
+    systemPrompt += skillsPrompt
+  }
+
+  // Inject selected MCP context
+  if (selectedMcps.length > 0) {
+    let mcpPrompt = "\n\n## Connected MCP Context"
+    selectedMcps.forEach(mcp => {
+      mcpPrompt += `\n- ${mcp.name} (${mcp.type}): Connected. Status: ACTIVE.`
+      if (mcp.metadata && Object.keys(mcp.metadata).length > 0) {
+        mcpPrompt += `\n  METADATA=${JSON.stringify(mcp.metadata)}`
+      }
+    })
+    effectiveMessage += mcpPrompt
+  }
+
+  // Also inject ALL connected MCPs for awareness, even if not explicitly selected for the turn
+  try {
+    const allMcpConnections = await db
+      .select()
+      .from(userMcpConnections)
+      .where(eq(userMcpConnections.userId, userId))
+
+    const activeMcps = allMcpConnections.filter(c => c.isActive)
+    if (activeMcps.length > 0) {
+      let availableMcpsPrompt = "\n\n## Available User Account Integrations (MCP)"
+      availableMcpsPrompt += "\nThe following accounts are connected to this user profile. Use the provided tokens only when necessary to perform requested tasks."
+      activeMcps.forEach(mcp => {
+        // Avoid duplicate injection if already in selectedMcps
+        if (!selectedMcps.find(sm => sm.id === mcp.id)) {
+          availableMcpsPrompt += `\n- ${mcp.name} (${mcp.type}): Connected. Status: ACTIVE.`
+        }
+      })
+      effectiveMessage += availableMcpsPrompt
+    }
+  } catch (err) {
+    console.error("Failed to fetch all MCP connections:", err)
+  }
+
+  // Inject Falbor AI API Key Context (Hidden from User)
+  let credits: any = null
+  try {
+    credits = await db.select().from(userCredits).where(eq(userCredits.userId, userId)).then(r => r[0])
+    if (!credits) {
+      const [newCredits] = await db.insert(userCredits).values({
+        userId,
+        subscriptionTier: 'none',
+        balance: 150,
+        lastRegenTime: new Date(),
+      }).returning()
+      credits = newCredits
+    }
+  } catch (err) {
+    console.error("Failed to fetch user credits:", err)
+  }
+
+  // --- RESILIENCE WRAPPER (FALLBACKS & RETRIES) ---
+  const attemptRequest = async (model: string): Promise<ReadableStream | Response> => {
+    if (model === "falmax") {
+      // FalMax is strictly for Teams subscribers
+      if (credits?.subscriptionTier !== "teams") {
+        return new Response(JSON.stringify({
+          error: "FalMax Multi-Agent Orchestration is a premium feature restricted to Teams subscribers. Upgrade to Teams to access this AI cluster."
+        }), { status: 403, headers: { "Content-Type": "application/json" } })
+      }
+      return runFalMax(request!, body!, userId, credits, incomingProjectId || (body?.project?.id), systemPrompt)
+    }
+
+    if (model === "gemini") {
+      return handleGeminiRequest(
+        history, effectiveMessage, imageData, projectId, userId, discussMode,
+        isAutomated, isCodeRequest, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId
+      )
+    } 
+    
+    if (ZAI_MODELS[model as keyof typeof ZAI_MODELS]) {
+      return handleZaiRequest(
+        history, effectiveMessage, projectId, userId, discussMode, isAutomated,
+        isCodeRequest, model, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId
+      )
+    }
+
+    // Default to OpenRouter for all other models
+    return handleOpenRouterRequest(
+      history, effectiveMessage, projectId, userId, discussMode, isAutomated,
+      isCodeRequest, model, messageType as any, systemPrompt,
+      (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+      userMessageId
+    )
+  }
+
+  // Execute with Global Fallback & Error Suppression
+  let activeModel = selectedModel
+  const modelsToTry = [activeModel, ...(MODEL_FALLBACK_CHAIN[activeModel] || [])]
+
+  for (let i = 0; i < modelsToTry.length; i++) {
+    try {
+      const model = modelsToTry[i]
+      console.log(`[Resilience] Attempting request using model: ${model} (Trial ${i + 1}/${modelsToTry.length})`)
+      const response = await attemptRequest(model)
+      
+      // If it's a Response object (error), check if we should fallback
+      if (response instanceof Response && !response.ok) {
+         if (response.status === 429 || response.status >= 500) {
+            console.warn(`[Resilience] Model ${model} returned ${response.status}. Switching to next fallback...`)
+            continue
+         }
+      }
+      
+      return response
+    } catch (error: any) {
+      console.error(`[Resilience] Fatal attempt error for ${modelsToTry[i]}:`, error)
+      if (i < modelsToTry.length - 1) {
+        console.warn(`[Resilience] Failure triggered fallback to: ${modelsToTry[i + 1]}`)
+        continue
+      }
+      // If we are at the end of the chain, provide a professional generic error stream
+      return createErrorStream("System reached maximum capacity. We are working to restore normal service. Please try again in 30 seconds.")
+    }
+  }
+
+  return createErrorStream("The AI models are currently unavailable due to high demand. Please wait a moment and try again.")
+}
+
+async function handleGeminiRequest(
+  history: any[],
+  message: string,
+  imageData: any,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
+  sessionId = "main",
+) {
+  const googleKey = process.env.GOOGLE_API_KEY
+
+  if (!googleKey) {
+    return createErrorStream("Google API key not configured.")
+  }
+
+  let genAI: any
+  try {
+    genAI = new GoogleGenerativeAI(googleKey)
+  } catch (e) {
+    console.error("[Gemini] SDK init error:", e)
+    return createErrorStream(`Failed to initialize Gemini: ${e}`)
+  }
+
+  const maxContinuations = 30
+  const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
+
+  // --- MCP TOOL DEFINITIONS ---
+  const geminiTools = [
+    {
+      functionDeclarations: [
+        // Discord
+        {
+          name: "discord_send_message",
+          description: "Sends a message to a Discord channel or user ID. Use this for REAL actions.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channelId: { type: "STRING", description: "The ID of the channel or user to send to." },
+              content: { type: "STRING", description: "The message content." }
+            },
+            required: ["channelId", "content"]
+          }
+        },
+        {
+          name: "discord_get_messages",
+          description: "Retrieves recent messages from a Discord channel. Use this for REAL data retrieval.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channelId: { type: "STRING", description: "The ID of the channel." },
+              limit: { type: "NUMBER", description: "Number of messages (default 10)." }
+            },
+            required: ["channelId"]
+          }
+        },
+        {
+          name: "discord_create_dm",
+          description: "Creates a Direct Message channel with a user. Returns a channelId. Use this BEFORE discord_send_message if you only have a user ID.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              recipientId: { type: "STRING", description: "The ID of the user to open a DM with." }
+            },
+            required: ["recipientId"]
+          }
+        },
+        {
+          name: "discord_get_guilds",
+          description: "Lists all Discord servers (guilds) the user is in.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "discord_get_channels",
+          description: "Lists all channels in a specific Discord guild.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              guildId: { type: "STRING", description: "The ID of the guild to list channels for." }
+            },
+            required: ["guildId"]
+          }
+        },
+        {
+          name: "discord_delete_message",
+          description: "Deletes a specific message from a Discord channel.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channelId: { type: "STRING", description: "The ID of the channel." },
+              messageId: { type: "STRING", description: "The ID of the message to delete." }
+            },
+            required: ["channelId", "messageId"]
+          }
+        },
+
+        // Gmail
+        {
+          name: "gmail_send_message",
+          description: "Sends an email from the user's account.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              to: { type: "STRING", description: "Recipient address." },
+              subject: { type: "STRING", description: "Email subject." },
+              body: { type: "STRING", description: "Email body (HTML supported)." }
+            },
+            required: ["to", "subject", "body"]
+          }
+        },
+        {
+          name: "gmail_list_messages",
+          description: "Lists emails matching a query.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              q: { type: "STRING", description: "The search query." },
+              maxResults: { type: "NUMBER", description: "Max results." }
+            }
+          }
+        },
+        {
+          name: "gmail_get_message",
+          description: "Gets full details of a specific email.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              id: { type: "STRING", description: "Message ID." }
+            },
+            required: ["id"]
+          }
+        },
+        {
+          name: "gmail_delete_message",
+          description: "Deletes a specific email.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              id: { type: "STRING", description: "Message ID." }
+            },
+            required: ["id"]
+          }
+        },
+
+        // GitHub
+        {
+          name: "github_get_user",
+          description: "Gets the authenticated GitHub user's profile information.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "github_list_repos",
+          description: "Lists repositories for the authenticated user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              type: { type: "STRING", description: "Type of repos: all, owner, member (default: owner)" },
+              sort: { type: "STRING", description: "Sort by: created, updated, pushed, full_name (default: updated)" }
+            }
+          }
+        },
+        {
+          name: "github_get_repo",
+          description: "Gets detailed information about a specific repository.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              owner: { type: "STRING", description: "Repository owner username." },
+              repo: { type: "STRING", description: "Repository name." }
+            },
+            required: ["owner", "repo"]
+          }
+        },
+        {
+          name: "github_create_repo",
+          description: "Creates a new repository for the authenticated user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: "Repository name." },
+              description: { type: "STRING", description: "Repository description." },
+              isPrivate: { type: "BOOLEAN", description: "Whether the repo should be private." }
+            },
+            required: ["name"]
+          }
+        },
+        {
+          name: "github_get_repo_contents",
+          description: "Gets contents of a repository directory or file.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              owner: { type: "STRING", description: "Repository owner." },
+              repo: { type: "STRING", description: "Repository name." },
+              path: { type: "STRING", description: "Path to directory or file (default: root)." }
+            },
+            required: ["owner", "repo"]
+          }
+        },
+        {
+          name: "github_create_issue",
+          description: "Creates a new issue in a repository.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              owner: { type: "STRING", description: "Repository owner." },
+              repo: { type: "STRING", description: "Repository name." },
+              title: { type: "STRING", description: "Issue title." },
+              body: { type: "STRING", description: "Issue body/description." }
+            },
+            required: ["owner", "repo", "title"]
+          }
+        },
+
+        // LinkedIn
+        {
+          name: "linkedin_get_profile",
+          description: "Gets the authenticated LinkedIn user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "linkedin_share_post",
+          description: "Shares a post on LinkedIn.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              text: { type: "STRING", description: "Post content text." },
+              visibility: { type: "STRING", description: "Visibility: PUBLIC or CONNECTIONS (default: PUBLIC)." }
+            },
+            required: ["text"]
+          }
+        },
+
+        // Twitter/X
+        {
+          name: "twitter_get_me",
+          description: "Gets the authenticated Twitter user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "twitter_get_user_tweets",
+          description: "Gets tweets from a specific user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              twitterUserId: { type: "STRING", description: "Twitter user ID." },
+              maxResults: { type: "NUMBER", description: "Max tweets to retrieve (default: 10)." }
+            },
+            required: ["twitterUserId"]
+          }
+        },
+        {
+          name: "twitter_create_tweet",
+          description: "Creates a new tweet.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              text: { type: "STRING", description: "Tweet content (max 280 chars)." }
+            },
+            required: ["text"]
+          }
+        },
+        {
+          name: "twitter_delete_tweet",
+          description: "Deletes a tweet.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              tweetId: { type: "STRING", description: "ID of the tweet to delete." }
+            },
+            required: ["tweetId"]
+          }
+        },
+
+        // Slack
+        {
+          name: "slack_get_user_info",
+          description: "Gets the authenticated Slack user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "slack_list_channels",
+          description: "Lists channels in the Slack workspace.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              types: { type: "STRING", description: "Channel types: public_channel, private_channel (default: both)." }
+            }
+          }
+        },
+        {
+          name: "slack_post_message",
+          description: "Posts a message to a Slack channel.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channel: { type: "STRING", description: "Channel ID or name." },
+              text: { type: "STRING", description: "Message text." },
+              threadTs: { type: "STRING", description: "Thread timestamp to reply in thread (optional)." }
+            },
+            required: ["channel", "text"]
+          }
+        },
+        {
+          name: "slack_get_channel_history",
+          description: "Gets message history from a channel.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              channel: { type: "STRING", description: "Channel ID." },
+              limit: { type: "NUMBER", description: "Number of messages (default: 20)." }
+            },
+            required: ["channel"]
+          }
+        },
+
+        // Spotify
+        {
+          name: "spotify_get_current_user",
+          description: "Gets the authenticated Spotify user's profile.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "spotify_get_currently_playing",
+          description: "Gets the currently playing track.",
+          parameters: { type: "OBJECT", properties: {} }
+        },
+        {
+          name: "spotify_get_user_playlists",
+          description: "Gets the user's playlists.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              limit: { type: "NUMBER", description: "Max playlists to retrieve (default: 20)." }
+            }
+          }
+        },
+        {
+          name: "spotify_create_playlist",
+          description: "Creates a new playlist for the user.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              name: { type: "STRING", description: "Playlist name." },
+              description: { type: "STRING", description: "Playlist description." },
+              isPublic: { type: "BOOLEAN", description: "Whether the playlist is public (default: false)." }
+            },
+            required: ["name"]
+          }
+        },
+        {
+          name: "spotify_search_tracks",
+          description: "Searches for tracks on Spotify.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: { type: "STRING", description: "Search query." },
+              limit: { type: "NUMBER", description: "Max results (default: 10)." }
+            },
+            required: ["query"]
+          }
+        },
+        {
+          name: "spotify_add_tracks_to_playlist",
+          description: "Adds tracks to a playlist.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              playlistId: { type: "STRING", description: "Playlist ID." },
+              trackUris: {
+                type: "ARRAY",
+                description: "Array of Spotify track URIs to add.",
+                items: { type: "STRING" }
+              }
+            },
+            required: ["playlistId", "trackUris"]
+          }
+        },
+        {
+          name: "spotify_play_track",
+          description: "Plays a track on the user's active device.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              trackUri: { type: "STRING", description: "Spotify track URI." },
+              deviceId: { type: "STRING", description: "Device ID to play on (optional)." }
+            },
+            required: ["trackUri"]
+          }
+        }
+      ]
+    }
+  ]
+
+  async function dispatchMcpToolLocal(name: string, args: any, uId: string) {
+    return await dispatchMcpTool(name, args, uId, projectId, assistantMsgId)
+  }
+
+  try {
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role,
+      content: msg.content,
+    }))
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    const geminiModel = genAI.getGenerativeModel({
+      model: "gemini-2.5-pro",
+      systemInstruction: systemPrompt,
+      generationConfig: { maxOutputTokens: 32768 },
+      tools: geminiTools,
+    })
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: "", userMessageId })}\n\n`))
+
+          let userPrompt = message
+
+          if (messageType === "greeting") {
+            console.log("[Gemini] Simple greeting response")
+            userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
+          } else if (messageType === "question") {
+            console.log("[Gemini] Question with thinking and search")
+            userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
+          } else if (isCodeRequest) {
+            console.log("[Gemini] Responding to build request with dynamic flow")
+            userPrompt = buildCodePrompt(message)
+          } else {
+            console.log("[Gemini] Using Gemini for conversational response")
+          }
+
+          const contents = [...mapHistoryToGemini(conversationHistory), { role: "user", parts: [{ text: userPrompt }] }]
+
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+
+          // Create initial assistant message entry for persistence
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            sessionId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          let assistantMsgId = assistantMsg.id
+
+          let continuationCount = 0
+          do {
+            const stream = await retryWithBackoff(async () => {
+              return await geminiModel.generateContentStream({
+                contents,
+              })
+            })
+
+            let finishReason = null
+            let chunkCount = 0
+            let toolCalls = []
+            for await (const chunk of stream.stream) {
+              const parts = chunk.candidates?.[0]?.content?.parts || []
+              for (const part of parts) {
+                if (part.text) {
+                  // Hide Internal Action Tags from UI and fullResponse
+                  if (part.text.includes("<Action>")) {
+                    // We don't add this part to fullResponse or send to client
+                    // But we keep it for executeActionTags at the end
+                    fullResponseRaw += part.text;
+                    continue;
+                  }
+                  fullResponseRaw += part.text;
+                  fullResponse += part.text;
+                  chunkCount++;
+
+                  if (chunkCount % 50 === 0) {
+                    db.update(messagesTable)
+                      .set({ content: fullResponse })
+                      .where(eq(messagesTable.id, assistantMsgId))
+                      .then(() => console.log(`[Gemini] Partial progress saved for ${assistantMsgId}`))
+                  }
+
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: part.text })}\n\n`))
+                }
+                if (part.functionCall) {
+                  toolCalls.push(part.functionCall)
+                }
+              }
+              if (chunk.candidates?.[0]?.finishReason) {
+                finishReason = chunk.candidates[0].finishReason
+              }
+            }
+
+            // Handle Tool Calls
+            if (toolCalls.length > 0) {
+              console.log(`[Gemini] Executing ${toolCalls.length} tool calls...`)
+              const toolParts = []
+              const toolResponseParts = []
+
+              for (const call of toolCalls) {
+                const result = await dispatchMcpTool(call.name, call.args, userId, projectId, assistantMsgId)
+                toolParts.push({ functionCall: call })
+                toolResponseParts.push({
+                  functionResponse: {
+                    name: call.name,
+                    response: result
+                  }
+                })
+              }
+
+              contents.push({ role: "model", parts: toolParts as any[] } as any)
+              contents.push({ role: "function", parts: toolResponseParts as any[] } as any)
+
+              // Increment continuation but allow the loop to run again to produce text
+              continuationCount++
+              continue // Next iteration will call Gemini again with the tool results
+            }
+
+            if ((finishReason === "MAX_TOKENS" || finishReason === "SAFETY" || finishReason === "OTHER") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[Gemini] Model truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              contents.push({ role: "model", parts: [{ text: fullResponse }] })
+              contents.push({ role: "user", parts: [{ text: continueMessage }] })
+            } else {
+              break
+            }
+          } while (true)
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
+          }
+
+          console.log(`[Gemini] Response length: ${fullResponse.length}`)
+
+          // Estimate or get tokens (Gemini Flash usage is usually low cost, but we use a flat rate)
+          const estimateTokens = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const tokensUsed = estimateTokens
+          const cost = Math.max(5, Math.ceil(tokensUsed / 500)) // 5 cents minimum or 1 cent per 500 tokens
+
+          // Extra deduction if cost > 5 (5 already deducted by UI)
+          if (cost > 5) {
+            const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+            if (userCredit) {
+              await db.update(userCredits)
+                .set({ balance: (userCredit.balance || 0) - (cost - 5) })
+                .where(eq(userCredits.userId, userId))
+            }
+          }
+
+          if (messageType === "build" && isCodeRequest) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          }
+        } catch (error) {
+          console.error("[Gemini] Stream error:", error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[Gemini] Handler error:", e)
+    return createErrorStream(`Gemini handler failed: ${e}`)
+  }
+}
+
+function mapHistoryToGemini(history: any[]) {
+  return history.map((msg) => ({
+    role: msg.role === "assistant" ? "model" : "user",
+    parts: [{ text: msg.content }],
+  }))
+}
+
+async function handleOpenRouterRequest(
+  history: any[],
+  message: string,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  selectedModel: string,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
+  sessionId = "main",
+) {
+  const openRouterKey = process.env.OPENROUTER_API_KEY
+
+  if (!openRouterKey) {
+    return createErrorStream("OpenRouter API key not configured.")
+  }
+
+  const modelId = OPENROUTER_MODELS[selectedModel as keyof typeof OPENROUTER_MODELS]
+  if (!modelId) {
+    return createErrorStream(`Invalid model: ${selectedModel}`)
+  }
+
+  try {
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content,
+    }))
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    let userPrompt = message
+
+    if (messageType === "greeting") {
+      userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
+    } else if (messageType === "question") {
+      userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
+    } else if (isCodeRequest) {
+      console.log(`[OpenRouter/${modelId}] Using for code generation with dynamic flow`)
+      userPrompt = buildCodePrompt(message)
+    }
+
+    const chatMessages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory,
+      { role: "user", content: userPrompt },
+    ]
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+
+          // Create initial assistant message entry for persistence
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            sessionId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          const assistantMsgId = assistantMsg.id
+          let continuationCount = 0
+          let chunkCount = 0
+          const maxContinuations = 30
+          const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
+
+          do {
+            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${openRouterKey}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+                "X-Title": "AI Website Builder",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: chatMessages,
+                stream: true,
+                max_tokens: 32768,
+              }),
+            })
+
+            if (!response.ok) {
+              const errorText = await response.text()
+              throw new Error(`OpenRouter API error: ${response.status} ${errorText}`)
+            }
+
+            const reader = response.body?.getReader()
+            if (!reader) {
+              throw new Error("No response body reader")
+            }
+
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let finishReason = null
+
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
+
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6)
+                  if (data === "[DONE]") continue
+
+                  try {
+                    const parsed = JSON.parse(data)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      // Hide Action Tags
+                      if (content.includes("<Action>")) {
+                        fullResponseRaw += content;
+                        continue;
+                      }
+
+                      fullResponseRaw += content;
+                      fullResponse += content
+                      chunkCount++
+
+                      // Periodically persist progress to database for continuity
+                      if (chunkCount % 50 === 0) {
+                        db.update(messagesTable)
+                          .set({ content: fullResponse })
+                          .where(eq(messagesTable.id, assistantMsgId))
+                          .then(() => console.log(`[OpenRouter] Partial progress saved for ${assistantMsgId}`))
+                      }
+
+                      if (isCodeRequest && messageType === "build") {
+                        accumulatedBuffer += content
+                        const lines = accumulatedBuffer.split("\n")
+                        let textToSend = ""
+
+                        const lastLine = lines[lines.length - 1]
+                        const completeLines = lines.slice(0, -1)
+
+                        for (const line of completeLines) {
+                          if (line.match(/^```\w+\s+file="/)) {
+                            inCodeBlock = true
+                            continue
+                          }
+                          if (line.trim() === "```" && inCodeBlock) {
+                            inCodeBlock = false
+                            continue
+                          }
+                          if (!inCodeBlock) {
+                            textToSend += line + "\n"
+                          }
+                        }
+
+                        if (lastLine.match(/^```\w+\s+file="/)) {
+                          inCodeBlock = true
+                          accumulatedBuffer = ""
+                        } else {
+                          accumulatedBuffer = lastLine
+                        }
+
+                        if (textToSend.trim()) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        }
+                      } else {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                      }
+                    }
+
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      finishReason = parsed.choices[0].finish_reason
+                    }
+                  } catch (e) {
+                    console.error("[OpenRouter] Parse error:", e)
+                  }
+                }
+              }
+            }
+
+            if ((finishReason === "length" || finishReason === "max_tokens" || finishReason === "content_filter") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[OpenRouter] Truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              chatMessages.push({ role: "assistant", content: fullResponse })
+              chatMessages.push({ role: "user", content: continueMessage })
+            } else {
+              break
+            }
+          } while (true)
+
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
+          }
+
+          console.log(`[OpenRouter/${modelId}] Response length: ${fullResponse.length}`)
+
+          // Estimate tokens for OpenRouter models
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = Math.max(5, Math.ceil(tokensUsed / 500))
+
+          // Extra deduction if cost > 5
+          if (cost > 5) {
+            const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+            if (userCredit) {
+              await db.update(userCredits)
+                .set({ balance: (userCredit.balance || 0) - (cost - 5) })
+                .where(eq(userCredits.userId, userId))
+            }
+          }
+
+          if (messageType === "build" && isCodeRequest) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          }
+        } catch (error) {
+          console.error(`[OpenRouter/${modelId}] Stream error:`, error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[OpenRouter] Handler error:", e)
+    return createErrorStream(`OpenRouter handler failed: ${e}`)
+  }
+}
+
+
+async function handleZaiRequest(
+  history: any[],
+  message: string,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  selectedModel: string,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
+  sessionId = "main",
+) {
+  const zaiKey = process.env.ZAI_API_KEY
+
+  if (!zaiKey) {
+    return createErrorStream("Z.ai API key not configured.")
+  }
+
+  const modelId = ZAI_MODELS[selectedModel as keyof typeof ZAI_MODELS]
+  if (!modelId) {
+    return createErrorStream(`Invalid Z.ai model: ${selectedModel}`)
+  }
+
+  try {
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content,
+    }))
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    let userPrompt = message
+
+    if (messageType === "greeting") {
+      userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
+    } else if (messageType === "question") {
+      userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
+    } else if (isCodeRequest) {
+      console.log(`[Z.ai/${modelId}] Using for code generation with dynamic flow`)
+      userPrompt = buildCodePrompt(message)
+    }
+
+    const chatMessages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory,
+      { role: "user", content: userPrompt },
+    ]
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+
+          // Create initial assistant message entry for persistence
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            sessionId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          const assistantMsgId = assistantMsg.id
+          let continuationCount = 0
+          let chunkCount = 0
+          const maxContinuations = 30
+          const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
+
+          do {
+            const response = await fetch("https://api.z.ai/api/paas/v4/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${zaiKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: chatMessages,
+                stream: true,
+                max_tokens: 32768,
+              }),
+            })
+
+            if (!response.ok) {
+              const errorText = await response.text()
+              throw new Error(`Z.ai API error: ${response.status} ${errorText}`)
+            }
+
+            const reader = response.body?.getReader()
+            if (!reader) {
+              throw new Error("No response body reader")
+            }
+
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let finishReason = null
+
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
+
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6)
+                  if (data === "[DONE]") continue
+
+                  try {
+                    const parsed = JSON.parse(data)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      // Action Tag handling
+                      if (content.includes("<Action>")) {
+                        fullResponseRaw += content;
+                        continue;
+                      }
+                      fullResponseRaw += content;
+                      fullResponse += content
+                      chunkCount++
+
+                      // Periodically persist progress to database for continuity
+                      if (chunkCount % 50 === 0) {
+                        db.update(messagesTable)
+                          .set({ content: fullResponse })
+                          .where(eq(messagesTable.id, assistantMsgId))
+                          .then(() => console.log(`[Z.ai] Partial progress saved for ${assistantMsgId}`))
+                      }
+
+                      if (isCodeRequest && messageType === "build") {
+                        accumulatedBuffer += content
+                        const lines = accumulatedBuffer.split("\n")
+                        let textToSend = ""
+
+                        const lastLine = lines[lines.length - 1]
+                        const completeLines = lines.slice(0, -1)
+
+                        for (const line of completeLines) {
+                          if (line.match(/^```\w+\s+file="/)) {
+                            inCodeBlock = true
+                            continue
+                          }
+                          if (line.trim() === "```" && inCodeBlock) {
+                            inCodeBlock = false
+                            continue
+                          }
+                          if (!inCodeBlock) {
+                            textToSend += line + "\n"
+                          }
+                        }
+
+                        if (lastLine.match(/^```\w+\s+file="/)) {
+                          inCodeBlock = true
+                          accumulatedBuffer = ""
+                        } else {
+                          accumulatedBuffer = lastLine
+                        }
+
+                        if (textToSend.trim()) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        }
+                      } else {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                      }
+                    }
+
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      finishReason = parsed.choices[0].finish_reason
+                    }
+                  } catch (e) {
+                    console.error("[Z.ai] Parse error:", e)
+                  }
+                }
+              }
+            }
+
+            if ((finishReason === "length" || finishReason === "max_tokens" || finishReason === "content_filter") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[Z.ai] Truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              chatMessages.push({ role: "assistant", content: fullResponse })
+              chatMessages.push({ role: "user", content: continueMessage })
+            } else {
+              break
+            }
+          } while (true)
+
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
+          }
+
+          console.log(`[Z.ai/${modelId}] Response length: ${fullResponse.length}`)
+
+          // Estimate tokens for Z.ai models
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = Math.max(5, Math.ceil(tokensUsed / 500))
+
+          // Extra deduction if cost > 5
+          if (cost > 5) {
+            const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+            if (userCredit) {
+              await db.update(userCredits)
+                .set({ balance: (userCredit.balance || 0) - (cost - 5) })
+                .where(eq(userCredits.userId, userId))
+            }
+          }
+
+          if (messageType === "build" && isCodeRequest) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          }
+        } catch (error) {
+          console.error(`[Z.ai/${modelId}] Stream error:`, error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[Z.ai] Handler error:", e)
+    return createErrorStream(`Z.ai handler failed: ${e}`)
+  }
+}
+
+
+async function handleSqlAutomation(projectId: string, codeBlocks: Array<{ language: string; path: string; content: string }>, controller: any, encoder: any) {
+  const sqlBlocks = codeBlocks.filter(block => block.path.toLowerCase().endsWith(".sql") || block.language === "sql");
+
+  if (sqlBlocks.length === 0) return;
+
+  console.log(`[SQL Automation] Detected ${sqlBlocks.length} SQL blocks. Checking project for Supabase connection...`);
+
+  try {
+    const [supabaseConfig] = await db
+      .select()
+      .from(projectSupabase)
+      .where(eq(projectSupabase.projectId, projectId));
+
+    if (supabaseConfig && supabaseConfig.supabaseProjectRef && process.env.SUPABASE_ACCESS_TOKEN) {
+      console.log(`[SQL Automation] Project ${projectId} has a Supabase connection. Executing migrations...`);
+
+      for (const block of sqlBlocks) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `\n\n> ⚡ **SQL Automation**: Executing ${block.path} on Supabase...\n` })}\n\n`));
+
+        const result = await runMigration(supabaseConfig.supabaseProjectRef, block.content);
+
+        if (result.success) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `> ✅ Successfully pushed ${block.path} to your server!\n` })}\n\n`));
+          console.log(`[SQL Automation] ✅ Successfully executed ${block.path}`);
+        } else {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: `> ❌ Failed to push ${block.path}: ${result.error}\n` })}\n\n`));
+          console.error(`[SQL Automation] ❌ Failed to execute ${block.path}:`, result.error);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("[SQL Automation] Error during automation:", err);
+  }
+}
+
+function createErrorStream(errorMsg: string): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder()
+  return new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: errorMsg })}\n\n`))
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
+      controller.close()
+    },
+  })
+}
+
+async function saveAssistantMessage(
+  projectId: string,
+  fullResponse: string,
+  searchQueries: any[],
+  controller: any,
+  encoder: any,
+  existingMessageId?: string,
+  uploadedFiles?: any[],
+  generateImages?: boolean,
+  discussMode = false,
+  isAutomated = false,
+  tokensUsed: number | null = null,
+  cost: number | null = null,
+  userMessageId?: string,
+  sessionId = "main",
+  userId?: string,
+) {
+  try {
+    console.log("[Save] Extracting code blocks from response...")
+    const codeBlocks = discussMode ? [] : extractCodeBlocks(fullResponse)
+    console.log(`[Save] Found ${codeBlocks.length} code blocks`)
+
+    const cleanContent = fullResponse.trim()
+    const hasArtifact = codeBlocks.length > 0 && !discussMode
+
+    let newMessage: any
+    if (existingMessageId) {
+      console.log("[Save] Updating existing message:", existingMessageId)
+      const versionNameMatch = fullResponse.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+      const versionName = versionNameMatch ? versionNameMatch[1].trim() : null
+
+      const [updatedMessage] = await db
+        .update(messagesTable)
+        .set({
+          content: cleanContent,
+          hasArtifact,
+          versionName,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          tokensUsed,
+          cost,
+        })
+        .where(eq(messagesTable.id, existingMessageId))
+        .returning()
+      newMessage = updatedMessage
+    } else {
+      console.log("[Save] Inserting message into database...")
+      const versionNameMatch = fullResponse.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+      const versionName = versionNameMatch ? versionNameMatch[1].trim() : null
+
+      const [insertedMessage] = await db
+        .insert(messagesTable)
+        .values({
+          projectId,
+          sessionId,
+          role: "assistant",
+          content: cleanContent,
+          hasArtifact,
+          versionName,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          isAutomated,
+          tokensUsed,
+          cost,
+        })
+        .returning()
+      newMessage = insertedMessage
+
+      // Update project with active message ID for versioning
+      if (hasArtifact) {
+        await db.update(projects).set({ activeMessageId: newMessage.id }).where(eq(projects.id, projectId))
+      }
+    }
+
+    if (hasArtifact && codeBlocks.length > 0) {
+      const existingFiles = await db.select().from(files).where(eq(files.projectId, projectId))
+      const fileIds: string[] = []
+
+      console.log("[Save] Processing code blocks...")
+      for (const block of codeBlocks) {
+        console.log(`[Save] Inserting file: ${block.path}`)
+
+        const previousFile = existingFiles.find((f) => f.path === block.path)
+        const previousContent = previousFile?.content ?? ""
+        const previousLines = previousContent.split("\n").length
+        const newLines = block.content.split("\n").length
+        const additions = Math.max(0, newLines - previousLines)
+        const deletions = Math.max(0, previousLines - newLines)
+
+        const [file] = await db
+          .insert(files)
+          .values({
+            projectId,
+            messageId: newMessage.id,
+            path: block.path,
+            content: block.content,
+            language: block.language,
+            additions,
+            deletions,
+          })
+          .returning()
+
+        fileIds.push(file.id)
+        console.log(`[Save] File inserted: ${file.id}`)
+      }
+
+      console.log("[Save] Creating artifact...")
+      await db.insert(artifacts).values({
+        projectId,
+        messageId: newMessage.id,
+        title: `Code from ${new Date().toLocaleString()}`,
+        fileIds,
+      })
+      console.log("[Save] Artifact created")
+
+      // SQL Automation
+      await handleSqlAutomation(projectId, codeBlocks, controller, encoder)
+    }
+
+    await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId))
+
+    console.log("[Save] Sending done signal to client")
+    controller.enqueue(
+      encoder.encode(`data: ${JSON.stringify({
+        done: true,
+        messageId: newMessage.id,
+        userMessageId,
+        content: cleanContent,
+        hasArtifact,
+        projectId,
+        tokensUsed,
+        cost,
+        versionName: newMessage.versionName
+      })}\n\n`),
+    )
+    // Broadcast to Pusher
+    try {
+      await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
+        type: 'MSG_AI_COMPLETE',
+        finalMessage: newMessage,
+        projectId,
+        senderId: userId
+      })
+    } catch (err) {
+      console.warn("[Pusher] Failed to broadcast message in saveAssistantMessage:", err)
+    }
+  } catch (e) {
+    console.error("[Save] Assistant error:", e)
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Failed to save response" })}\n\n`))
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+    } catch (sendError) {
+      console.error("[Save] Error sending error message:", sendError)
+    }
+  }
+}
+
+async function saveAssistantMessageWithParallelGeneration(
+  projectId: string,
+  fullResponse: string,
+  searchQueries: any[],
+  controller: any,
+  encoder: any,
+  existingMessageId?: string,
+  uploadedFiles?: any[],
+  generateImages?: boolean,
+  discussMode = false,
+  isAutomated = false,
+  tokensUsed: number | null = null,
+  cost: number | null = null,
+  userMessageId?: string,
+  sessionId = "main",
+  userId?: string,
+) {
+  try {
+    console.log("[ParallelGen] Extracting code blocks from response...")
+    const codeBlocks = discussMode ? [] : extractCodeBlocks(fullResponse)
+    console.log(
+      `[ParallelGen] Found ${codeBlocks.length} code blocks - splitting into ${codeBlocks.length} parallel workers`,
+    )
+
+    const cleanContent = discussMode ? fullResponse.trim() : fullResponse.trim()
+    const hasArtifact = codeBlocks.length > 0 && !discussMode
+
+    let newMessage: any
+    const versionNameMatch = fullResponse.match(/<VersionName>([\s\S]*?)<\/VersionName>/i)
+    const versionName = versionNameMatch ? versionNameMatch[1].trim() : null
+
+    if (existingMessageId) {
+      console.log("[ParallelGen] Updating existing message:", existingMessageId)
+      const [updatedMessage] = await db
+        .update(messagesTable)
+        .set({
+          content: cleanContent,
+          hasArtifact,
+          versionName,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          tokensUsed,
+          cost,
+        })
+        .where(eq(messagesTable.id, existingMessageId))
+        .returning()
+      newMessage = updatedMessage
+    } else {
+      const [insertedMessage] = await db
+        .insert(messagesTable)
+        .values({
+          projectId,
+          sessionId,
+          role: "assistant",
+          content: cleanContent,
+          hasArtifact,
+          versionName,
+          searchQueries: searchQueries.length > 0 ? searchQueries : null,
+          isAutomated,
+          tokensUsed,
+          cost,
+        })
+        .returning()
+      newMessage = insertedMessage
+    }
+
+    // Update project with active message ID for versioning
+    if (hasArtifact) {
+      await db.update(projects).set({ activeMessageId: newMessage.id }).where(eq(projects.id, projectId))
+    }
+
+    if (hasArtifact && codeBlocks.length > 0) {
+      const existingFiles = await db.select().from(files).where(eq(files.projectId, projectId))
+
+      console.log(`[ParallelGen] 🚀 Launching ${codeBlocks.length} parallel workers...`)
+      const startTime = Date.now()
+
+      const filePromises = codeBlocks.map(async (block, index) => {
+        console.log(`[Worker ${index + 1}] Starting work on: ${block.path}`)
+
+        const previousFile = existingFiles.find((f) => f.path === block.path)
+        const previousContent = previousFile?.content ?? ""
+        const previousLines = previousContent.split("\n").length
+        const newLines = block.content.split("\n").length
+        const additions = Math.max(0, newLines - previousLines)
+        const deletions = Math.max(0, previousLines - newLines)
+
+        const [file] = await db
+          .insert(files)
+          .values({
+            projectId,
+            messageId: newMessage.id,
+            path: block.path,
+            content: block.content,
+            language: block.language,
+            additions,
+            deletions,
+          })
+          .returning()
+
+        console.log(`[Worker ${index + 1}] ✅ Completed: ${block.path} (${file.id})`)
+        return file.id
+      })
+
+      // Execute all file insertions in parallel
+      const fileIds = await Promise.all(filePromises)
+
+      const endTime = Date.now()
+      const duration = ((endTime - startTime) / 1000).toFixed(2)
+      console.log(`[ParallelGen] 🎉 All ${codeBlocks.length} workers completed in ${duration}s (parallel execution!)`)
+
+      console.log("[ParallelGen] Creating artifact...")
+      await db.insert(artifacts).values({
+        projectId,
+        messageId: newMessage.id,
+        title: `Code from ${new Date().toLocaleString()} (Generated in ${duration}s)`,
+        fileIds,
+      })
+      console.log("[ParallelGen] Artifact created")
+
+      // SQL Automation
+      await handleSqlAutomation(projectId, codeBlocks, controller, encoder)
+    }
+
+    await db.update(projects).set({ updatedAt: new Date() }).where(eq(projects.id, projectId))
+
+    console.log("[ParallelGen] Sending done signal to client")
+    controller.enqueue(
+      encoder.encode(`data: ${JSON.stringify({
+        done: true,
+        messageId: newMessage.id,
+        userMessageId,
+        content: cleanContent,
+        hasArtifact,
+        projectId,
+        tokensUsed,
+        cost,
+        versionName: newMessage.versionName
+      })}\n\n`),
+    )
+
+    // Broadcast to Pusher
+    try {
+      await pusherServer.trigger(`presence-project-${projectId}`, "server-chat-event", {
+        type: 'MSG_AI_COMPLETE',
+        finalMessage: newMessage,
+        projectId,
+        senderId: userId
+      })
+    } catch (err) {
+      console.warn("[Pusher] Failed to broadcast message in parallel gen:", err)
+    }
+  } catch (e) {
+    console.error("[ParallelGen] Error:", e)
+    try {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Failed to save response" })}\n\n`))
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+    } catch (sendError) {
+      console.error("[ParallelGen] Error sending error message:", sendError)
+    }
+  }
+}
+
+function extractCodeBlocks(content: string) {
+  const codeBlockRegex = /```(\w+)\s+file="([^"]+)"\n([\s\S]*?)```/g
+  const blocks: Array<{ language: string; path: string; content: string }> = []
+  let match
+
+  while ((match = codeBlockRegex.exec(content)) !== null) {
+    blocks.push({
+      language: match[1],
+      path: match[2],
+      content: match[3].trim(),
+    })
+  }
+
+  return blocks
+}
+
+/**
+ * Shared code-prompt builder — all models use the same detailed instructions.
+ */
+function buildCodePrompt(message: string): string {
+  return `${message}
+
+## 🔥 CRITICAL SYSTEM CONSTRAINTS (MANDATORY):
+1. **STRICT EXPORT/IMPORT VERIFICATION**: Before writing an import statement (e.g., \`import { Navbar } from './components/Navbar'\`), you **MUST** verify that the target file (\`Navbar.tsx\`) contains a matching export (e.g., \`export const Navbar = ...\`). NEVER assume an export exists.
+2. **COMPLETE FILE GENERATION**: You MUST write the FULL content of every file mentioned in your <Planning> block. Never use placeholders like "// ... rest of code" or skip files.
+3. **PROJECT INTEGRITY**: If you create new components or pages, you MUST also update \`App.tsx\`, \`main.tsx\`, or your routing configuration to integrate them. No orphaned files.
+4. **VITE COMPATIBILITY**: Always use \`import.meta.env\` instead of \`process.env\` for environment variables.
+5. **DEPENDENCY ALIGNMENT**: Ensure all used libraries (e.g., \`framer-motion\`, \`lucide-react\`) are compatible with the project setup.
+
+## 🛠️ STEP-BY-STEP WORKFLOW:
+1. **<UserMessage>**: State your deep understanding of the full-stack request.
+2. **<Thinking>**: Perform a multi-step "Dry Run" of the architecture. **CRITICAL**: Mentally map every export name in every file to its corresponding import in other files. Note potential import/export naming conflicts here (e.g., mismatch between default and named exports).
+3. **<Search>**: If using a new library, verify the latest API syntax.
+4. **<Planning>**: List EVERY file you will create or modify. This is your contract.
+5. **<Tasks>**: Output the initial task list with ⏳.
+6. **CODE GENERATION**: Interleave explanation with complete code blocks.
+7. **<Tasks> UPDATE**: Output an updated list after EACH code block completion.
+8. **<FileChecks>**: Perform a final virtual scan of all generated files. **VERIFY**:
+   - Every file mentioned in \`App.tsx\` handles exists and has the correct export type.
+   - All relative paths (e.g., \`../components/...\`) are accurate based on the project root.
+   - No missing semi-colons or unfinished brackets in code blocks.
+9. **<ReviewedWork>**: A professional summary of the complete solution.
+
+Generate production-ready, technically flawless, and completely interconnected code now.`
+}
+
+function removeCodeBlocks(content: string) {
+  // Remove fenced code blocks that have a file path (those become file buttons)
+  let cleaned = content.replace(/```(\w+)\s+file="([^"]+)"\n[\s\S]*?```/g, "")
+
+  // Remove trailing garbage: sequences of 3+ repeated identical non-word chars (_, -, *, etc.)
+  cleaned = cleaned.replace(/([_\-*=~`#]){3,}\s*$/gm, "")
+
+  // Remove lines that are ONLY whitespace at end
+  cleaned = cleaned.replace(/\n{3,}/g, "\n\n")
+
+  return cleaned.trim()
+}
+
+async function getCustomKnowledge(userId: string): Promise<string> {
+  try {
+    const [customKnowledge] = await db.select().from(userCustomKnowledge).where(eq(userCustomKnowledge.userId, userId))
+
+    if (customKnowledge && customKnowledge.promptContent) {
+      return `\n\n### USER CUSTOM KNOWLEDGE ###\nThe user has provided the following custom instructions that you MUST follow in all generations:\n\n**${customKnowledge.promptName}**\n${customKnowledge.promptContent}\n\n### END CUSTOM KNOWLEDGE ###\n`
+    }
+  } catch (error) {
+    console.error("[API/Chat] Failed to fetch custom knowledge:", error)
+  }
+  return ""
+}
+
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 5,
+  baseDelay: number = 1000,
+): Promise<T> {
+  let lastError: any
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await operation()
+    } catch (error: any) {
+      lastError = error
+
+      // Detect 429 or 503 or specific overloaded messages
+      const status = error.status || (error.response?.status)
+      const isRetryable =
+        status === 503 ||
+        status === 429 ||
+        (error.message && (
+          error.message.includes("503") || 
+          error.message.includes("429") || 
+          error.message.includes("overloaded") ||
+          error.message.includes("rate limit") ||
+          error.message.includes("not keep up")
+        ))
+
+      if (!isRetryable || i === maxRetries - 1) {
+        throw error
+      }
+
+      const delay = baseDelay * Math.pow(2, i)
+      console.warn(`[Resilience] Request failed (status: ${status}). Retrying in ${delay}ms... (Attempt ${i + 1}/${maxRetries})`)
+      await new Promise((resolve) => setTimeout(resolve, delay))
+    }
+  }
+  throw lastError
+}
+
+async function runFalMax(
+  request: Request,
+  body: any,
+  userId: string,
+  credits: any,
+  projectId: string,
+  systemPrompt: string
+) {
+  const { message, history = [], userMessageId, isAutomated, sessionId = "main" } = body
+  const openRouterKey = process.env.OPENROUTER_API_KEY
+  const encoder = new TextEncoder()
+
+  return new ReadableStream({
+    async start(controller) {
+      try {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+
+        const [assistantMsg] = await db.insert(messagesTable).values({
+          projectId,
+          sessionId,
+          role: "assistant",
+          content: "",
+          isAutomated,
+          metadata: { model: "falmax" }
+        }).returning({ id: messagesTable.id })
+
+        const assistantMsgId = assistantMsg.id
+        let totalTokens = 0
+        let fullChatResponse = ""
+        let builderCode = ""
+
+        const sendEvent = (data: any) => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        }
+
+        // --- STEP 1: ARCHITECT ---
+        sendEvent({ type: "agent", agent: "ARCHITECT", status: "Planning structure..." })
+
+        const architectResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${openRouterKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://falbor.xyz",
+            "X-Title": "Falbor",
+          },
+          body: JSON.stringify({
+            model: "openai/gpt-5.1",
+            messages: [
+              { role: "system", content: systemPrompt + "\n\n" + FALMAX_PROMPTS.ARCHITECT },
+              { role: "user", content: message }
+            ],
+          }),
+        })
+
+        if (!architectResponse.ok) throw new Error("Architect failed")
+        const architectData = await architectResponse.json()
+        const planStr = architectData.choices[0].message.content
+        totalTokens += architectData.usage?.total_tokens || 0
+
+        let plan: any = { files: [] }
+        try {
+          plan = JSON.parse(planStr)
+        } catch (e) {
+          console.error("Architect plan parse error:", e)
+        }
+
+        sendEvent({ type: "agent", agent: "ARCHITECT", status: `Planned ${plan.files?.length || 0} files.` })
+
+        // const builderStatus = { type: "agent", agent: "BUILDER", status: "Starting..." }
+        // const reviewerStatus = { type: "agent", agent: "REVIEWER", status: "Waiting for files..." }
+        // const narratorStatus = { type: "agent", agent: "NARRATOR", status: "Narrating..." }
+
+        const runAgent = async (agent: "BUILDER" | "REVIEWER" | "NARRATOR", prompt: string, model: string, onUpdate: (text: string) => void) => {
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openRouterKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://falbor.xyz",
+              "X-Title": "Falbor",
+            },
+            body: JSON.stringify({
+              model,
+              messages: [
+                { role: "system", content: prompt },
+                { role: "user", content: `Context: ${planStr}\nUser Request: ${message}` }
+              ],
+              stream: true,
+            }),
+          })
+
+          if (!response.ok) return
+          const reader = response.body?.getReader()
+          if (!reader) return
+          const decoder = new TextDecoder()
+          let buffer = ""
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const dataStr = line.slice(6).trim()
+                if (dataStr === "[DONE]") continue
+                try {
+                  const parsed = JSON.parse(dataStr)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    onUpdate(content)
+                  }
+                } catch (e) { }
+              }
+            }
+          }
+        }
+
+        const agents = [
+          runAgent("BUILDER", FALMAX_PROMPTS.BUILDER + "\n\nCRITICAL: Ensure package.json is VALID JSON with no trailing commas and double-quoted keys.", "openai/gpt-5.1", (text) => {
+            sendEvent({ type: "code", text })
+            builderCode += text
+            if (text.includes('{"type": "agent"')) {
+              try {
+                const match = text.match(/\{"type": "agent", "agent": "BUILDER", "status": "(.+?)"\}/)
+                if (match) sendEvent({ type: "agent", agent: "BUILDER", status: match[1] })
+              } catch (e) { }
+            }
+          }),
+          runAgent("REVIEWER", FALMAX_PROMPTS.REVIEWER, "x-ai/grok-3", (text) => {
+            if (text.includes('{"type": "agent"')) {
+              try {
+                const match = text.match(/\{"type": "agent", "agent": "REVIEWER", "status": "(.+?)"\}/)
+                if (match) sendEvent({ type: "agent", agent: "REVIEWER", status: match[1] })
+              } catch (e) { }
+            }
+          }),
+          runAgent("NARRATOR", systemPrompt + "\n\n" + FALMAX_PROMPTS.NARRATOR, "google/gemini-3-flash-preview", (text) => {
+            fullChatResponse += text
+            sendEvent({ type: "chat", text })
+          })
+        ]
+
+        await Promise.allSettled(agents)
+
+        // Save final response (Narrator text + Builder code for workbench persistence)
+        // Strip out any raw status JSON and wrap Builder code in GeneratedCode tags to hide from Chat UI
+        const cleanBuilderCode = builderCode.replace(/\{"type":\s*"agent",\s*"agent":\s*"[^"]*",\s*"status":\s*"[^"]*"\}\s*/g, "")
+        const finalPersistContent = fullChatResponse + "\n\n<GeneratedCode>\n" + cleanBuilderCode + "\n</GeneratedCode>\n"
+
+        await db.update(messagesTable)
+          .set({ content: finalPersistContent })
+          .where(eq(messagesTable.id, assistantMsgId))
+
+        // token tracking (approximate)
+        const cost = Math.max(10, Math.ceil(totalTokens / 200))
+        const [userCredit] = await db.select().from(userCredits).where(eq(userCredits.userId, userId))
+        if (userCredit) {
+          await db.update(userCredits)
+            .set({ balance: (userCredit.balance || 0) - cost })
+            .where(eq(userCredits.userId, userId))
+        }
+
+        sendEvent({ done: true, messageId: assistantMsgId, hasArtifact: true })
+        
+        // Final check for action tags in all response parts
+        const combinedRaw = fullChatResponse + builderCode;
+        if (executeActionTags) {
+          await (executeActionTags as any)(combinedRaw, userId, projectId, assistantMsgId);
+        }
+
+        controller.close()
+      } catch (err) {
+        console.error("FalMax Error:", err)
+        controller.error(err)
+      }
+    }
+  })
+}
