@@ -16,6 +16,8 @@ import { truncateChatHistory } from "@/app/actions/chat"
 import { useWorkbench } from "@/lib/workbench-context"
 import { TaskModal } from "./workbench/tasks/task-modal"
 import { PresenceLayer } from "./chat/presence-layer"
+import { PluginLoader } from "./workbench/plugin-loader"
+import { ActivePluginContainer } from "./plugins/ActivePluginContainer"
 
 interface StrictMessage extends Omit<SchemaMessage, "role"> {
   role: "user" | "assistant"
@@ -132,23 +134,28 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   useEffect(() => {
     if (messages.length === 0 || extractedFiles.length > 0) return
 
-    // Find the latest assistant message that contains code blocks (look for markdown triple backticks)
-    const assistantMsgs = [...messages].reverse().filter(m => m.role === "assistant" && m.content.includes("```"))
+    // Priority: 1. activeMessageId (historical version), 2. latest assistant message with code
+    let targetMsg = null
+    if (activeMessageId) {
+      targetMsg = messages.find(m => m.id === activeMessageId)
+    }
+    
+    if (!targetMsg) {
+      const assistantMsgs = [...messages].reverse().filter(m => m.role === "assistant" && m.content.includes("```"))
+      targetMsg = assistantMsgs[0]
+    }
 
-    // Pick the most recent one
-    const lastCodeMsg = assistantMsgs[0]
-
-    if (lastCodeMsg) {
-      console.log(`[ChatInterface] Restoring workbench from message: ${lastCodeMsg.id}`)
-      const { files, activeFile } = extractFilesFromStreamingContent(lastCodeMsg.content)
-      if (files.length > 0) {
-        setExtractedFiles(files)
+    if (targetMsg) {
+      console.log(`[ChatInterface] Restoring workbench from message: ${targetMsg.id}`)
+      const { files: restoredFiles, activeFile } = extractFilesFromStreamingContent(targetMsg.content)
+      if (restoredFiles.length > 0) {
+        setExtractedFiles(restoredFiles)
         if (activeFile) setSelectedFilePath(activeFile)
         setHasProjectFiles(true)
         setIsPreviewOpen(true)
       }
     }
-  }, [messages, extractedFiles.length])
+  }, [messages, extractedFiles.length, activeMessageId])
 
   // ─── Check project files on mount (once) ─────────────────────────────────
   useEffect(() => {
@@ -176,9 +183,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // ─── Load initial messages ONCE ──────────────────────────────────────────
   // We use a ref guard so that if Next.js re-renders the server component
   // (e.g. due to router cache), we do NOT reset the live message list.
+
   useEffect(() => {
     if (hasInitialized.current) return
 
@@ -195,9 +202,15 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       sessionId: "main",
     }))
     setMessages(strictMessages)
+    lastMessagesRef.current = strictMessages
     hasInitialized.current = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])  // ← EMPTY dependency array — only fires on mount, never on re-render
+
+  // Sync messages to ref for plugin bridge
+  useEffect(() => {
+    lastMessagesRef.current = messages
+  }, [messages])
 
   // ─── Preview error persistence ────────────────────────────────────────────
   useEffect(() => {
@@ -219,7 +232,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
   // ─── Core auto-generate function ─────────────────────────────────────────
   // useCallback with stable deps — does NOT depend on `messages`
-  const handleAutoGenerate = useCallback(async (userContent: string, metadata: any = null, modelOverride: string | null = null) => {
+  const handleAutoGenerate = useCallback(async (userContent: string, metadata: any = null, modelOverride: string | null = null, isAutomated = true) => {
     if (isStreamingRef.current) {
       console.log("[Auto-Generate] Blocked: Stream already active")
       return
@@ -243,7 +256,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       thinking: null,
       versionName: null,
       searchQueries: null,
-      isAutomated: true,
+      isAutomated,
       tokensUsed: null,
       cost: null,
       sessionId: targetSessionId,
@@ -261,6 +274,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           message: userContent,
           selectedModel: modelOverride || project.selectedModel || "gemini",
           sessionId: "main",
+          isAutomated,
           metadata,
         }),
         signal: abortControllerRef.current.signal,
@@ -361,7 +375,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                 thinking: data.thinking || null,
                 versionName: data.versionName || null,
                 searchQueries: data.searchQueries || null,
-                isAutomated: true,
+                isAutomated,
                 tokensUsed: data.tokensUsed || null,
                 cost: data.cost || null,
                 sessionId: targetSessionId,
@@ -444,6 +458,31 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
     }
   }, [project.id, project.selectedModel, pathname, searchParams])
 
+  // ─── Plugin System API Exposure ──────────────────────────────────────────
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const bridge = (window as any).falbor || {};
+      (window as any).falbor = Object.assign(bridge, {
+        getMessages: () => lastMessagesRef.current,
+        getProject: () => project,
+        sendPrompt: (msg: string, isAutomated = false) => {
+          // Prefer ChatInput's handler to ensure credit deduction and correct UI ordering
+          const internalSubmit = (window as any).falbor._internalSubmit;
+          if (internalSubmit) {
+            setTimeout(() => internalSubmit(msg, isAutomated), 200);
+          } else {
+            handleAutoGenerate(msg, null, null, isAutomated);
+          }
+        },
+        toggleCodePreview: () => setIsPreviewOpen(prev => !prev),
+        toggleSplitScreen: () => setIsSplitScreen(prev => !prev),
+        setTheme: (theme: 'dark' | 'light') => {
+          document.documentElement.classList.toggle('dark', theme === 'dark');
+        }
+      });
+    }
+  }, [project, handleAutoGenerate]);
+
   // ─── Auto-trigger: initial user message from URL prompt ──────────────────
   useEffect(() => {
     if (!initialUserMessage || hasAutoTriggered.current || !project.id || !hasInitialized.current) return
@@ -521,7 +560,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         thinking: null,
         versionName: null,
         searchQueries: null,
-        isAutomated: false,
+        isAutomated: true,
         tokensUsed: null,
         cost: null,
         sessionId: "main",
@@ -531,7 +570,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       setMessages((prev) => [...prev, newUserMsg])
 
       // Trigger AI generation in main chat
-      handleAutoGenerate(message, taskMetadata, model)
+      handleAutoGenerate(message, taskMetadata, model, true)
     }
     window.addEventListener('chat:new-task-session' as any, handleNewTask)
     return () => window.removeEventListener('chat:new-task-session' as any, handleNewTask)
@@ -693,7 +732,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
     }
   }, [project.id, getToken])
 
-  const handleSendMessage = useCallback((content: string) => {
+  const handleSendMessage = useCallback((content: string, isAutomated = false) => {
     hasAutoTriggered.current = true
     const newUserMsg: StrictMessage = {
       id: `user-${Date.now()}`,
@@ -705,7 +744,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       thinking: null,
       versionName: null,
       searchQueries: null,
-      isAutomated: false,
+      isAutomated,
       tokensUsed: null,
       cost: null,
       sessionId: "main",
@@ -723,7 +762,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       detail: { type: 'MSG_USER', message: newUserMsg, senderId: user?.id }
     }))
 
-    handleAutoGenerate(content)
+    handleAutoGenerate(content, null, null, isAutomated)
   }, [project.id, handleAutoGenerate, user?.id])
 
   // ─── Real-time Collaboration Listeners ────────────────────────────────────
@@ -881,6 +920,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         projectId={project.id}
         onMessageReceived={handleRealtimeMessage}
       />
+      {searchParams.get("plugin") && <PluginLoader pluginId={searchParams.get("plugin")!} />}
 
       {typeof document !== 'undefined' && document.getElementById('header-right-portal') ? (
         createPortal(
@@ -1030,6 +1070,9 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
               onSendMessage={handleSendMessage}
               isCodeGenerating={isCodeGenerating || isStreaming}
               isHistoryView={activeMessageId !== null && messages.some(m => m.hasArtifact) && activeMessageId !== [...messages].reverse().find(m => m.hasArtifact)?.id}
+              messages={messages}
+              activeMessageId={activeMessageId}
+              onActivateVersion={handleActivateVersion}
             />
           </div>
         )}
@@ -1087,6 +1130,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       </AnimatePresence>
 
       <TaskModal projectId={project.id} />
+      <ActivePluginContainer />
     </div>
   )
 }

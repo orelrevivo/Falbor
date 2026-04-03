@@ -1,13 +1,13 @@
 "use client"
 
 import { cn } from "@/lib/utils"
-import { Brain, Cpu, Settings, Shield, CheckSquare, Upload, Key, Github } from "lucide-react"
+import { Brain, Cpu, Settings, Shield, CheckSquare, Upload, Key, Github, Package, History } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 interface SettingsSidebarProps {
-  activeSection: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github"
+  activeSection: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github" | "plugins" | "versions"
   onSectionChange: (
-    section: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github",
+    section: "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github" | "plugins" | "versions",
   ) => void
 }
 
@@ -19,9 +19,21 @@ const menuItems = [
     group: "Project Settings",
   },
   {
+    id: "versions" as const,
+    label: "Versions",
+    icon: History,
+    group: "Project Settings",
+  },
+  {
     id: "security" as const,
     label: "Security",
     icon: Shield,
+    group: "Project Settings",
+  },
+  {
+    id: "plugins" as const,
+    label: "Plugins",
+    icon: Package,
     group: "Project Settings",
   },
   {

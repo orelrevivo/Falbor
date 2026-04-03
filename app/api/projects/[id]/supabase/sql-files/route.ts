@@ -15,7 +15,7 @@ export async function GET(
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
         }
 
-        const projectId = params.id
+        const { id: projectId } = await params
 
         const files = await db
             .select()

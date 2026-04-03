@@ -9,7 +9,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { User, Settings, LogOut, Zap, DollarSign, Shield } from "lucide-react"
 import { CreditsSection } from "./CreditsSection"
 import { AutomationDialog } from "@/components/models/AutomationDialog"
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import { Button } from "../ui/button"
 import Link from "next/link"
+import { DashboardIcon, DashIcon } from "@radix-ui/react-icons"
 
 interface AutomationSettings {
     selectedModel: string
@@ -51,6 +52,9 @@ const modelOptions: Record<ModelType, ModelOption> = {
 
 export function UserProfileMenu() {
     const router = useRouter()
+    const pathname = usePathname()
+    const isCreator = pathname?.startsWith("/creator")
+
     const { user, isLoaded } = useUser()
     const clerk = useClerk()
 
@@ -193,7 +197,7 @@ export function UserProfileMenu() {
                 })
 
                 if (res.ok) {
-                    alert("Test run triggered! Check your /projects page in 10 seconds.")
+                    alert("Test run triggered!")
                 } else {
                     const err = await res.text()
                     alert(`Test failed: ${err || "Unknown error"}`)
@@ -214,22 +218,22 @@ export function UserProfileMenu() {
 
     return (
         <div className="flex items-center gap-2">
-            {/* Upgrade plan Button */}
-            <Button asChild className="h-7 px-4 cursor-pointer rounded-sm bg-white hover:bg-gray-50 text-black border border-gray-200 shadow-xs text-[12px] font-medium transition-all">
-                <Link href="/pricing">
-                    Upgrade plan
-                </Link>
-            </Button>
 
             {/* Credits Button */}
-            <Button className="h-7 px-4 cursor-pointer rounded-sm bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 shadow-xs text-[12px] font-medium transition-all flex items-center gap-2">
-                <DollarSign className="w-2 h-2 text-gray-800" />
+            <Button
+                className={`h-6.5 px-4 cursor-pointer rounded-sm text-[12px] font-medium transition-all flex items-center gap-2
+                ${isCreator
+                        ? "bg-[#313131] hover:bg-[#3a3a3a] text-white/90 border-none shadow-none"
+                        : "bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 shadow-xs"
+                    }`}
+            >
+                <DollarSign className={`w-2 h-2 ${isCreator ? "text-white/90" : "text-gray-800"}`} />
                 <span>{(balance / 100).toFixed(2)}</span>
             </Button>
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <button className="relative h-7 w-7 cursor-pointer rounded-full overflow-hidden ring-1 ring-gray-200 hover:ring-gray-300 transition-all shadow-sm">
+                    <button className="relative h-7 w-7 cursor-pointer rounded-full overflow-hidden transition-all shadow-sm">
                         <Avatar className="h-full w-full">
                             <AvatarImage src={user.imageUrl} />
                             <AvatarFallback className="text-xs">
@@ -240,13 +244,18 @@ export function UserProfileMenu() {
                 </DropdownMenuTrigger>
 
                 <DropdownMenuContent
-                    className="w-60 p-1 mr-3 bg-white border border-gray-200 shadow-xs rounded-lg"
+                    className={`w-60 p-1 mr-3 rounded-lg
+                    ${isCreator
+                            ? "bg-[#313131] border-none shadow-none text-white/90"
+                            : "bg-white border border-gray-200 shadow-xs"
+                        }`}
                     align="end"
                     forceMount
                 >
-                    {/* User Info */}
+                    {/* SAME CONTENT — untouched except colors */}
+
                     <div className="flex items-center gap-2 p-2">
-                        <Avatar className="h-8 w-8 border border-gray-100">
+                        <Avatar className={`h-8 w-8 ${isCreator ? "" : "border border-gray-100"}`}>
                             <AvatarImage src={user.imageUrl} />
                             <AvatarFallback className="text-xs">
                                 {user.firstName?.charAt(0)}
@@ -254,17 +263,16 @@ export function UserProfileMenu() {
                         </Avatar>
 
                         <div className="flex flex-col">
-                            <p className="text-xs font-semibold text-gray-900 leading-none">
+                            <p className={`text-xs font-semibold ${isCreator ? "text-white" : "text-gray-900"}`}>
                                 {user.fullName || user.username}
                             </p>
 
-                            <p className="text-[11px] text-gray-500 truncate max-w-[150px]">
+                            <p className={`text-[11px] truncate max-w-[150px] ${isCreator ? "text-white/60" : "text-gray-500"}`}>
                                 {user.primaryEmailAddress?.emailAddress}
                             </p>
                         </div>
                     </div>
 
-                    {/* Credits */}
                     <CreditsSection
                         credits={balance}
                         maxCredits={balancePerMonth}
@@ -274,58 +282,48 @@ export function UserProfileMenu() {
                         formatTime={formatTime}
                     />
 
-                    <div className="h-px my-0.5" />
-
-                    {/* Automation */}
-                    {/* <DropdownMenuItem
-                        onClick={() => setAutomationOpen(true)}
-                        className="gap-2 px-3 py-2 rounded-md cursor-pointer"
-                    >
-                        <Zap className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-xs text-gray-700 flex-1">AI Automation</span>
-                        <Badge className="bg-[#e4e4e4] text-black/60 text-[10px] px-1.5 py-0 h-4">
-                            Beta
-                        </Badge>
-                    </DropdownMenuItem> */}
+                    <div className={`h-px my-0.5 ${isCreator ? "bg-white/10" : ""}`} />
 
                     <DropdownMenuItem
                         onClick={() => router.push("/super-security")}
-                        className="gap-2 px-3 py-2 rounded-md cursor-pointer"
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
                     >
-                        <Shield className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-xs text-gray-700 flex-1">Super Security</span>
-                        <Badge className="text-[10px] px-1.5 py-0 h-4">
-                            New
-                        </Badge>
+                        <Shield className="w-3.5 h-3.5" />
+                        <span className="text-xs flex-1">Super Security</span>
+                        <Badge className="text-[10px] px-1.5 py-0 h-4">New</Badge>
+                    </DropdownMenuItem>
+
+                    <DropdownMenuItem
+                        onClick={() => router.push(`/creator/workspace`)}
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
+                    >
+                        <DashboardIcon className="w-3.5 h-3.5" />
+                        <span className="text-xs flex-1">Creator Workspace</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
                         onClick={() => router.push(`/profile/${user.id}`)}
-                        className="gap-2 px-3 py-2 rounded-md cursor-pointer"
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
                     >
-                        <User className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-xs text-gray-700 flex-1">Profile</span>
+                        <User className="w-3.5 h-3.5" />
+                        <span className="text-xs flex-1">Profile</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
                         onClick={() => clerk.openUserProfile()}
-                        className="gap-2 px-3 py-2 rounded-md cursor-pointer"
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
                     >
-                        <Settings className="w-3.5 h-3.5 text-gray-500" />
-                        <span className="text-xs text-gray-700">
-                            Account Settings
-                        </span>
+                        <Settings className="w-3.5 h-3.5" />
+                        <span className="text-xs">Account Settings</span>
                     </DropdownMenuItem>
 
                     <DropdownMenuItem
                         onClick={() => clerk.signOut()}
-                        className="gap-2 px-3 py-2 rounded-md cursor-pointer hover:bg-red-50 group"
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-red-500/20" : "hover:bg-red-50"
+                            }`}
                     >
-                        <LogOut className="w-3.5 h-3.5 text-gray-500 group-hover:text-red-500" />
-
-                        <span className="text-xs text-gray-700 group-hover:text-red-600">
-                            Sign Out
-                        </span>
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span className="text-xs">Sign Out</span>
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>

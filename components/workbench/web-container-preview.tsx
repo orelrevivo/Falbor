@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { WebContainer } from "@webcontainer/api"
 import { Loader2 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useWorkbench } from "@/lib/workbench-context"
 import { useAuth } from "@clerk/nextjs"
 
 // Import types only for SSR safety
@@ -20,6 +21,8 @@ interface WebContainerPreviewProps {
     files: Array<{ path: string; content: string }>
     isTerminalOpen: boolean
     isCodeGenerating?: boolean
+    autoFixEnabled?: boolean
+    onSendMessage?: (message: string, isAutomated?: boolean) => void
 }
 
 // Singleton to ensure WebContainer only boots once per page load
@@ -30,12 +33,17 @@ export function WebContainerPreview({
     files,
     isTerminalOpen,
     isCodeGenerating = false,
+    onSendMessage,
 }: WebContainerPreviewProps) {
     const { getToken } = useAuth()
+    const { sendPrompt, autoFixEnabled, isAiStreaming } = useWorkbench()
     const [webcontainerInstance, setWebcontainerInstance] = useState<WebContainer | null>(null)
     const [iframeUrl, setIframeUrl] = useState<string | null>(null)
     const [status, setStatus] = useState<"waiting" | "booting" | "installing" | "ready" | "error">("waiting")
     const [errorLine, setErrorLine] = useState<string | null>(null)
+    const [isAutoFixing, setIsAutoFixing] = useState(false)
+    const lastErrorRef = useRef<string | null>(null)
+    const errorDebounceRef = useRef<NodeJS.Timeout | null>(null)
 
     // UI Scaling and Device Simulation
     const [selectedDevice, setSelectedDevice] = useState<DevicePreset>(DEVICE_PRESETS[0])
@@ -132,8 +140,45 @@ export function WebContainerPreview({
             input.write(data)
         })
 
-        return shellProcess
-    }, [])
+        // Error detection logic
+        const handleTerminalOutput = (data: string) => {
+            if (!autoFixEnabled || isAutoFixing) return
+
+            // Patterns indicating errors that need fixing
+            const errorPatterns = [
+                /Error:\s*(.*)/i,
+                /ReferenceError:\s*(.*)/i,
+                /SyntaxError:\s*(.*)/i,
+                /TypeError:\s*(.*)/i,
+                /Failed to compile/i,
+                /Module not found/i,
+                /Cannot find module ['"](.*)['"]/i,
+                /error\s+while\s+loading\s+loader/i
+            ]
+
+            const hasError = errorPatterns.some(p => p.test(data))
+            if (hasError) {
+                // Strip ANSI codes for the AI
+                const cleanData = data.replace(/\x1b\[[0-9;]*m/g, '').trim()
+                
+                if (cleanData === lastErrorRef.current) return
+                lastErrorRef.current = cleanData
+
+                if (errorDebounceRef.current) clearTimeout(errorDebounceRef.current)
+                
+                errorDebounceRef.current = setTimeout(() => {
+                   terminal.writeln("\r\n\x1b[35m[AI Autopilot] Error detected. Triggering automatic fix...\x1b[0m")
+                   setIsAutoFixing(true)
+                   sendPrompt(`AUTOMATIC ERROR FIX: I detected the following error in the terminal while running the project. Please fix it immediately:\n\n${cleanData}`, true)
+                   
+                   // Reset auto-fixing state after a delay or when code starts generating again
+                   setTimeout(() => setIsAutoFixing(false), 10000)
+                }, 1000)
+            }
+        }
+
+        return { shellProcess, handleTerminalOutput }
+    }, [autoFixEnabled, isAutoFixing, sendPrompt])
 
     useEffect(() => {
         const handleRunCommand = async (e: any) => {
@@ -503,9 +548,54 @@ export default {
                 setStatus("ready")
                 terminal?.writeln("\x1b[32mInstallation complete. Starting dev server...\x1b[0m")
 
+                // Terminal output buffer for multi-line error detection
+                const outputBuffer = { current: "" };
+
                 const startProcess = await instance.spawn("npm", ["run", "dev"])
                 startProcess.output.pipeTo(new WritableStream({
-                    write(data) { terminal?.write(data) }
+                    write(data) { 
+                        terminal?.write(data)
+                        
+                        // Error Monitoring via Buffer
+                        if (autoFixEnabled && !isAutoFixing && !isAiStreaming) {
+                            outputBuffer.current = (outputBuffer.current + data).slice(-1500)
+                            const cleanOutput = outputBuffer.current.replace(/\x1b\[[0-9;]*m/g, '').trim()
+                            
+                            // Check for common crash patterns in the current buffer
+                            const hasCrash = 
+                                cleanOutput.includes("ReferenceError") || 
+                                cleanOutput.includes("SyntaxError") ||
+                                cleanOutput.includes("Failed to compile") ||
+                                cleanOutput.includes("Module not found") ||
+                                cleanOutput.includes("Error:") ||
+                                cleanOutput.includes("ERR_");
+
+                            if (hasCrash && cleanOutput.length > 20) {
+                                if (errorDebounceRef.current) clearTimeout(errorDebounceRef.current)
+                                errorDebounceRef.current = setTimeout(() => {
+                                    // Check once more if the error is still present and valid
+                                    const finalClean = outputBuffer.current.replace(/\x1b\[[0-9;]*m/g, '').trim()
+                                    
+                                    terminal?.writeln("\r\n\x1b[31;1m[SPARK FIX]\x1b[0m AI is analyzing the crash and applying a patch...")
+                                    setIsAutoFixing(true)
+                                    
+                                    // Construct the strict fixing prompt
+                                    const autoFixPrompt = `⚠️ **Terminal Error Detected**\n\n\`\`\`bash\n${finalClean.slice(-1000)}\n\`\`\`\n\n[SYSTEM]: Your dev server crashed. I need a fix immediately. Update the project files so this error is resolved.`;
+                                    
+                                    if (onSendMessage) {
+                                        onSendMessage(autoFixPrompt, true)
+                                    } else {
+                                        sendPrompt(autoFixPrompt, true)
+                                    }
+                                    
+                                    outputBuffer.current = "" // Clear buffer after sending
+                                    
+                                    // Re-enable autopilot after 25s (allows for build cycle + AI response)
+                                    setTimeout(() => setIsAutoFixing(false), 25000)
+                                }, 3000)
+                            }
+                        }
+                    }
                 }))
 
                 instance.on("server-ready", (port, url) => {
@@ -543,6 +633,7 @@ export default {
         const currentFilesString = JSON.stringify(files)
         if (currentFilesString === lastRenderedFiles.current) return
 
+        setIsAutoFixing(false) // Reset flag when new code arrives
         const timeout = setTimeout(async () => {
             try {
                 // Check if package.json needs updating due to new imports

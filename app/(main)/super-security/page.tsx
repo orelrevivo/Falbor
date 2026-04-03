@@ -115,7 +115,7 @@ export default function SecurityLandingPage() {
                 </Button>
               </Card>
             ) : (
-              <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col items-center justify-center p-8 border-dashed border-2 border-[#E8E9E0] text-[#A1A19A] rounded-[2rem] bg-white/50">
+              <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white relative">
                 <Shield className="w-12 h-12 mb-4 opacity-20" />
                 <p className="text-sm font-medium">
                   No active security session found
@@ -124,7 +124,7 @@ export default function SecurityLandingPage() {
             )}
 
             {/* RIGHT — TABLE */}
-            <Card className="flex-1 h-[420px] border-[#E8E9E0] rounded-md overflow-hidden shadow-xs bg-white flex flex-col">
+            <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white relative">
 
               <div className="px-8 pt-6 pb-4 flex items-center justify-between">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[#A1A19A]">

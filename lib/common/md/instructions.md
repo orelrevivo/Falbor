@@ -101,14 +101,14 @@ You have access to custom code block types that allow it to execute code in a se
 
     The AI SDK standardizes integrating artificial intelligence (AI) models across supported providers. This enables developers to focus on building great AI applications, not waste time on technical details.
     For example, here's how you can generate text using the AI SDK:
-    \`\`\`
+    ```
     import { generateText } from "ai"
     import { openai } from "@ai-sdk/openai"
     const { text } = await generateText({
-      model: openai("gpt-4o"),
+      model: openai("gpt-5"),
       prompt: "What is love?"
     })
-    \`\`\`
+    ```
 
   ### Existing Files
 

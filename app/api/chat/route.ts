@@ -56,11 +56,10 @@ const MODEL_FALLBACK_CHAIN: Record<string, string[]> = {
 };
 
 const OPENROUTER_MODELS = {
-  "gpt-5.2": "openai/gpt-5.2",
-  "gpt-5.1-codex": "openai/gpt-5.1-codex-max",
-  "gpt-5.4-pro": "openai/gpt-5.4-pro",
-  "gpt-5.4": "openai/gpt-5.4",
   "claude-sonnet-4.6": "anthropic/claude-sonnet-4.6",
+  "gpt-4o": "openai/gpt-4o",
+  "gpt-4o-mini": "openai/gpt-4o-mini",
+  "gpt-5": "openai/gpt-5-preview",
   "claude-opus-4.6": "anthropic/claude-opus-4.6",
   "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
   "claude-opus-4.5": "anthropic/claude-opus-4.5",
@@ -73,18 +72,36 @@ const OPENROUTER_MODELS = {
   "grok-code-fast-1": "x-ai/grok-code-fast-1",
   "grok-4": "x-ai/grok-4",
   "grok-3-mini": "x-ai/grok-3-mini",
-  "gemini-3.1-flash-lite": "google/gemini-3.1-flash-lite-preview",
   "gemini-2.0-flash": "google/gemini-2.0-flash-001",
+  "gemini-3.1-flash-lite": "google/gemini-3.1-flash-lite-preview",
+  "nano-banana": "google/gemini-2.5-flash-image",
+  "nano-banana-2": "google/gemini-3.1-flash-image-preview",
+  "nano-banana-pro": "google/gemini-3-pro-image-preview",
   "qwen-3.5-35b": "qwen/qwen3.5-35b-a3b",
   "qwen-3.5-27b": "qwen/qwen3.5-27b",
   "nemotron-3-super-120b": "nvidia/nemotron-3-super-120b-a12b:free",
-  "gpt-oss-120b": "openai/gpt-oss-120b",
   "gemma-3-12b-it": "google/gemma-3-12b-it:free",
   "moonshotai/kimi-k2.5": "moonshotai/kimi-k2.5",
   "moonshotai/kimi-k2-thinking": "moonshotai/kimi-k2-thinking",
-  "minimax/minimax-m2.7": "minimax/minimax-m2.7",
-  "minimax/minimax-m2.5": "minimax/minimax-m2.5",
   "falmax": "falmax",
+}
+
+const OPENAI_MODELS = {
+  "gpt-5.2": "gpt-5.2",
+  "gpt-5.1-codex": "gpt-5.1-codex-max",
+  "gpt-5.4-pro": "gpt-5.4-pro",
+  "gpt-5.4": "gpt-5.4",
+  "gpt-oss-120b": "gpt-oss-120b",
+  "gpt-5": "gpt-5",
+  "gpt-4o": "gpt-4o",
+  "gpt-4o-mini": "gpt-4o-mini",
+  "o1-preview": "o1-preview",
+  "o1-mini": "o1-mini",
+}
+
+const MINIMAX_MODELS = {
+  "minimax/minimax-m2.7": "abab6.5g-chat",
+  "minimax/minimax-m2.5": "abab6.5s-chat",
 }
 
 async function dispatchMcpTool(name: string, args: any, userId: string, projectId?: string, assistantMsgId?: string): Promise<any> {
@@ -176,6 +193,17 @@ async function dispatchMcpTool(name: string, args: any, userId: string, projectI
     case "freepik_download_icon":
       if (!projectId || !assistantMsgId) return { success: false, error: "Missing project/message context for download" }
       return await freepikActions.downloadIcon(projectId, assistantMsgId, args.iconId, args.fileName)
+
+    // Internet Search (SerpApi)
+    case "internet_search":
+      try {
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+        const response = await fetch(`${baseUrl}/api/serp?q=${encodeURIComponent(args.query)}`);
+        return await response.json();
+      } catch (err) {
+        console.error("internet_search error:", err);
+        return { error: "Search service unavailable" };
+      }
 
     default:
       console.error(`[MCP] Tool NOT found: ${name}`)
@@ -831,10 +859,40 @@ When editing an email template, focus ONLY on the template content.
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
         userMessageId
       )
-    } 
-    
+    }
+
     if (ZAI_MODELS[model as keyof typeof ZAI_MODELS]) {
       return handleZaiRequest(
+        history, effectiveMessage, projectId, userId, discussMode, isAutomated,
+        isCodeRequest, model, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId
+      )
+    }
+
+    // Direct OpenAI Platform Integration (Paid Only)
+    if (OPENAI_MODELS[model as keyof typeof OPENAI_MODELS]) {
+      if (!credits || credits.subscriptionTier === "none") {
+        return new Response(JSON.stringify({
+          error: "This OpenAI GPT Model is a premium feature restricted to paid subscribers. Upgrade to a Pro or Teams plan to unlock direct platform access."
+        }), { status: 403, headers: { "Content-Type": "application/json" } })
+      }
+      return handleOpenAIRequest(
+        history, effectiveMessage, projectId, userId, discussMode, isAutomated,
+        isCodeRequest, model, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId
+      )
+    }
+
+    // Direct Minimax Platform Integration (Paid Only)
+    if (MINIMAX_MODELS[model as keyof typeof MINIMAX_MODELS]) {
+      if (!credits || credits.subscriptionTier === "none") {
+        return new Response(JSON.stringify({
+          error: "Minimax Models are premium features restricted to paid subscribers. Upgrade to a Pro or Teams plan to access these high-performance models."
+        }), { status: 403, headers: { "Content-Type": "application/json" } })
+      }
+      return handleMinimaxRequest(
         history, effectiveMessage, projectId, userId, discussMode, isAutomated,
         isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
@@ -860,15 +918,15 @@ When editing an email template, focus ONLY on the template content.
       const model = modelsToTry[i]
       console.log(`[Resilience] Attempting request using model: ${model} (Trial ${i + 1}/${modelsToTry.length})`)
       const response = await attemptRequest(model)
-      
+
       // If it's a Response object (error), check if we should fallback
       if (response instanceof Response && !response.ok) {
-         if (response.status === 429 || response.status >= 500) {
-            console.warn(`[Resilience] Model ${model} returned ${response.status}. Switching to next fallback...`)
-            continue
-         }
+        if (response.status === 429 || response.status >= 500) {
+          console.warn(`[Resilience] Model ${model} returned ${response.status}. Switching to next fallback...`)
+          continue
+        }
       }
-      
+
       return response
     } catch (error: any) {
       console.error(`[Resilience] Fatal attempt error for ${modelsToTry[i]}:`, error)
@@ -1278,14 +1336,23 @@ async function handleGeminiRequest(
             },
             required: ["trackUri"]
           }
+        },
+        {
+          name: "internet_search",
+          description: "Search the web for real-time information, API documentation, or technical guides.",
+          parameters: {
+            type: "OBJECT",
+            properties: {
+              query: { type: "STRING", description: "The search query (e.g., 'Supabase Auth documentation')." }
+            },
+            required: ["query"]
+          }
         }
       ]
     }
   ]
 
-  async function dispatchMcpToolLocal(name: string, args: any, uId: string) {
-    return await dispatchMcpTool(name, args, uId, projectId, assistantMsgId)
-  }
+
 
   try {
     const conversationHistory = history.slice(0, -1).map((msg) => ({
@@ -1592,7 +1659,9 @@ async function handleOpenRouterRequest(
                 model: modelId,
                 messages: chatMessages,
                 stream: true,
-                max_tokens: 32768,
+                ...(modelId.includes("gpt-5") || modelId.includes("-o1")
+                  ? { max_completion_tokens: 32768 }
+                  : { max_tokens: 32768 }),
               }),
             })
 
@@ -2044,6 +2113,369 @@ async function handleZaiRequest(
   } catch (e) {
     console.error("[Z.ai] Handler error:", e)
     return createErrorStream(`Z.ai handler failed: ${e}`)
+  }
+}
+
+async function handleOpenAIRequest(
+  history: any[],
+  message: string,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  selectedModel: string,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
+  sessionId = "main",
+) {
+  const openAIKey = process.env.OPENAI_API_KEY
+
+  if (!openAIKey) {
+    return createErrorStream("OpenAI API key not configured. Register your key in the dashboard to use direct platform models.")
+  }
+
+  const modelId = OPENAI_MODELS[selectedModel as keyof typeof OPENAI_MODELS] || selectedModel
+
+  try {
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content,
+    }))
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    let userPrompt = message
+    if (messageType === "greeting") {
+      userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
+    } else if (messageType === "question") {
+      userPrompt = `${message}\n\nThink through this question step by step inside <Thinking> tags. Search for current information if needed inside <Search> tags. Then provide a clear, detailed answer in plain text. No code generation.`
+    } else if (isCodeRequest) {
+      console.log(`[OpenAI/${modelId}] Using direct platform for code generation`)
+      userPrompt = buildCodePrompt(message)
+    }
+
+    const chatMessages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory,
+      { role: "user", content: userPrompt },
+    ]
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            sessionId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          const assistantMsgId = assistantMsg.id
+          let chunkCount = 0
+
+          const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openAIKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: chatMessages,
+              stream: true,
+              ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
+                ? { max_completion_tokens: 16384 }
+                : { max_tokens: 16384 }),
+            }),
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`OpenAI API error: ${response.status} ${errorText}`)
+          }
+
+          const reader = response.body?.getReader()
+          if (!reader) throw new Error("No OpenAI response reader")
+
+          const decoder = new TextDecoder()
+          let buffer = ""
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6)
+                if (data === "[DONE]") continue
+
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    if (content.includes("<Action>")) {
+                      fullResponseRaw += content;
+                      continue;
+                    }
+                    fullResponseRaw += content;
+                    fullResponse += content
+                    chunkCount++
+
+                    if (chunkCount % 50 === 0) {
+                      await db.update(messagesTable)
+                        .set({ content: fullResponse })
+                        .where(eq(messagesTable.id, assistantMsgId))
+                    }
+
+                    if (isCodeRequest && messageType === "build") {
+                      accumulatedBuffer += content
+                      const sublines = accumulatedBuffer.split("\n")
+                      let textToSend = ""
+                      const lastLine = sublines[sublines.length - 1]
+                      const completeLines = sublines.slice(0, -1)
+
+                      for (const sl of completeLines) {
+                        if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
+                        if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
+                        if (!inCodeBlock) textToSend += sl + "\n"
+                      }
+
+                      if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
+                      else accumulatedBuffer = lastLine;
+
+                      if (textToSend.trim()) {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                      }
+                    } else {
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                    }
+                  }
+                } catch (e) { }
+              }
+            }
+          }
+
+          if (executeActionTags) {
+            await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
+          }
+
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = Math.max(10, Math.ceil(tokensUsed / 400))
+
+          if (messageType === "build" && isCodeRequest) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId, fullResponse, [], controller, encoder, assistantMsgId, [], false,
+              discussMode, isAutomated, tokensUsed, cost, userMessageId, sessionId, userId
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId, fullResponse, [], controller, encoder, assistantMsgId, [], false,
+              discussMode, isAutomated, tokensUsed, cost, userMessageId, sessionId, userId
+            )
+          }
+        } catch (error) {
+          console.error("[OpenAI] Stream error:", error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[OpenAI] Handler error:", e)
+    return createErrorStream(`OpenAI handler failed: ${e}`)
+  }
+}
+
+async function handleMinimaxRequest(
+  history: any[],
+  message: string,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  selectedModel: string,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
+  sessionId = "main",
+) {
+  const minimaxKey = process.env.MINIMAX_API_KEY
+
+  if (!minimaxKey) {
+    return createErrorStream("Minimax API key not configured. Upgrade to Pro to use Minimax models.")
+  }
+
+  const modelId = MINIMAX_MODELS[selectedModel as keyof typeof MINIMAX_MODELS] || selectedModel
+
+  try {
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content,
+    }))
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    let userPrompt = message
+    if (isCodeRequest) userPrompt = buildCodePrompt(message)
+
+    const chatMessages = [
+      { role: "system", content: systemPrompt },
+      ...conversationHistory,
+      { role: "user", content: userPrompt },
+    ]
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+
+          const [assistantMsg] = await db.insert(messagesTable).values({
+            projectId,
+            sessionId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+          }).returning({ id: messagesTable.id })
+
+          const assistantMsgId = assistantMsg.id
+          let chunkCount = 0
+
+          const response = await fetch("https://api.minimax.chat/v1/text/chatcompletion_v2", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${minimaxKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: chatMessages,
+              stream: true,
+              max_tokens: 8192,
+            }),
+          })
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Minimax API error: ${response.status} ${errorText}`)
+          }
+
+          const reader = response.body?.getReader()
+          if (!reader) throw new Error("No Minimax response reader")
+
+          const decoder = new TextDecoder()
+          let buffer = ""
+
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (const line of lines) {
+              if (line.startsWith("data: ")) {
+                const data = line.slice(6)
+                if (data === "[DONE]") continue
+
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    if (content.includes("<Action>")) {
+                      fullResponseRaw += content;
+                      continue;
+                    }
+                    fullResponseRaw += content;
+                    fullResponse += content
+                    chunkCount++
+
+                    if (chunkCount % 50 === 0) {
+                      await db.update(messagesTable)
+                        .set({ content: fullResponse })
+                        .where(eq(messagesTable.id, assistantMsgId))
+                    }
+
+                    if (isCodeRequest && messageType === "build") {
+                      accumulatedBuffer += content
+                      const sublines = accumulatedBuffer.split("\n")
+                      let textToSend = ""
+                      const lastLine = sublines[sublines.length - 1]
+                      const completeLines = sublines.slice(0, -1)
+
+                      for (const sl of completeLines) {
+                        if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
+                        if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
+                        if (!inCodeBlock) textToSend += sl + "\n"
+                      }
+
+                      if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
+                      else accumulatedBuffer = lastLine;
+
+                      if (textToSend.trim()) {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                      }
+                    } else {
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                    }
+                  }
+                } catch (e) { }
+              }
+            }
+          }
+
+          if (executeActionTags) {
+            await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
+          }
+
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = Math.max(8, Math.ceil(tokensUsed / 450))
+
+          if (messageType === "build" && isCodeRequest) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId, fullResponse, [], controller, encoder, assistantMsgId, [], false,
+              discussMode, isAutomated, tokensUsed, cost, userMessageId, sessionId, userId
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId, fullResponse, [], controller, encoder, assistantMsgId, [], false,
+              discussMode, isAutomated, tokensUsed, cost, userMessageId, sessionId, userId
+            )
+          }
+        } catch (error) {
+          console.error("[Minimax] Stream error:", error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[Minimax] Handler error:", e)
+    return createErrorStream(`Minimax handler failed: ${e}`)
   }
 }
 
@@ -2502,8 +2934,8 @@ async function retryWithBackoff<T>(
         status === 503 ||
         status === 429 ||
         (error.message && (
-          error.message.includes("503") || 
-          error.message.includes("429") || 
+          error.message.includes("503") ||
+          error.message.includes("429") ||
           error.message.includes("overloaded") ||
           error.message.includes("rate limit") ||
           error.message.includes("not keep up")
@@ -2688,7 +3120,7 @@ async function runFalMax(
         }
 
         sendEvent({ done: true, messageId: assistantMsgId, hasArtifact: true })
-        
+
         // Final check for action tags in all response parts
         const combinedRaw = fullChatResponse + builderCode;
         if (executeActionTags) {

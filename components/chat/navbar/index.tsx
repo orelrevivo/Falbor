@@ -25,6 +25,7 @@ import {
   Lock,
   Palette,
   Database,
+  Zap,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,13 @@ import { ShareDialog } from "@/components/chat/share-dialog"
 import { motion, AnimatePresence } from "framer-motion"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { PayPalButtons, PayPalScriptProvider, usePayPalScriptReducer } from "@paypal/react-paypal-js"
+import { useWorkbench } from "@/lib/workbench-context"
+import * as LucideIcons from "lucide-react"
+
+const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
+  const IconComponent = (LucideIcons as any)[name] || LucideIcons.Zap
+  return <IconComponent className={className} />
+}
 
 // ─── PayPal Button Wrapper ──────────────────────────────────────────────────────
 
@@ -265,6 +273,7 @@ export function Navbar({
   const { user, isLoaded } = useUser()
   const clerk = useClerk()
   const { getToken } = useAuth()
+  const { pluginRegistry } = useWorkbench()
 
   // Dropdown state
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null)
@@ -771,6 +780,35 @@ export function Navbar({
                   </AnimatePresence>
                 </div>
               )}
+
+              {/* Plugin Navbar Buttons */}
+              {pluginRegistry.navbarButtons.map((btn, idx) => (
+                <TooltipProvider key={`${btn.pluginId}-${idx}`}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => btn.onClick({ 
+                          sendPrompt: (p: string) => (window as any).falbor.sendPrompt(p),
+                          setActivePlugin: (id: string | null) => (window as any).falbor.setActivePlugin(id)
+                        })}
+                        className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded transition-colors BackgroundStyleButton text-black/80 hover:scale-105 active:scale-95"
+                      >
+                        {btn.icon ? (
+                          <DynamicIcon name={btn.icon} className="w-4 h-4" />
+                        ) : (
+                          <Zap size={16} />
+                        )}
+                        {btn.label && <span>{btn.label}</span>}
+                      </button>
+                    </TooltipTrigger>
+                    {btn.tooltip && (
+                      <TooltipContent>
+                        <p>{btn.tooltip}</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
+              ))}
 
               <div className="relative group">
                 <TooltipProvider>

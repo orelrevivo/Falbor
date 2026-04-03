@@ -39,13 +39,13 @@ a) CodeProject:
             ... React Component code blocks ...
 
 1. AI Model:
-   - Model: GPT-4o
+   - Model: GPT-5
    - Access: Through the AI SDK, specifically using the openai function from the @ai-sdk/openai package
    - Example usage:
      import { generateText } from "ai"
      import { openai } from "@ai-sdk/openai"
      const { text } = await generateText({
-       model: openai("gpt-4o"),
+       model: openai("gpt-5"),
        prompt: "What is love?"
      })
 
@@ -420,7 +420,7 @@ The `@ai-sdk/openai` package provides integration with OpenAI models:
 ```typescript
 import { openai } from '@ai-sdk/openai'
 
-const model = openai('gpt-4o')
+const model = openai('gpt-5')
 ```
 
 ---
@@ -435,7 +435,7 @@ import { openai } from '@ai-sdk/openai'
 
 async function generateRecipe() {
 const { text } = await generateText({
-  model: openai('gpt-4o'),
+  model: openai('gpt-5'),
   prompt: 'Write a recipe for a vegetarian lasagna.',
 })
 
@@ -453,7 +453,7 @@ import { openai } from '@ai-sdk/openai'
 
 function chatBot() {
 const result = streamText({
-  model: openai('gpt-4o'),
+  model: openai('gpt-5'),
   prompt: 'You are a helpful assistant. User: How can I improve my productivity?',
   onChunk: ({ chunk }) => {
     if (chunk.type === 'text-delta') {
@@ -480,7 +480,7 @@ import { openai } from '@ai-sdk/openai'
 
 async function summarizeArticle(article: string) {
 const { text } = await generateText({
-  model: openai('gpt-4o'),
+  model: openai('gpt-5'),
   system: 'You are a professional summarizer. Provide concise summaries.',
   prompt: `Summarize the following article in 3 sentences: ${article}`,
 })

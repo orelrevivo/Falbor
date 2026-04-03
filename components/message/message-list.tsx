@@ -169,6 +169,7 @@ function parseAIResponse(content: string) {
     scan: /<Scan>([\s\S]*?)<\/Scan>/gi,
     workSummary: /<WorkSummary>([\s\S]*?)<\/WorkSummary>/gi,
     checkPackages: /<CheckPackages\s*\/?>/gi,
+    apiSearch: /<APISearch name="([^"]+)">([\s\S]*?)<\/APISearch>/gi,
   }
 
   // Tags that should NEVER bleed into the visible text content
@@ -180,7 +181,7 @@ function parseAIResponse(content: string) {
     "DiscoverGmailTools", "TestGmailTools", "CompileGmailFindings",
     "DiscoverDiscordTools", "TestDiscordTools", "CompileDiscordFindings",
     "DiscoverMessengerTools", "TestMessengerTools", "CompileMessengerFindings",
-    "Scan", "WorkSummary", "CheckPackages",
+    "Scan", "WorkSummary", "CheckPackages", "APISearch"
   ]
 
   let processedContent = content
@@ -270,6 +271,8 @@ function parseAIResponse(content: string) {
         parsedContent = filesList
       } else if (type === "fileSearch") {
         parsedContent = { query: match[1], results: match[2].trim() }
+      } else if (type === "apiSearch") {
+        parsedContent = { name: match[1], results: match[2].trim() }
       } else if (type === "customAction") {
         parsedContent = { name: match[1], content: match[2].trim() }
       } else if (type === "checkPackages") {
@@ -1184,8 +1187,14 @@ export function MessageList({
         aria-label={`${message.role} message`}
       >
         {message.role === "user" ? (
-          <div className="w-full">
+          <div className={cn("w-full transition-all", message.isAutomated && "border-l-4 border-red-500 pl-4 py-2 bg-red-50/10 rounded-r-xl")}>
             <div className="flex items-center justify-between mb-2 px-3 absolute top-3 right-0">
+                {message.isAutomated && (
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500 text-white shadow-lg shadow-red-500/20 rounded-full text-[10px] font-bold mr-4 animate-pulse">
+                        <Zap className="w-2.5 h-2.5" />
+                        SPARK FIX TRIGGERED
+                    </div>
+                )}
               <div className="flex items-center gap-1 text-[10px] mr-3 text-black/30">
                 <Clock className="w-3 h-3" />
                 <span>{formatTimeAgo(message.createdAt)}</span>
@@ -1404,36 +1413,62 @@ export function MessageList({
                         className={cn(
                           mainText.length > 200 &&
                           !(expandedMessages[message.id] ?? false) &&
-                          "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent"
+                          "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent",
+                          message.isAutomated && message.content.includes("Terminal Error Detected") && "bg-black/90 p-4 rounded-lg font-mono text-green-400 border border-green-500/30 shadow-2xl"
                         )}
                       >
                         <ReactMarkdown
                           remarkPlugins={[remarkGfm]}
                           components={{
+                            code: ({ node, inline, className, children, ...props }: any) => {
+                                if (message.isAutomated && message.content.includes("Terminal Error Detected") && !inline) {
+                                  return (
+                                    <div className="relative group">
+                                      <div className="absolute -top-6 left-0 text-[10px] text-green-500/50 uppercase font-bold tracking-widest">Live Terminal Output</div>
+                                      <code className={cn("block bg-transparent text-green-400 p-0 overflow-x-auto text-[13px] leading-relaxed", className)} {...props}>
+                                        {children}
+                                      </code>
+                                    </div>
+                                  )
+                                }
+                                return <code className={className} {...props}>{children}</code>
+                            },
+                            h1: ({ children }: any) => <h1 className={cn("text-xl font-bold mb-3", message.isAutomated ? "text-green-300" : "")}>{children}</h1>,
+                            h2: ({ children }: any) => <h2 className={cn("text-lg font-bold mb-2", message.isAutomated ? "text-green-300" : "")}>{children}</h2>,
+                            h3: ({ children }: any) => <h3 className={cn("text-base font-bold mb-1", message.isAutomated ? "text-green-300" : "")}>{children}</h3>,
                             strong: ({ children }: { children?: React.ReactNode }) => (
-                              <strong className="font-bold text-black">{children}</strong>
+                                <strong className={cn("font-bold", message.isAutomated ? "text-green-300" : "text-black")}>{children}</strong>
                             ),
                             em: ({ children }: { children?: React.ReactNode }) => (
-                              <em className="italic text-black/80">{children}</em>
+                                <em className={cn("italic", message.isAutomated ? "text-green-400/70" : "text-black/80")}>{children}</em>
                             ),
                             p: ({ children }: { children?: React.ReactNode }) => (
-                              <p className="text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0">
-                                {children}
-                              </p>
+                                <p className={cn("text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0", message.isAutomated ? "text-green-400" : "text-black/90")}>
+                                  {children}
+                                </p>
                             ),
                             ul: ({ children }: { children?: React.ReactNode }) => (
-                              <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
+                                <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
                             ),
                             ol: ({ children }: { children?: React.ReactNode }) => (
-                              <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
+                                <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
                             ),
                             li: ({ children }: { children?: React.ReactNode }) => (
-                              <li className="text-sm leading-relaxed">{children}</li>
+                                <li className="text-sm leading-relaxed">{children}</li>
                             ),
                           }}
                         >
                           {mainText}
                         </ReactMarkdown>
+                        {message.content.includes("Terminal Error Detected") && (
+                            <div className="mt-4 pt-2 border-t border-green-500/20 flex items-center justify-between">
+                                <div className="text-[9px] text-green-500/40 uppercase tracking-widest font-bold">Falbor AI Autopilot Active</div>
+                                <div className="flex gap-1">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
+                                    <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                                </div>
+                            </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1858,6 +1893,8 @@ function AIMessageContent({
         return "Multi-Device Optimization"
       case "checkPackages":
         return "Dependency Sync"
+      case "apiSearch":
+        return content.name ? `Searching ${content.name} Docs` : "API Documentation Research"
       default:
         return type.charAt(0).toUpperCase() + type.slice(1)
     }
@@ -1923,6 +1960,8 @@ function AIMessageContent({
         return ClipboardCheck
       case "workSummary":
         return Edit
+      case "apiSearch":
+        return Globe
       default:
         return FileText
     }
@@ -2072,6 +2111,70 @@ function AIMessageContent({
             <p className="mt-2 text-sm text-gray-600">{content}</p>
           </div>
         )
+      case "apiSearch": {
+        const lines = content.results.split('\n');
+        const links = lines.filter((l: string) => l.includes('http'));
+        const info = lines.filter((l: string) => !l.includes('http')).join('\n');
+        
+        return (
+          <div className="p-3 space-y-3">
+            {content.results.includes("encountered an api error") || content.results.includes("encountered an error") ? (
+                <div className="flex items-center gap-2 text-red-600 bg-red-50 p-2 rounded-lg border border-red-100">
+                    <AlertCircle className="w-4 h-4" />
+                    <span className="text-xs font-medium">I encountered an API error during the search</span>
+                </div>
+            ) : (
+                <>
+                    <div className="text-[13px] text-black/70 leading-relaxed whitespace-pre-wrap italic">
+                        {info || "Found documentation and integration details for " + content.name}
+                    </div>
+                    
+                    {links.length > 0 && (
+                        <div className="space-y-2">
+                            <div className="text-[10px] font-bold text-black/30 uppercase tracking-wider px-1">Sources & Links</div>
+                            <div className="grid grid-cols-1 gap-1.5">
+                                {links.map((link: string, i: number) => {
+                                    const match = link.match(/\[(.*?)\]\((.*?)\)/) || link.match(/(https?:\/\/[^\s]+)/);
+                                    const title = match ? (match[1] || match[0]) : "Documentation Link";
+                                    const url = match ? (match[2] || match[1]) : link;
+                                    
+                                    return (
+                                        <a 
+                                            key={i}
+                                            href={url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="flex items-center gap-2 p-2 bg-black/[0.03] hover:bg-black/[0.05] rounded-lg transition-all group/link"
+                                        >
+                                            <Globe className="w-3 h-3 text-black/40 group-hover/link:text-blue-500" />
+                                            <span className="text-xs text-black/60 truncate group-hover/link:text-black font-medium">{title}</span>
+                                            <ChevronRight className="w-3 h-3 text-black/20 ml-auto group-hover/link:text-black/40" />
+                                        </a>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                    
+                    <Collapsible>
+                        <CollapsibleTrigger asChild>
+                            <Button variant="ghost" size="sm" className="w-full justify-between h-8 mt-1 bg-black/[0.02] hover:bg-black/[0.04] text-[11px] font-bold uppercase tracking-tight text-black/40">
+                                <span>View Technical Details</span>
+                                <ChevronDown className="w-3.5 h-3.5 opacity-50" />
+                            </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <div className="mt-2 p-3 bg-black/90 rounded-lg font-mono text-[11px] leading-relaxed text-blue-300 border border-blue-500/20 overflow-x-auto">
+                                <div className="text-blue-500/50 mb-2 uppercase text-[9px] font-bold tracking-widest">Metadata / Raw Docs</div>
+                                {content.results}
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
+                </>
+            )}
+          </div>
+        )
+      }
       case "fileSearch":
         return (
           <div className="px-2 py-1 border rounded-sm space-y-2">
@@ -2390,7 +2493,7 @@ function AIMessageContent({
             const collapsibleTypes = [
               "thinking", "commentary", "userMessage", "planning", "search",
               "fileChecks", "importCard", "testing", "fileSearch", "customAction",
-              "finalReasoning", "finalResponsive", "tasks",
+              "finalReasoning", "finalResponsive", "tasks", "apiSearch",
               "discoverGmailTools", "testGmailTools", "compileGmailFindings"
             ];
 

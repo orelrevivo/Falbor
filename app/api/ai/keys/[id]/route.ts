@@ -31,9 +31,10 @@ export async function DELETE(req: Request, { params }: { params: { id: string } 
         const { userId } = await auth()
         if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+        const { id } = await params
         const deleted = await db
             .delete(userApiKeys)
-            .where(and(eq(userApiKeys.id, params.id), eq(userApiKeys.userId, userId)))
+            .where(and(eq(userApiKeys.id, id), eq(userApiKeys.userId, userId)))
             .returning()
 
         if (!deleted.length) return NextResponse.json({ error: 'Key not found' }, { status: 404 })

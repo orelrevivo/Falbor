@@ -41,7 +41,10 @@ import {
   Key,
   CheckSquare,
   Github,
-  Terminal
+  Terminal,
+  Package,
+  History,
+  Rocket
 } from 'lucide-react';
 import { useWorkbench } from '@/lib/workbench-context';
 import { cn } from '@/lib/utils';
@@ -64,6 +67,7 @@ import { GithubCloneDialog } from '../models/github-clone';
 import { toast } from 'sonner';
 import { Badge } from '../ui/badge';
 import { HomeTabs } from '../home/home-tabs';
+import { PluginsModal } from '../plugins/PluginsModal';
 
 interface ProjectItem {
   id: string;
@@ -174,6 +178,7 @@ export default function SidebarProjects({
   const [isHovered, setIsHovered] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [isPluginsModalOpen, setIsPluginsModalOpen] = useState(false);
 
   // Update local state when props change
   useEffect(() => {
@@ -215,8 +220,17 @@ export default function SidebarProjects({
     databaseTab,
     setDatabaseTab,
     settingsSection,
-    setSettingsSection
+    setSettingsSection,
+    setActivePluginId,
+    pluginRegistry
   } = useWorkbench();
+
+  // Helper for dynamic icons in plugins
+  const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
+    const LucideIcons = require('lucide-react');
+    const IconComponent = LucideIcons[name] || LucideIcons.Package;
+    return <IconComponent className={className} />;
+  }
 
   const pathname = usePathname();
   const isSettingsPage = pathname?.startsWith('/settings');
@@ -338,7 +352,7 @@ export default function SidebarProjects({
                   { id: "usage", icon: BarChart3, label: "Usage" },
                   { id: "auth_providers", icon: ShieldCheck, label: "Auth Providers" },
                   // { id: "credentials", icon: Key, label: "Credentials" },
-                  { id: "feedback", icon: MessageSquare, label: "Feedback", isNew: true },
+                  { id: "feedback", icon: MessageSquare, label: "Feedback" },
                   { id: "emails", icon: Mail, label: "Emails" },
                   { id: "storage", icon: HardDrive, label: "Storage" },
                   { id: "functions", icon: Cpu, label: "Functions" },
@@ -361,11 +375,11 @@ export default function SidebarProjects({
                       <span className="font-medium text-[13px]">{item.label}</span>
                     </div>
 
-                    {item.isNew && (
+                    {/* {item.isNew && (
                       <Badge className="text-[10px] px-1.5 py-0 h-4 rounded-sm">
                         New
                       </Badge>
-                    )}
+                    )} */}
                   </Button>
                 ))}
               </div>
@@ -373,16 +387,23 @@ export default function SidebarProjects({
               <div className="pt-2 mt-2 border-t border-zinc-200 flex flex-col gap-1">
                 {[
                   { id: "project-settings", label: "General", icon: Settings },
-                  { id: "analytics", label: "Analytics", icon: BarChart3, soon: true }, // ⭐ soon feature
+                  { id: "sushi", label: "Social Content", icon: Rocket, isNew: true },
+    { id: "analytics", label: "Analytics", icon: BarChart3, soon: true }, // ⭐ soon feature
                   { id: "security", label: "Security", icon: Shield },
                   { id: "secrets", label: "Secrets", icon: Key },
                   { id: "automations", label: "Automations", icon: CheckSquare },
                   { id: "github", label: "GitHub", icon: Github },
+                  { id: "plugins", label: "Plugins", icon: Package },
+                  { id: "versions", label: "Versions", icon: History, isNew: true },
                 ].map((item) => (
                   <Button
                     key={item.id}
                     onClick={() => {
                       if (item.soon) return; // 🚫 block navigation
+                      if (item.id === "plugins") {
+                        setIsPluginsModalOpen(true);
+                        return;
+                      }
                       setActiveTab("settings");
                       setSettingsSection(item.id as any);
                     }}
@@ -408,7 +429,35 @@ export default function SidebarProjects({
                           Soon
                         </Badge>
                       )}
+                      {item.isNew && (
+                        <Badge className="text-[10px] px-1.5 py-0 h-4 rounded-sm">
+                          New
+                        </Badge>
+                      )}
                     </span>
+                  </Button>
+                ))}
+
+                {/* Plugin Sidebar Links */}
+                {pluginRegistry.sidebarLinks.map((btn, idx) => (
+                  <Button
+                    key={`${btn.pluginId}-${idx}`}
+                    onClick={() => btn.onClick({
+                      sendPrompt: (p: string, isAuto = true) => (window as any).falbor.sendPrompt(p, isAuto),
+                      setActivePlugin: (id: string | null) => (window as any).falbor.setActivePlugin(id),
+                      getMessages: () => (window as any).falbor.getMessages(),
+                      setPreviewUrl: (url: string) => window.dispatchEvent(new CustomEvent('falbor-set-preview-url', { detail: { url } }))
+                    })}
+                    className="py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1"
+                  >
+                    {btn.icon ? (
+                      <div className="h-4 w-4 shrink-0 flex items-center justify-center">
+                        <DynamicIcon name={btn.icon} className="h-4 w-4" />
+                      </div>
+                    ) : (
+                      <Package className="h-4 w-4 shrink-0" />
+                    )}
+                    <span className="font-medium text-[13px]">{btn.label || "Plugin Action"}</span>
                   </Button>
                 ))}
               </div>
@@ -697,6 +746,14 @@ export default function SidebarProjects({
             )}
           </div>
         )}
+        <PluginsModal
+          isOpen={isPluginsModalOpen}
+          onClose={() => setIsPluginsModalOpen(false)}
+          onSelectPlugin={(id: string) => {
+            setActivePluginId(id);
+            setIsPluginsModalOpen(false);
+          }}
+        />
       </div>
 
       <GithubCloneDialog open={githubDialogOpen} onOpenChange={setGithubDialogOpen} />

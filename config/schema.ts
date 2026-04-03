@@ -688,6 +688,42 @@ export type Plan = typeof plans.$inferSelect
 export type NewPlan = typeof plans.$inferInsert
 
 // ====================
+// SUSHI (SOCIAL CONTENT) TABLE
+// ====================
+
+export const projectSushi = pgTable("project_sushi", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  projectId: uuid("project_id")
+    .notNull()
+    .unique()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  questions: jsonb("questions")
+    .$type<Array<{ id: number; question: string; answer: string; options?: Array<{ title: string; subtitle: string }> }>>()
+    .default(sql`'[]'::jsonb`).notNull(),
+  strategy: text("strategy"),
+  platforms: jsonb("platforms")
+    .$type<string[]>()
+    .default(sql`'["Instagram", "Facebook", "TikTok"]'::jsonb`).notNull(),
+  posts: jsonb("posts")
+    .$type<Array<{ 
+      id: string; 
+      platform: string; 
+      content: string; 
+      imageUrl: string; 
+      imagePrompt: string;
+      title?: string;
+    }>>()
+    .default(sql`'[]'::jsonb`).notNull(),
+  status: text("status").default("idle").notNull(), // idle | loading_questions | answered | generating_posts | completed
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type ProjectSushi = typeof projectSushi.$inferSelect
+export type NewProjectSushi = typeof projectSushi.$inferInsert
+
+// ====================
 // TYPE INFERENCES
 // ====================
 
@@ -890,4 +926,36 @@ export const projectAnalyticsEvents = pgTable("project_analytics_events", {
 
 export type ProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferSelect
 export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert
-export type NewProjectAnalyticsEvent = typeof projectAnalyticsEvents.$inferInsert
+
+// ====================
+// PLUGINS TABLES
+// ====================
+
+export const plugins = pgTable("plugins", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  creatorName: text("creator_name").notNull(),
+  name: text("name").notNull(),
+  tagline: text("tagline").notNull(),
+  summary: text("summary").notNull(),
+  description: text("description").notNull(),
+  reviewInstructions: text("review_instructions"),
+  categories: jsonb("categories").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  visuals: jsonb("visuals").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  zipFileUrl: text("zip_file_url"),
+  files: jsonb("files").$type<{ path: string; content: string }[]>().default(sql`'[]'::jsonb`).notNull(),
+  code: text("code"), // Main execution JS (bundled/final)
+  isPaid: boolean("is_paid").default(false).notNull(),
+  price: integer("price").default(0).notNull(),
+  installs: integer("installs").default(0).notNull(),
+  rating: text("rating").default("0").notNull(),
+  reviews: integer("reviews").default(0).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type Plugin = typeof plugins.$inferSelect
+export type NewPlugin = typeof plugins.$inferInsert
+
+export type ProjectSushiType = typeof projectSushi.$inferSelect
+export type NewProjectSushiType = typeof projectSushi.$inferInsert

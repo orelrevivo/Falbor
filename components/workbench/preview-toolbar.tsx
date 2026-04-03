@@ -1,9 +1,10 @@
 "use client"
 
-import { ChevronLeft, ChevronRight, RotateCcw, Monitor, Tablet, Smartphone, Minus, Plus, ChevronDown, Zap } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCcw, Monitor, Tablet, Smartphone, Minus, Plus, ChevronDown, Zap, Brain, Sparkles } from "lucide-react"
 import { useState, useEffect } from "react"
 import { DEVICE_PRESETS, DevicePreset } from "./device-presets"
 import { cn } from "@/lib/utils"
+import { useWorkbench } from "@/lib/workbench-context"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -12,6 +13,7 @@ import {
     DropdownMenuSeparator,
     DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface PreviewToolbarProps {
     url: string
@@ -32,6 +34,7 @@ export function PreviewToolbar({
     onZoomChange,
     onCheckPackages,
 }: PreviewToolbarProps) {
+    const { autoFixEnabled, setAutoFixEnabled } = useWorkbench()
     const [urlInput, setUrlInput] = useState(url)
 
     // Sync internal state with prop
@@ -44,6 +47,36 @@ export function PreviewToolbar({
 
     return (
         <div className="w-full flex items-center gap-2 p-1.5 border-b border-gray-200 bg-white">
+            {/* Auto AI Fix Toggle */}
+            <TooltipProvider>
+                <Tooltip>
+                    <TooltipTrigger asChild>
+                        <button
+                            onClick={() => setAutoFixEnabled(!autoFixEnabled)}
+                            className={cn(
+                                "flex items-center gap-1.5 h-7 px-2.5 rounded-md transition-all duration-300 active:scale-95 border",
+                                autoFixEnabled 
+                                    ? "bg-purple-50 border-purple-200 text-purple-700 shadow-sm" 
+                                    : "bg-gray-50 border-gray-200 text-gray-400 grayscale"
+                            )}
+                        >
+                            <div className="relative">
+                                <Brain className={cn("w-3.5 h-3.5", autoFixEnabled && "animate-pulse")} />
+                                {autoFixEnabled && (
+                                    <Sparkles className="w-2 h-2 absolute -top-1 -right-1 text-yellow-400 animate-bounce" />
+                                )}
+                            </div>
+                            <span className="text-[10px] font-bold uppercase tracking-tight">Auto Fix</span>
+                        </button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                        <p>{autoFixEnabled ? "Disable" : "Enable"} Automatic AI Error Correction</p>
+                    </TooltipContent>
+                </Tooltip>
+            </TooltipProvider>
+
+            <div className="w-px h-4 bg-gray-200 mx-1" />
+
             {/* URL Bar */}
             <div className="flex-1 relative flex items-center h-8">
                 <input
@@ -70,23 +103,12 @@ export function PreviewToolbar({
                     title="Check & Install Missing Packages"
                 >
                     <Zap className="w-3 h-3 fill-current" />
-                    <span className="text-[10px] font-bold uppercase tracking-tight">Check Packages</span>
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Check</span>
                 </button>
             )}
 
             {/* Device Selector */}
             <div className="flex items-center gap-2">
-                {/* {selectedDevice.type !== "desktop" && (
-                    <div className="flex items-center gap-1">
-                        <div className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono text-gray-500">
-                            {selectedDevice.width}
-                        </div>
-                        <div className="px-2 py-1 bg-gray-100 border border-gray-200 rounded text-[10px] font-mono text-gray-500">
-                            {selectedDevice.height}
-                        </div>
-                    </div>
-                )} */}
-
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <button className="flex items-center gap-1.5 h-7 cursor-pointer px-2 bg-white border border-gray-200 rounded-md text-xs font-medium text-gray-600 transition-colors">
@@ -97,7 +119,7 @@ export function PreviewToolbar({
                             ) : (
                                 <Smartphone className="w-3.5 h-3.5" />
                             )}
-                            <span className="max-w-[100px] truncate">{selectedDevice.name}</span>
+                            {/* <span className="max-w-[60px] truncate hidden sm:inline">{selectedDevice.name}</span> */}
                             <ChevronDown className="w-3 h-3 opacity-50" />
                         </button>
                     </DropdownMenuTrigger>
@@ -138,7 +160,7 @@ export function PreviewToolbar({
                 >
                     <Minus className="w-3.5 h-3.5 text-gray-600" />
                 </button>
-                <div className="w-12 text-center text-[10px] font-bold text-gray-600 border-l border-r border-gray-200">
+                <div className="w-10 text-center text-[9px] font-bold text-gray-600 border-l border-r border-gray-200">
                     {zoom}%
                 </div>
                 <button

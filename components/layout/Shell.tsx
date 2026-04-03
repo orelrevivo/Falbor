@@ -59,7 +59,8 @@ export default function Shell({
 
   // Optional: Hide shell on specific unauthenticated-style pages even if logged in (e.g. specialized previews)
   const isDeployPage = pathname?.startsWith("/deploy")
-  if (isDeployPage) return <>{children}</>
+  const isCreatorPage = pathname?.startsWith("/creator")
+  if (isDeployPage || isCreatorPage) return <>{children}</>
 
   return (
     <div className="relative min-h-screen flex flex-col overflow-hidden bg-[#FAF9F5]">

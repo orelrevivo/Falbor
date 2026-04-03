@@ -14,6 +14,14 @@ import { cn } from "@/lib/utils"
 import { CodeTab } from "./code-tab"
 import { SettingsTab } from "./settings-tab"
 import { useAuth } from "@clerk/nextjs"
+import { useWorkbench } from "@/lib/workbench-context"
+import * as LucideIcons from "lucide-react"
+
+const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
+  const IconComponent = (LucideIcons as any)[name] || LucideIcons.Zap
+  return <IconComponent className={className} />
+}
+
 import { WebContainerPreview } from "./web-container-preview"
 import {
   SandpackProvider,
@@ -43,9 +51,12 @@ interface CodePreviewProps {
   isTerminalOpen?: boolean
   tabValue?: string
   isHistoryView?: boolean
-  onSendMessage?: (message: string) => void
+  onSendMessage?: (message: string, isAutomated?: boolean) => void
   role?: "admin" | "editor" | "viewer"
   selectedFilePath?: string | null
+  messages?: any[]
+  activeMessageId?: string | null
+  onActivateVersion?: (messageId: string) => void
 }
 interface TerminalTab {
   id: number
@@ -110,6 +121,7 @@ function CustomPreviewToolbar({
   onRunTerminal?: () => void
   onCheckPackages?: () => void
 }) {
+  const { pluginRegistry } = useWorkbench()
   const [showDeviceMenu, setShowDeviceMenu] = useState(false)
   const [inputValue, setInputValue] = useState(currentUrl)
   const deviceMenuRef = useRef<HTMLDivElement>(null)
@@ -193,6 +205,35 @@ function CustomPreviewToolbar({
           <Zap className="w-3.5 h-3.5 fill-current" />
           <span className="text-[11px] font-bold uppercase tracking-tight">Check Packages</span>
         </button>
+
+        {/* Plugin Preview Toolbar Buttons */}
+        {pluginRegistry.previewToolbarButtons.map((btn, idx) => (
+          <Tooltip key={`${btn.pluginId}-${idx}`}>
+            <TooltipTrigger asChild>
+              <button
+                onClick={() => btn.onClick({
+                  sendPrompt: (p: string, isAuto = true) => (window as any).falbor.sendPrompt(p, isAuto),
+                  setActivePlugin: (id: string | null) => (window as any).falbor.setActivePlugin(id),
+                  getMessages: () => (window as any).falbor.getMessages(),
+                  setPreviewUrl: (url: string) => setCurrentUrl(url)
+                })}
+                className="p-1.5 rounded-md hover:bg-gray-200 text-gray-700 transition-colors flex items-center justify-center"
+              >
+                {btn.icon ? (
+                  <DynamicIcon name={btn.icon} className="w-4 h-4" />
+                ) : (
+                  <Zap className="w-4 h-4 text-blue-500" />
+                )}
+                {btn.label && <span className="text-xs ml-1.5">{btn.label}</span>}
+              </button>
+            </TooltipTrigger>
+            {btn.tooltip && (
+              <TooltipContent>
+                <p>{btn.tooltip}</p>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        ))}
       </div>
 
       {/* URL Bar */}
@@ -341,6 +382,9 @@ export function CodePreview({
   isHistoryView = false,
   onSendMessage,
   selectedFilePath,
+  messages,
+  activeMessageId,
+  onActivateVersion,
 }: CodePreviewProps) {
   const [files, setFiles] = useState<
     Array<{ path: string; content: string; imageData?: string; language: string; type?: string; isLocked?: boolean }>
@@ -1233,6 +1277,7 @@ class StdoutRedirect:
                       files={effectiveFiles}
                       isTerminalOpen={isTerminalOpen}
                       isCodeGenerating={isCodeGenerating}
+                      onSendMessage={onSendMessage}
                     />
                   )}
                 </div>
@@ -1318,7 +1363,12 @@ class StdoutRedirect:
                   value="settings"
                   className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
                 >
-                  <SettingsTab projectId={projectId} />
+                  <SettingsTab
+                    projectId={projectId}
+                    messages={messages || []}
+                    activeMessageId={activeMessageId ?? null}
+                    onActivateVersion={onActivateVersion || (() => { })}
+                  />
                 </TabsContent>
               </>
             ) : (
@@ -1333,6 +1383,7 @@ class StdoutRedirect:
                     files={effectiveFiles}
                     isTerminalOpen={isTerminalOpen}
                     isCodeGenerating={isCodeGenerating}
+                    onSendMessage={onSendMessage}
                   />
                 </TabsContent>
                 <TabsContent
@@ -1345,7 +1396,12 @@ class StdoutRedirect:
                   value="settings"
                   className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
                 >
-                  <SettingsTab projectId={projectId} />
+                  <SettingsTab
+                    projectId={projectId}
+                    messages={messages || []}
+                    activeMessageId={activeMessageId ?? null}
+                    onActivateVersion={onActivateVersion || (() => { })}
+                  />
                 </TabsContent>
                 <TabsContent
                   value="database"

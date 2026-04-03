@@ -42,10 +42,18 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
 import { GoogleDriveModal } from "@/components/models/google-drive-modal"
+import { GoogleMapsModal } from "@/components/models/google-maps-modal"
 import { getMcpConnections } from "@/app/actions/mcp"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { SkillSelector } from "@/components/chat/SkillSelector"
+import { useWorkbench } from "@/lib/workbench-context"
+import * as LucideIcons from "lucide-react"
+
+const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
+  const IconComponent = (LucideIcons as any)[name] || LucideIcons.HelpCircle
+  return <IconComponent className={className} />
+}
 interface ChatInputProps {
   isAuthenticated: boolean
   projectId?: string
@@ -89,6 +97,7 @@ interface ModelOption {
   isPremium: boolean
   iconUrl: string
   description?: string
+  soon?: boolean
   subModels?: { id: string; label: string; iconUrl: string; color: string }[]
 }
 type DesignConfig = {
@@ -227,20 +236,13 @@ const MODEL_OPTIONS: ModelOption[] = [
     iconUrl: "/icons/grok-light.png",
     description: "Balanced high-performance model with excellent reasoning capabilities."
   },
-  {
-    id: "glm-4.7-flash",
-    label: "GLM 4.7 Flash",
-    isPremium: false,
-    iconUrl: "/icons/zAI.png",
-    description: "Ultra-fast multimodal model optimized for low latency and high-speed processing."
-  },
-  {
-    id: "glm-5-turbo",
-    label: "GLM 5 Turbo",
-    isPremium: false,
-    iconUrl: "/icons/zAI.png",
-    description: "Powerful general-purpose model with strong reasoning and instruction following."
-  },
+  // {
+  //   id: "glm-4.7-flash",
+  //   label: "GLM 4.7 Flash",
+  //   isPremium: false,
+  //   iconUrl: "/icons/zAI.png",
+  //   description: "Ultra-fast multimodal model optimized for low latency and high-speed processing."
+  // },
   {
     id: "moonshotai/kimi-k2.5",
     label: "Kimi K2.5",
@@ -255,26 +257,40 @@ const MODEL_OPTIONS: ModelOption[] = [
     iconUrl: "/icons/moonshotai.avif",
     description: "Specialized Kimi model optimized for deep thinking, complex problem-solving, and logical deduction."
   },
-  {
-    id: "minimax/minimax-m2.7",
-    label: "MiniMax M2.7",
-    isPremium: true,
-    iconUrl: "/icons/minimax.avif",
-    description: "MiniMax's next-generation model with significant improvements in coding and technical writing."
-  },
-  {
-    id: "minimax/minimax-m2.5",
-    label: "MiniMax M2.5",
-    isPremium: true,
-    iconUrl: "/icons/minimax.avif",
-    description: "Balanced high-performance model from MiniMax for diverse creative and analytical tasks."
-  },
+  // {
+  //   id: "minimax/minimax-m2.7",
+  //   label: "MiniMax M2.7",
+  //   isPremium: true,
+  //   iconUrl: "/icons/minimax.avif",
+  //   description: "MiniMax's next-generation model with significant improvements in coding and technical writing."
+  // },
+  // {
+  //   id: "minimax/minimax-m2.5",
+  //   label: "MiniMax M2.5",
+  //   isPremium: true,
+  //   iconUrl: "/icons/minimax.avif",
+  //   description: "Balanced high-performance model from MiniMax for diverse creative and analytical tasks."
+  // },
   {
     id: "gemini-3.1-flash-lite",
     label: "Gemini 3.1 Flash Lite",
     isPremium: false,
     iconUrl: "/icons/gemini.png",
     description: "Google's ultra-lightweight and fast multimodal model."
+  },
+  {
+    id: "glm-5-turbo",
+    label: "GLM 5 Turbo",
+    isPremium: false,
+    iconUrl: "/icons/zAI.png",
+    description: "Powerful general-purpose model with strong reasoning and instruction following."
+  },
+  {
+    id: "gpt-4o",
+    label: "GPT 4o",
+    isPremium: true,
+    iconUrl: "/icons/openai.png",
+    description: "OpenAI's latest high-speed model with advanced reasoning and instruction following."
   },
 ]
 
@@ -427,6 +443,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   },
   ref,
 ) {
+  const { pluginRegistry } = useWorkbench()
   const isViewer = role === "viewer"
   const [message, setMessage] = useState(initialMessage || "")
   const [isLoading, setIsLoading] = useState(false)
@@ -538,6 +555,18 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [dailyResetTimer, setDailyResetTimer] = useState<number>(0)
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1)
   const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false)
+  const [showMapsModal, setShowMapsModal] = useState(false)
+
+  const handleSelectMapsBusiness = (businessInfo: string) => {
+    setMessage(prev => (prev ? `${prev}\n\n${businessInfo}` : businessInfo))
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto'
+        textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+      }
+    }, 0)
+    setIsActive(true)
+  }
 
   const handleStop = () => {
     if (abortControllerRef.current) {
@@ -628,10 +657,10 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 4. <Terminal> install any missing libraries if needed.
 5. Apply the fix to ONLY the affected file.
 6. Verify the result.`
-      handleSubmit(undefined, scanPrompt)
+      handleSubmit(undefined, scanPrompt, true)
     } else {
       const fixPrompt = `I'm getting this error in ${errorFile}: "${errorMsg}". Please fix it by updating ONLY the relevant file.`
-      handleSubmit(undefined, fixPrompt)
+      handleSubmit(undefined, fixPrompt, true)
     }
     setShowErrorPanel(false)
   }
@@ -723,6 +752,16 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     }
     loadMcpConnections()
   }, [isAuthenticated])
+
+  // Hook up internal submit to global falbor object
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window as any).falbor) {
+      (window as any).falbor._internalSubmit = (prompt: string, isAutomated = false) => {
+        handleSubmit(undefined, prompt, isAutomated)
+      }
+      (window as any).falbor._currentMessages = messages
+    }
+  }, [messages])
   useEffect(() => {
     const savedDraft = localStorage.getItem(draftKey)
     if (savedDraft && savedDraft.trim()) {
@@ -1505,7 +1544,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setIsSavingCredentials(false)
     }
   }
-  const handleSubmit = async (e?: React.FormEvent, textOverride?: string) => {
+  const handleSubmit = async (e?: React.FormEvent, textOverride?: string, isAutomatedOverride = false) => {
     e?.preventDefault()
     if (isLoading || isListening) return
 
@@ -1514,9 +1553,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       return
     }
 
-    const submitText = textOverride || message
+    const submitText = (typeof textOverride === "string" ? textOverride : message) || ""
     const hasAttachments = uploadedFiles.length > 0 || pastedContents.length > 0 || !!selectedImage || (isDesignActive && designConfig)
-    if (!submitText.trim() && !hasAttachments)
+    if (!submitText.toString().trim() && !hasAttachments)
       return
 
     if (!isAuthenticated) {
@@ -1530,6 +1569,13 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       return
     }
     let userMessage = submitText.trim()
+
+    // Special handling for Auto-Fix prompts to ensure the AI applies the fix directly
+    const isAutoFixMessage = userMessage.includes("Terminal Error Detected") || userMessage.includes("AUTOMATIC ERROR FIX");
+    if (isAutoFixMessage) {
+      userMessage += `\n\n[CRITICAL SYSTEM INSTRUCTION]: You are in AUTO-FIX mode. You must fix the terminal error by providing the full updated content for the problematic file(s). Use a markdown code block with the 'file="path/to/file"' attribute. Do NOT provide an explanation or commentary. ONLY provide the fixed code blocks. This is necessary to apply the fix automatically to the workbench.`;
+    }
+
     if (uploadedFiles.length > 0) {
       const fileSections = uploadedFiles
         .map(
@@ -1573,7 +1619,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     // If plan mode is enabled on landing flow, create project first then redirect in createProject()
     setIsLoading(true)
     try {
-      if (!isAutomated) {
+      if (!isAutomatedOverride || isAutoFixMessage) {
         const deductRes = await fetch("/api/user/credits", {
           method: "POST",
         })
@@ -1584,7 +1630,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             return
           }
           if (deductRes.status === 402) {
-            alert("Insufficient balance. Please wait for regeneration or upgrade.")
+            alert("Insufficient balance. Please wait for monthly refill or upgrade.")
             return
           }
           alert(errData.error || "Failed to process your request. Please try again.")
@@ -1616,7 +1662,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           thinking: null,
           versionName: null,
           searchQueries: null,
-          isAutomated: false,
+          isAutomated: isAutomatedOverride,
           tokensUsed: null,
           cost: null,
           sessionId,
@@ -1643,6 +1689,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           metadata: null,
         }
         onNewMessage(tempAssistant)
+        if ((window as any).falbor?.setIsAiStreaming) (window as any).falbor.setIsAiStreaming(true);
         console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
         abortControllerRef.current = new AbortController()
         try {
@@ -1790,6 +1837,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       alert("An error occurred while sending your message. Please try again.")
     } finally {
       setIsLoading(false)
+      if ((window as any).falbor?.setIsAiStreaming) (window as any).falbor.setIsAiStreaming(false)
     }
   }
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -2284,7 +2332,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
                   : isDiscussMode ? "Discuss anything..." : placeholder
             }
-            className="w-full min-h-[120px] max-h-[150px] resize-none bg-transparent text-black placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-h-[120px] max-h-[120px] resize-none bg-transparent text-black placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading || isDailyLimitReached || isViewer}
           />
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
@@ -2322,6 +2370,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       <p>{isViewer ? "Viewing mode" : "Attachment & Images"}</p>
                     </TooltipContent>
                   </Tooltip>
+                  <div
+                    onClick={() => !message.trim() && setShowMapsModal(true)}
+                    className={cn(
+                      "flex items-center gap-1 h-7 px-2 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1 transition-all hover:bg-blue-50 whitespace-nowrap",
+                      (isLoading || message.trim()) && "cursor-not-allowed opacity-50"
+                    )}
+                  >
+                    <img src="/icons/business-report.png" className="w-4 h-4 shrink-0" alt="" />
+
+                    <span className="leading-none">Find Business</span>
+
+                    <Badge className="ml-[2px] rounded-[5px] leading-none">
+                      New
+                    </Badge>
+                  </div>
                   {menuMode === "main" ? (
                     <div className="space-y-0.5">
                       {/* <Tooltip>
@@ -2369,6 +2432,41 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               </div>
             )}
 
+            {/* Plugin Injected Buttons */}
+            <div className="flex items-center gap-1.5 ml-1">
+              {pluginRegistry.chatInputButtons.map((btn, idx) => (
+                <Tooltip key={`${btn.pluginId}-${idx}`}>
+                  <TooltipTrigger asChild>
+                    <div
+                      onClick={() => btn.onClick({
+                        sendPrompt: (p: string, isAuto = true) => (window as any).falbor.sendPrompt(p, isAuto),
+                        setActivePlugin: (id: string | null) => (window as any).falbor.setActivePlugin(id),
+                        getMessages: () => (window as any).falbor.getMessages(),
+                        // If we had a way to set preview URL in ChatInput, we'd add it here.
+                        // Mostly used in CodePreview but added for consistency.
+                        setPreviewUrl: (url: string) => window.dispatchEvent(new CustomEvent('falbor-set-preview-url', { detail: { url } }))
+                      })}
+                      className={cn(
+                        "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black flex items-center justify-center transition-all hover:scale-105 active:scale-95",
+                        isLoading && "cursor-not-allowed opacity-50 relative"
+                      )}
+                    >
+                      {btn.icon ? (
+                        <DynamicIcon name={btn.icon} className="w-4 h-4 text-primary" />
+                      ) : (
+                        <Zap className="w-4 h-4 text-blue-500" />
+                      )}
+                    </div>
+                  </TooltipTrigger>
+                  {btn.tooltip && (
+                    <TooltipContent>
+                      <p>{btn.tooltip}</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              ))}
+            </div>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -2405,10 +2503,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         <Tooltip key={model.id}>
                           <TooltipTrigger asChild>
                             <DropdownMenuItem
-                              onClick={() => handleModelSelect(model.id)}
+                              onClick={() => !model.soon && handleModelSelect(model.id)}
                               className={cn(
                                 "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7]",
-                                selectedModel === model.id && "bg-[#e7e7e7]"
+                                selectedModel === model.id && "bg-[#e7e7e7]",
+                                model.soon && "opacity-70 cursor-not-allowed"
                               )}
                             >
                               <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0">
@@ -2422,6 +2521,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               </span>
                               {model.isPremium && !hasSubscription && (
                                 <Lock className="w-3 h-3 ml-auto text-gray-700" />
+                              )}
+                              {model.soon && (
+                                <span className="ml-1 text-[10px] font-bold text-gray-700 bg-gray-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-gray-100/50">Soon</span>
                               )}
                             </DropdownMenuItem>
                           </TooltipTrigger>
@@ -2772,6 +2874,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           }))
           setUploadedFiles(prev => [...prev, ...newFiles])
         }}
+      />
+      <GoogleMapsModal
+        isOpen={showMapsModal}
+        onClose={() => setShowMapsModal(false)}
+        onSelect={handleSelectMapsBusiness}
       />
       <Dialog open={showTokenModal} onOpenChange={setShowTokenModal}>
         <DialogContent className="sm:max-w-md">

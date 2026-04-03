@@ -6,10 +6,10 @@ import { runMigration } from "@/lib/supabase/management-api"
 
 export async function POST(
   request: Request,
-  context: { params: Promise<{ id: string }> }   // ← changed here
+  context: { params: Promise<{ id: string }> }
 ) {
-  const params = await context.params               // ← await it
-  const projectId = params.id                       // ← now safe
+  const params = await context.params
+  const { id: projectId } = await params
 
   const { userId } = await auth()
 
