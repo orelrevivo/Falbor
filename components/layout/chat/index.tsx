@@ -2379,11 +2379,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   >
                     <img src="/icons/business-report.png" className="w-4 h-4 shrink-0" alt="" />
 
-                    <span className="leading-none">Find Business</span>
-
-                    <Badge className="ml-[2px] rounded-[5px] leading-none">
-                      New
-                    </Badge>
+                    <span className="leading-none">Business</span>
                   </div>
                   {menuMode === "main" ? (
                     <div className="space-y-0.5">

@@ -787,7 +787,7 @@ export function Navbar({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => btn.onClick({ 
+                        onClick={() => btn.onClick({
                           sendPrompt: (p: string) => (window as any).falbor.sendPrompt(p),
                           setActivePlugin: (id: string | null) => (window as any).falbor.setActivePlugin(id)
                         })}

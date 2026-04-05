@@ -34,6 +34,7 @@ interface CodeTabProps {
   onExitSplit?: () => void
   currentlyEditingPath?: string | null
   role?: "viewer" | "editor" | "admin"
+  hideSidebar?: boolean
 }
 export function CodeTab({
   sidebarView,
@@ -62,6 +63,7 @@ export function CodeTab({
   onExitSplit,
   currentlyEditingPath,
   role,
+  hideSidebar,
 }: CodeTabProps) {
   const handleFileSelect = (file: any) => {
     console.log("[v0] User selected file:", file.path)
@@ -72,38 +74,40 @@ export function CodeTab({
     if (file) setSelectedFile(file)
   }
   return (
-    <div className="flex-1 flex overflow-hidden">
-      <div className="w-64 overflow-y-hidden border border-[#4444442d] border-b-0 border-l-0 border-t-0 flex flex-col">
-        <SidebarTabs sidebarView={sidebarView} setSidebarView={setSidebarView} />
-        {sidebarView === "files" && (
-          <FileSidebar
-            files={files}
-            onFileSelect={handleFileSelect}
-            selectedPath={selectedFile?.path ?? null}
-            projectId={projectId}
-            onFilesChange={fetchFiles}
-            currentlyEditingPath={currentlyEditingPath}
-          />
-        )}
-        {sidebarView === "search" && (
-          <SearchSidebar
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            searchResults={searchResults}
-            isSearching={isSearching}
-            highlightMatch={highlightMatch}
-            onResultClick={handleSearchResultClick}
-            files={files}
-          />
-        )}
-        {sidebarView === "locks" && (
-          <LocksSidebar
-            files={files}
-            projectId={projectId}
-            onFilesChange={fetchFiles}
-          />
-        )}
-      </div>
+    <div className="flex-1 flex overflow-hidden h-[100%]">
+      {!hideSidebar && (
+        <div className="w-64 overflow-y-hidden border border-[#4444442d] border-b-0 border-l-0 border-t-0 flex flex-col">
+          <SidebarTabs sidebarView={sidebarView} setSidebarView={setSidebarView} />
+          {sidebarView === "files" && (
+            <FileSidebar
+              files={files}
+              onFileSelect={handleFileSelect}
+              selectedPath={selectedFile?.path ?? null}
+              projectId={projectId}
+              onFilesChange={fetchFiles}
+              currentlyEditingPath={currentlyEditingPath}
+            />
+          )}
+          {sidebarView === "search" && (
+            <SearchSidebar
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchResults={searchResults}
+              isSearching={isSearching}
+              highlightMatch={highlightMatch}
+              onResultClick={handleSearchResultClick}
+              files={files}
+            />
+          )}
+          {sidebarView === "locks" && (
+            <LocksSidebar
+              files={files}
+              projectId={projectId}
+              onFilesChange={fetchFiles}
+            />
+          )}
+        </div>
+      )}
       <EditorPane
         selectedFile={selectedFile}
         editedContent={editedContent}

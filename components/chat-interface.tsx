@@ -139,7 +139,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
     if (activeMessageId) {
       targetMsg = messages.find(m => m.id === activeMessageId)
     }
-    
+
     if (!targetMsg) {
       const assistantMsgs = [...messages].reverse().filter(m => m.role === "assistant" && m.content.includes("```"))
       targetMsg = assistantMsgs[0]
@@ -913,7 +913,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   }, [handleAutoGenerate])
 
   const role = project.role || "admin";
-
+  const mainRef = useRef<HTMLDivElement>(null);
+  const lastWidthRef = useRef(leftWidth);
   return (
     <div className="h-full flex flex-col overflow-hidden relative">
       <PresenceLayer

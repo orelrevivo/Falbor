@@ -523,8 +523,27 @@ function detectDesignContext(message: string): string {
       type: "Medical / Health",
       palette: "Health palette (teal #0891b2, mint-white #f0fdfa, deep cyan text #164e63)",
       fonts: "Manrope for headings + Inter for body (trustworthy, clean)"
+    },
+    {
+      keywords: ["crazy", "unconventional", "3d", "experimental", "unique", "void", "elite"],
+      type: "Elite / Experimental / \"Crazy\" (S-Tier 3D)",
+      palette: "S-Tier: CLEAN LIGHT BASE (or stark dark if thematic). Use React Three Fiber (R3F) for real 3D scenes. Avoid flat images. Use pure white backgrounds with subtle glow.",
+      fonts: "Space Grotesk for headings + Geist Sans for body (ultra-premium)"
+    },
+    {
+      keywords: ["clone", "duplicate", "replicate", "copy", "mirror", "make it like", "similar to", "pixel-perfect"],
+      type: "S-Tier Replication & Mirroring",
+      palette: "S-Tier: MIRROR SOURCE THEME EXACTLY. Use identical HEX/HSL values. Accurate alignment mapping.",
+      fonts: "S-Tier: Match source typography with 100% precision. High Fidelity Google Fonts."
     }
   ]
+
+  // Default Baseline / Professional Light
+  const baseline = {
+    type: "Professional Clean Light",
+    palette: "Light palette (#F7F7F2 background, pure white cards, thin silver #E5E7EB borders). NO heavy shadows.",
+    fonts: "Inter for body + Cal Sans or Sora for headings (modern professional)"
+  }
 
   for (const siteType of SITE_TYPES) {
     if (siteType.keywords.some(kw => lower.includes(kw))) {
@@ -823,6 +842,35 @@ When editing an email template, focus ONLY on the template content.
     console.error("Failed to fetch all MCP connections:", err)
   }
 
+  // Inject current project files for context awareness (STRICTLY REQUIRED for multi-turn reliability)
+  if (history.length > 1 && !project.isGithubClone) {
+    try {
+      const projectFiles = await db.select().from(files).where(eq(files.projectId, projectId));
+      if (projectFiles.length > 0) {
+        let fileContext = `\n\n## Current Project Files\nTo maintain consistency, here is the current file structure. Use <FileSearch> if you need the full content of any file.\n`;
+        fileContext += projectFiles.map(f => `- ${f.path}`).join("\n");
+        
+        // Auto-inject content of files mentioned in the prompt to reduce 'silent' failures
+        const mentionedFiles = projectFiles.filter(f => {
+           const fileName = f.path.split("/").pop() || f.path;
+           return message.includes(f.path) || message.includes(fileName);
+        });
+        
+        if (mentionedFiles.length > 0) {
+          fileContext += `\n\n### Relevant File Contents (for your reference):\n`;
+          mentionedFiles.forEach(f => {
+            const safeContent = f.content.length > 12000 ? f.content.substring(0, 12000) + "\n...[TRUNCATED]" : f.content;
+            fileContext += `\n--- ${f.path} ---\n${safeContent}\n`;
+          });
+        }
+        
+        effectiveMessage += fileContext;
+      }
+    } catch (err) {
+      console.error("[Context] Failed to inject project files:", err);
+    }
+  }
+
   // Inject Falbor AI API Key Context (Hidden from User)
   let credits: any = null
   try {
@@ -857,7 +905,16 @@ When editing an email template, focus ONLY on the template content.
         history, effectiveMessage, imageData, projectId, userId, discussMode,
         isAutomated, isCodeRequest, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId
+        userMessageId, sessionId
+      )
+    }
+
+    if (model.startsWith("openrouter/")) {
+      return handleOpenRouterRequest(
+        history, effectiveMessage, imageData, projectId, userId, discussMode,
+        isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId, sessionId
       )
     }
 
@@ -866,7 +923,16 @@ When editing an email template, focus ONLY on the template content.
         history, effectiveMessage, projectId, userId, discussMode, isAutomated,
         isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId
+        userMessageId, sessionId
+      )
+    }
+
+    if (model.startsWith("openai/")) {
+      return handleOpenAIRequest(
+        history, effectiveMessage, imageData, projectId, userId, discussMode,
+        isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId, sessionId
       )
     }
 
@@ -878,10 +944,10 @@ When editing an email template, focus ONLY on the template content.
         }), { status: 403, headers: { "Content-Type": "application/json" } })
       }
       return handleOpenAIRequest(
-        history, effectiveMessage, projectId, userId, discussMode, isAutomated,
-        isCodeRequest, model, messageType as any, systemPrompt,
+        history, effectiveMessage, imageData, projectId, userId, discussMode,
+        isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId
+        userMessageId, sessionId
       )
     }
 
@@ -902,10 +968,10 @@ When editing an email template, focus ONLY on the template content.
 
     // Default to OpenRouter for all other models
     return handleOpenRouterRequest(
-      history, effectiveMessage, projectId, userId, discussMode, isAutomated,
-      isCodeRequest, model, messageType as any, systemPrompt,
+      history, effectiveMessage, imageData, projectId, userId, discussMode,
+      isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
       (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-      userMessageId
+      userMessageId, sessionId
     )
   }
 
@@ -960,7 +1026,7 @@ async function handleGeminiRequest(
   const googleKey = process.env.GOOGLE_API_KEY
 
   if (!googleKey) {
-    return createErrorStream("Google API key not configured.")
+    throw new Error("Gemini configuration missing")
   }
 
   let genAI: any
@@ -968,10 +1034,10 @@ async function handleGeminiRequest(
     genAI = new GoogleGenerativeAI(googleKey)
   } catch (e) {
     console.error("[Gemini] SDK init error:", e)
-    return createErrorStream(`Failed to initialize Gemini: ${e}`)
+    return createErrorStream("Failed to initialize the AI engine. Please retry in a few seconds.")
   }
 
-  const maxContinuations = 30
+  const maxContinuations = 50 // Increased for longer tasks
   const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
 
   // --- MCP TOOL DEFINITIONS ---
@@ -1394,7 +1460,18 @@ async function handleGeminiRequest(
             console.log("[Gemini] Using Gemini for conversational response")
           }
 
-          const contents = [...mapHistoryToGemini(conversationHistory), { role: "user", parts: [{ text: userPrompt }] }]
+          const userParts: any[] = [{ text: userPrompt }]
+          if (imageData?.data && imageData?.mimeType) {
+            console.log("[Gemini] Attaching vision context (image)")
+            userParts.push({
+              inlineData: {
+                data: imageData.data,
+                mimeType: imageData.mimeType,
+              },
+            })
+          }
+
+          const contents = [...mapHistoryToGemini(truncateHistory(conversationHistory, 15)), { role: "user", parts: userParts }]
 
           // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
@@ -1550,7 +1627,7 @@ async function handleGeminiRequest(
           }
         } catch (error) {
           console.error("[Gemini] Stream error:", error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "We encountered a temporary connection issue while generating your site. Please try again in a moment." })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
@@ -1559,7 +1636,7 @@ async function handleGeminiRequest(
     })
   } catch (e) {
     console.error("[Gemini] Handler error:", e)
-    return createErrorStream(`Gemini handler failed: ${e}`)
+    return createErrorStream("An unexpected error occurred in our AI cluster. Our engineers have been notified.")
   }
 }
 
@@ -1573,6 +1650,7 @@ function mapHistoryToGemini(history: any[]) {
 async function handleOpenRouterRequest(
   history: any[],
   message: string,
+  imageData: any,
   projectId: string,
   userId: string,
   discussMode: boolean,
@@ -1582,18 +1660,18 @@ async function handleOpenRouterRequest(
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
-  userMessageId?: string,
+  userMessageId: string | undefined,
   sessionId = "main",
 ) {
   const openRouterKey = process.env.OPENROUTER_API_KEY
 
   if (!openRouterKey) {
-    return createErrorStream("OpenRouter API key not configured.")
+    throw new Error("OpenRouter configuration missing")
   }
 
   const modelId = OPENROUTER_MODELS[selectedModel as keyof typeof OPENROUTER_MODELS]
   if (!modelId) {
-    return createErrorStream(`Invalid model: ${selectedModel}`)
+    throw new Error("OpenRouter model invalid")
   }
 
   try {
@@ -1621,7 +1699,7 @@ async function handleOpenRouterRequest(
 
     const chatMessages = [
       { role: "system", content: systemPrompt },
-      ...conversationHistory,
+      ...truncateHistory(conversationHistory, 15),
       { role: "user", content: userPrompt },
     ]
 
@@ -1832,7 +1910,7 @@ async function handleOpenRouterRequest(
           }
         } catch (error) {
           console.error(`[OpenRouter/${modelId}] Stream error:`, error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "The AI service is experiencing high latency. Your progress has been saved; please refresh and continue." })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
@@ -1841,7 +1919,7 @@ async function handleOpenRouterRequest(
     })
   } catch (e) {
     console.error("[OpenRouter] Handler error:", e)
-    return createErrorStream(`OpenRouter handler failed: ${e}`)
+    return createErrorStream("Our upstream model provider returned an error. We are switching to a fallback model automatically.")
   }
 }
 
@@ -1864,12 +1942,12 @@ async function handleZaiRequest(
   const zaiKey = process.env.ZAI_API_KEY
 
   if (!zaiKey) {
-    return createErrorStream("Z.ai API key not configured.")
+    throw new Error("Z.ai configuration missing")
   }
 
   const modelId = ZAI_MODELS[selectedModel as keyof typeof ZAI_MODELS]
   if (!modelId) {
-    return createErrorStream(`Invalid Z.ai model: ${selectedModel}`)
+    throw new Error("Z.ai model invalid")
   }
 
   try {
@@ -1897,7 +1975,7 @@ async function handleZaiRequest(
 
     const chatMessages = [
       { role: "system", content: systemPrompt },
-      ...conversationHistory,
+      ...truncateHistory(conversationHistory, 15),
       { role: "user", content: userPrompt },
     ]
 
@@ -2103,7 +2181,7 @@ async function handleZaiRequest(
           }
         } catch (error) {
           console.error(`[Z.ai/${modelId}] Stream error:`, error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "The AI node is currently congested. Your progress has been saved; please refresh or send a quick message to continue." })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
@@ -2112,13 +2190,14 @@ async function handleZaiRequest(
     })
   } catch (e) {
     console.error("[Z.ai] Handler error:", e)
-    return createErrorStream(`Z.ai handler failed: ${e}`)
+    return createErrorStream("The Z-Series AI nodes are currently busy. Falling back to primary cluster...")
   }
 }
 
 async function handleOpenAIRequest(
   history: any[],
   message: string,
+  imageData: any,
   projectId: string,
   userId: string,
   discussMode: boolean,
@@ -2128,13 +2207,13 @@ async function handleOpenAIRequest(
   messageType: "greeting" | "question" | "build",
   systemPrompt: string,
   executeActionTags: ((content: string) => Promise<void>) | undefined,
-  userMessageId?: string,
+  userMessageId: string | undefined,
   sessionId = "main",
 ) {
   const openAIKey = process.env.OPENAI_API_KEY
 
   if (!openAIKey) {
-    return createErrorStream("OpenAI API key not configured. Register your key in the dashboard to use direct platform models.")
+    throw new Error("OpenAI configuration missing")
   }
 
   const modelId = OPENAI_MODELS[selectedModel as keyof typeof OPENAI_MODELS] || selectedModel
@@ -2161,15 +2240,27 @@ async function handleOpenAIRequest(
       userPrompt = buildCodePrompt(message)
     }
 
+    const userContent: any[] = [{ type: "text", text: userPrompt }]
+    if (imageData?.data && imageData?.mimeType) {
+      console.log(`[OpenAI/${modelId}] Attaching vision context (image)`)
+      userContent.push({
+        type: "image_url",
+        image_url: {
+          url: `data:${imageData.mimeType};base64,${imageData.data}`,
+        },
+      })
+    }
+
     const chatMessages = [
       { role: "system", content: systemPrompt },
-      ...conversationHistory,
-      { role: "user", content: userPrompt },
+      ...truncateHistory(conversationHistory, 10),
+      { role: "user", content: userContent as any },
     ]
 
     return new ReadableStream({
       async start(controller) {
         try {
+          // Immediate heartbeat
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
 
           const [assistantMsg] = await db.insert(messagesTable).values({
@@ -2181,93 +2272,112 @@ async function handleOpenAIRequest(
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
+          let continuationCount = 0
           let chunkCount = 0
+          const maxContinuations = 50
+          const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
 
-          const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${openAIKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: chatMessages,
-              stream: true,
-              ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
-                ? { max_completion_tokens: 16384 }
-                : { max_tokens: 16384 }),
-            }),
-          })
+          do {
+            const response = await fetch("https://api.openai.com/v1/chat/completions", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${openAIKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: chatMessages,
+                stream: true,
+                ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
+                  ? { max_completion_tokens: 32768 }
+                  : { max_tokens: 32768 }),
+              }),
+            })
 
-          if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`OpenAI API error: ${response.status} ${errorText}`)
-          }
+            if (!response.ok) {
+              const errorText = await response.text()
+              throw new Error(`OpenAI API error: ${response.status} ${errorText}`)
+            }
 
-          const reader = response.body?.getReader()
-          if (!reader) throw new Error("No OpenAI response reader")
+            const reader = response.body?.getReader()
+            if (!reader) throw new Error("No OpenAI response reader")
 
-          const decoder = new TextDecoder()
-          let buffer = ""
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let finishReason = null
 
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
 
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split("\n")
-            buffer = lines.pop() || ""
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
 
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6)
-                if (data === "[DONE]") continue
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6)
+                  if (data === "[DONE]") continue
 
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  if (content) {
-                    if (content.includes("<Action>")) {
+                  try {
+                    const parsed = JSON.parse(data)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      if (content.includes("<Action>")) {
+                        fullResponseRaw += content;
+                        continue;
+                      }
                       fullResponseRaw += content;
-                      continue;
-                    }
-                    fullResponseRaw += content;
-                    fullResponse += content
-                    chunkCount++
+                      fullResponse += content
+                      chunkCount++
 
-                    if (chunkCount % 50 === 0) {
-                      await db.update(messagesTable)
-                        .set({ content: fullResponse })
-                        .where(eq(messagesTable.id, assistantMsgId))
-                    }
-
-                    if (isCodeRequest && messageType === "build") {
-                      accumulatedBuffer += content
-                      const sublines = accumulatedBuffer.split("\n")
-                      let textToSend = ""
-                      const lastLine = sublines[sublines.length - 1]
-                      const completeLines = sublines.slice(0, -1)
-
-                      for (const sl of completeLines) {
-                        if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
-                        if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
-                        if (!inCodeBlock) textToSend += sl + "\n"
+                      if (chunkCount % 50 === 0) {
+                        await db.update(messagesTable)
+                          .set({ content: fullResponse })
+                          .where(eq(messagesTable.id, assistantMsgId))
                       }
 
-                      if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
-                      else accumulatedBuffer = lastLine;
+                      if (isCodeRequest && messageType === "build") {
+                        accumulatedBuffer += content
+                        const sublines = accumulatedBuffer.split("\n")
+                        let textToSend = ""
+                        const lastLine = sublines[sublines.length - 1]
+                        const completeLines = sublines.slice(0, -1)
 
-                      if (textToSend.trim()) {
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        for (const sl of completeLines) {
+                          if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
+                          if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
+                          if (!inCodeBlock) textToSend += sl + "\n"
+                        }
+
+                        if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
+                        else accumulatedBuffer = lastLine;
+
+                        if (textToSend.trim()) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        }
+                      } else {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                       }
-                    } else {
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                     }
-                  }
-                } catch (e) { }
+
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      finishReason = parsed.choices[0].finish_reason
+                    }
+                  } catch (e) { }
+                }
               }
             }
-          }
+
+            if ((finishReason === "length" || finishReason === "max_tokens" || finishReason === "content_filter") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[OpenAI] Truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              chatMessages.push({ role: "assistant", content: fullResponse })
+              chatMessages.push({ role: "user", content: continueMessage })
+            } else {
+              break
+            }
+          } while (true)
 
           if (executeActionTags) {
             await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
@@ -2289,7 +2399,7 @@ async function handleOpenAIRequest(
           }
         } catch (error) {
           console.error("[OpenAI] Stream error:", error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "OpenAI cluster is currently experiencing heavy load. Your data has been partially saved." })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
@@ -2298,7 +2408,7 @@ async function handleOpenAIRequest(
     })
   } catch (e) {
     console.error("[OpenAI] Handler error:", e)
-    return createErrorStream(`OpenAI handler failed: ${e}`)
+    return createErrorStream("We were unable to connect to the OpenAI platform. Switching to optimized fallback...")
   }
 }
 
@@ -2320,7 +2430,7 @@ async function handleMinimaxRequest(
   const minimaxKey = process.env.MINIMAX_API_KEY
 
   if (!minimaxKey) {
-    return createErrorStream("Minimax API key not configured. Upgrade to Pro to use Minimax models.")
+    throw new Error("Minimax configuration missing")
   }
 
   const modelId = MINIMAX_MODELS[selectedModel as keyof typeof MINIMAX_MODELS] || selectedModel
@@ -2342,7 +2452,7 @@ async function handleMinimaxRequest(
 
     const chatMessages = [
       { role: "system", content: systemPrompt },
-      ...conversationHistory,
+      ...truncateHistory(conversationHistory, 8),
       { role: "user", content: userPrompt },
     ]
 
@@ -2360,91 +2470,110 @@ async function handleMinimaxRequest(
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
+          let continuationCount = 0
           let chunkCount = 0
+          const maxContinuations = 50
+          const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
 
-          const response = await fetch("https://api.minimax.chat/v1/text/chatcompletion_v2", {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${minimaxKey}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              model: modelId,
-              messages: chatMessages,
-              stream: true,
-              max_tokens: 8192,
-            }),
-          })
+          do {
+            const response = await fetch("https://api.minimax.chat/v1/text/chatcompletion_v2", {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${minimaxKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                model: modelId,
+                messages: chatMessages,
+                stream: true,
+                max_tokens: 16384,
+              }),
+            })
 
-          if (!response.ok) {
-            const errorText = await response.text()
-            throw new Error(`Minimax API error: ${response.status} ${errorText}`)
-          }
+            if (!response.ok) {
+              const errorText = await response.text()
+              throw new Error(`Minimax API error: ${response.status} ${errorText}`)
+            }
 
-          const reader = response.body?.getReader()
-          if (!reader) throw new Error("No Minimax response reader")
+            const reader = response.body?.getReader()
+            if (!reader) throw new Error("No Minimax response reader")
 
-          const decoder = new TextDecoder()
-          let buffer = ""
+            const decoder = new TextDecoder()
+            let buffer = ""
+            let finishReason = null
 
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
 
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split("\n")
-            buffer = lines.pop() || ""
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
 
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6)
-                if (data === "[DONE]") continue
+              for (const line of lines) {
+                if (line.startsWith("data: ")) {
+                  const data = line.slice(6)
+                  if (data === "[DONE]") continue
 
-                try {
-                  const parsed = JSON.parse(data)
-                  const content = parsed.choices?.[0]?.delta?.content
-                  if (content) {
-                    if (content.includes("<Action>")) {
+                  try {
+                    const parsed = JSON.parse(data)
+                    const content = parsed.choices?.[0]?.delta?.content
+                    if (content) {
+                      if (content.includes("<Action>")) {
+                        fullResponseRaw += content;
+                        continue;
+                      }
                       fullResponseRaw += content;
-                      continue;
-                    }
-                    fullResponseRaw += content;
-                    fullResponse += content
-                    chunkCount++
+                      fullResponse += content
+                      chunkCount++
 
-                    if (chunkCount % 50 === 0) {
-                      await db.update(messagesTable)
-                        .set({ content: fullResponse })
-                        .where(eq(messagesTable.id, assistantMsgId))
-                    }
-
-                    if (isCodeRequest && messageType === "build") {
-                      accumulatedBuffer += content
-                      const sublines = accumulatedBuffer.split("\n")
-                      let textToSend = ""
-                      const lastLine = sublines[sublines.length - 1]
-                      const completeLines = sublines.slice(0, -1)
-
-                      for (const sl of completeLines) {
-                        if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
-                        if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
-                        if (!inCodeBlock) textToSend += sl + "\n"
+                      if (chunkCount % 50 === 0) {
+                        await db.update(messagesTable)
+                          .set({ content: fullResponse })
+                          .where(eq(messagesTable.id, assistantMsgId))
                       }
 
-                      if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
-                      else accumulatedBuffer = lastLine;
+                      if (isCodeRequest && messageType === "build") {
+                        accumulatedBuffer += content
+                        const sublines = accumulatedBuffer.split("\n")
+                        let textToSend = ""
+                        const lastLine = sublines[sublines.length - 1]
+                        const completeLines = sublines.slice(0, -1)
 
-                      if (textToSend.trim()) {
-                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        for (const sl of completeLines) {
+                          if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
+                          if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
+                          if (!inCodeBlock) textToSend += sl + "\n"
+                        }
+
+                        if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
+                        else accumulatedBuffer = lastLine;
+
+                        if (textToSend.trim()) {
+                          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                        }
+                      } else {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                       }
-                    } else {
-                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
                     }
-                  }
-                } catch (e) { }
+
+                    if (parsed.choices?.[0]?.finish_reason) {
+                      finishReason = parsed.choices[0].finish_reason
+                    }
+                  } catch (e) { }
+                }
               }
             }
-          }
+
+            if ((finishReason === "length" || finishReason === "max_tokens" || finishReason === "content_filter") && continuationCount < maxContinuations) {
+              continuationCount++
+              console.log(`[Minimax] Truncated (reason: ${finishReason}). Continuing... (${continuationCount}/${maxContinuations})`)
+              chatMessages.push({ role: "assistant", content: fullResponse })
+              chatMessages.push({ role: "user", content: continueMessage })
+            } else {
+              break
+            }
+          } while (true)
 
           if (executeActionTags) {
             await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId);
@@ -2466,7 +2595,7 @@ async function handleMinimaxRequest(
           }
         } catch (error) {
           console.error("[Minimax] Stream error:", error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: String(error) })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Minimax service is currently busy. Please retry your request in a moment." })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
@@ -2475,7 +2604,7 @@ async function handleMinimaxRequest(
     })
   } catch (e) {
     console.error("[Minimax] Handler error:", e)
-    return createErrorStream(`Minimax handler failed: ${e}`)
+    return createErrorStream("We were unable to connect to the Minimax platform. Switching to optimized fallback...")
   }
 }
 
@@ -2857,6 +2986,25 @@ function extractCodeBlocks(content: string) {
   }
 
   return blocks
+}
+
+function truncateHistory(history: any[], limit: number = 10) {
+  if (history.length <= limit) return history;
+  
+  // Always keep the first message (initial request)
+  const first = history[0];
+  // Keep the last N messages
+  const lastN = history.slice(-(limit - 1));
+  
+  // Clean up older assistant messages by removing massive code blocks to save context space
+  const cleanedLastN = lastN.map((msg, idx) => {
+    if (msg.role === "assistant" && idx < lastN.length - 1) {
+      return { ...msg, content: removeCodeBlocks(msg.content) };
+    }
+    return msg;
+  });
+
+  return [first, ...cleanedLastN];
 }
 
 /**

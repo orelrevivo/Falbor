@@ -110,9 +110,9 @@ export default function Shell({
           left: `${currentSidebarWidth + 10}px`,
           right: "10px",
           bottom: "10px",
-          backgroundImage: (isChatPage && (activeTab === "preview" || activeTab === "code"))
-            ? "linear-gradient(rgba(255,255,255,0.7), rgba(255,255,255,0.7)), url('/bg/ChatIDstylebg.png')"
-            : "none",
+          // backgroundImage: (isChatPage && (activeTab === "preview" || activeTab === "code"))
+          //   ? "linear-gradient(rgba(255,255,255,0.7), rgba(255,255,255,0.7)), url('/bg/ChatIDstylebg.png')"
+          //   : "none",
           // backgroundRepeat: "no-repeat",
           // backgroundPosition: "left center",
           // backgroundSize: "contain",

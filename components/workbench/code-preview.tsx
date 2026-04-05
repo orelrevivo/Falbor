@@ -1217,7 +1217,7 @@ class StdoutRedirect:
 
         <div className={cn(
           "flex-1 flex flex-col relative overflow-hidden",
-          isSplitScreen || (tabValue !== "preview" && tabValue !== "code") ? "" : "border-l border-[#d6d6d6] bg-[#ffffff] shadow-xs"
+          isSplitScreen || (tabValue !== "preview" && tabValue !== "code") ? "" : " bg-[#ffffff] shadow-xs"
         )}>
           <div className="flex-1 flex flex-col overflow-hidden">
             {isSplitScreen ? (
@@ -1390,7 +1390,9 @@ class StdoutRedirect:
                   value="code"
                   className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
                 >
-                  {renderCodeTab()}
+                  <div className={cn("overflow-hidden flex-1 min-h-0")}>
+                    {renderCodeTab()}
+                  </div>
                 </TabsContent>
                 <TabsContent
                   value="settings"
