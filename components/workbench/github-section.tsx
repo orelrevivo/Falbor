@@ -211,21 +211,21 @@ export function GithubSection({ projectId }: GithubSectionProps) {
     return (
         <div className="max-w-3xl space-y-8">
             <div>
-                <h2 className="text-xl font-semibold mb-1">GitHub Integration</h2>
-                <p className="text-sm text-gray-500">
+                <h2 className="text-xl font-semibold mb-1 dark:text-white">GitHub Integration</h2>
+                <p className="text-sm text-gray-500 dark:text-white/60">
                     Connect your GitHub account to publish projects, import repositories, and intuitively push your changes.
                 </p>
             </div>
 
-            <div className="bg-white border rounded-lg overflow-hidden">
-                <div className="p-5 border-b bg-gray-50 flex items-center justify-between">
+            <div className="bg-white dark:bg-[#1E1E21] border dark:border-white/10 rounded-lg overflow-hidden">
+                <div className="p-5 border-b dark:border-white/10 bg-gray-50 dark:bg-[#1E1E21]/50 flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-white rounded-md shadow-sm border">
-                            <Github className="w-5 h-5" />
+                        <div className="p-2 bg-white dark:bg-[#111114] rounded-md shadow-sm border dark:border-white/10">
+                            <Github className="w-5 h-5 dark:text-white" />
                         </div>
                         <div>
-                            <h3 className="font-medium text-sm">GitHub Connection</h3>
-                            <p className="text-xs text-gray-500">
+                            <h3 className="font-medium text-sm dark:text-white">GitHub Connection</h3>
+                            <p className="text-xs text-gray-500 dark:text-white/60">
                                 {connection ? `Connected as @${connection.username}` : "No account connected"}
                             </p>
                         </div>
@@ -233,7 +233,7 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                     {connection && (
                         <button
                             onClick={handleDisconnect}
-                            className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                            className="px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-md transition-colors"
                         >
                             Disconnect
                         </button>
@@ -243,9 +243,9 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                 <div className="p-5">
                     {!connection ? (
                         <div className="space-y-4">
-                            <div className="bg-blue-50 text-blue-800 text-sm p-3 rounded-md">
+                            <div className="bg-blue-50 dark:bg-blue-500/10 text-blue-800 dark:text-blue-300 text-sm p-3 rounded-md">
                                 <p className="font-medium mb-1">To connect via Personal Access Token:</p>
-                                <ol className="list-decimal list-inside space-y-1 text-blue-700">
+                                <ol className="list-decimal list-inside space-y-1 text-blue-700 dark:text-blue-200/80">
                                     <li>Go to GitHub Developer Settings {'>'} Personal Access Tokens {'>'} Tokens (classic)</li>
                                     <li>Generate a New Token (Classic or Fine-grained)</li>
                                     <li>Ensure it has <strong>repo</strong> permissions ticked</li>
@@ -263,58 +263,58 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                                         value={token}
                                         onChange={(e) => setToken(e.target.value)}
                                         placeholder="ghp_..."
-                                        className="pl-9 w-full border rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500"
+                                        className="pl-9 w-full border dark:border-white/10 bg-white dark:bg-[#111114] rounded-md px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 dark:text-white outline-none"
                                         required
                                     />
                                 </div>
                                 <button
                                     type="submit"
                                     disabled={isConnecting || !token}
-                                    className="bg-black text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-black/90 disabled:opacity-50 flex items-center gap-2 transition-colors"
+                                    className="bg-black dark:bg-white dark:text-black text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-black/90 dark:hover:bg-white/90 disabled:opacity-50 flex items-center gap-2 transition-colors"
                                 >
                                     {isConnecting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Github className="w-4 h-4" />}
                                     Connect Account
                                 </button>
                             </form>
 
-                            {error && <p className="text-sm text-red-600 mt-2">{error}</p>}
+                            {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2">{error}</p>}
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            <div className="flex items-center gap-2 text-green-600 bg-green-50 p-3 rounded-md text-sm font-medium">
+                            <div className="flex items-center gap-2 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 p-3 rounded-md text-sm font-medium">
                                 <CheckCircle2 className="w-4 h-4" />
                                 GitHub account is connected gracefully.
                             </div>
 
                             {projectMetadata && (
-                                <div className="border rounded-md p-5">
-                                    <h4 className="font-medium text-sm border-b pb-3 mb-4">Project Repository Options</h4>
+                                <div className="border dark:border-white/10 rounded-md p-5 bg-white dark:bg-[#1E1E21]">
+                                    <h4 className="font-medium text-sm border-b dark:border-white/10 pb-3 mb-4 dark:text-white">Project Repository Options</h4>
 
                                     {isGithubClone && canPushDirectly ? (
                                         /* 🚀 PUSH TO GITHUB VIEW */
                                         <div className="space-y-4">
                                             <div className="flex flex-col gap-1">
-                                                <span className="text-xs text-gray-500 uppercase tracking-wider">Connected Repository</span>
+                                                <span className="text-xs text-gray-500 dark:text-white/40 uppercase tracking-wider">Connected Repository</span>
                                                 <a
                                                     href={projectMetadata.githubUrl}
                                                     target="_blank"
                                                     rel="noreferrer"
-                                                    className="flex items-center gap-1.5 text-blue-600 hover:underline font-medium text-sm"
+                                                    className="flex items-center gap-1.5 text-blue-600 dark:text-blue-400 hover:underline font-medium text-sm"
                                                 >
                                                     {projectMetadata.githubOwner}/{projectMetadata.githubRepoName}
                                                     <ExternalLink className="w-3.5 h-3.5" />
                                                 </a>
                                             </div>
 
-                                            <div className="bg-[#f9f9f9] border p-4 rounded-md space-y-4">
-                                                <p className="text-sm text-gray-700 font-medium">Push Changes to Repository</p>
+                                            <div className="bg-[#f9f9f9] dark:bg-[#111114] border dark:border-white/10 p-4 rounded-md space-y-4">
+                                                <p className="text-sm text-gray-700 dark:text-white/80 font-medium">Push Changes to Repository</p>
 
                                                 <div className="space-y-1">
-                                                    <label className="text-xs font-semibold text-gray-500 relative bg-white px-1 -bottom-2 left-2 pb-0">Commit Message</label>
+                                                    <label className="text-xs font-semibold text-gray-500 dark:text-white/40 relative bg-white dark:bg-[#111114] px-1 -bottom-2 left-2 pb-0">Commit Message</label>
                                                     <textarea
                                                         value={commitMessage}
                                                         onChange={e => setCommitMessage(e.target.value)}
-                                                        className="w-full border rounded-md px-3 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#0099ff] resize-none"
+                                                        className="w-full border dark:border-white/10 bg-white dark:bg-[#111114] rounded-md px-3 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-[#0099ff] resize-none dark:text-white"
                                                         rows={2}
                                                         placeholder="What did you change?"
                                                     />
@@ -330,13 +330,13 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                                                 </button>
                                             </div>
 
-                                            {error && <p className="text-sm text-red-600 mt-2 text-center">{error}</p>}
-                                            {success && <p className="text-sm text-green-600 mt-2 text-center bg-green-50 p-2 rounded">{success}</p>}
+                                            {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2 text-center">{error}</p>}
+                                            {success && <p className="text-sm text-green-600 dark:text-green-400 mt-2 text-center bg-green-50 dark:bg-green-500/10 p-2 rounded">{success}</p>}
                                         </div>
                                     ) : (
                                         /* 🔨 PUBLISH NEW (OR FORK) REPOSITORY VIEW */
                                         <div className="space-y-4">
-                                            <p className="text-sm text-gray-600">
+                                            <p className="text-sm text-gray-600 dark:text-white/60">
                                                 {!isGithubClone
                                                     ? "This project is not connected to any GitHub repository."
                                                     : "This project was cloned from an external repository that you do not own."}
@@ -344,40 +344,40 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                                                 Publish it directly to your GitHub account to enable Push functionality!
                                             </p>
 
-                                            <div className="bg-[#f9f9f9] border p-4 rounded-md space-y-4">
+                                            <div className="bg-[#f9f9f9] dark:bg-[#111114] border dark:border-white/10 p-4 rounded-md space-y-4">
                                                 <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-gray-700">Repository Name</label>
-                                                    <div className="flex bg-white border border-gray-200 rounded-md items-center pl-3">
-                                                        <span className="text-sm text-gray-400 font-mono select-none">{connection.username}/</span>
+                                                    <label className="text-xs font-medium text-gray-700 dark:text-white/60">Repository Name</label>
+                                                    <div className="flex bg-white dark:bg-[#1E1E21] border border-gray-200 dark:border-white/10 rounded-md items-center pl-3">
+                                                        <span className="text-sm text-gray-400 dark:text-white/30 font-mono select-none">{connection.username}/</span>
                                                         <input
                                                             value={repoName}
                                                             onChange={(e) => setRepoName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
-                                                            className="w-full bg-transparent px-2 py-2.5 text-sm font-medium focus:outline-none focus:ring-0"
+                                                            className="w-full bg-transparent px-2 py-2.5 text-sm font-medium focus:outline-none focus:ring-0 dark:text-white"
                                                             placeholder="project-name"
                                                         />
                                                     </div>
                                                 </div>
 
                                                 <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-gray-700">Description (optional)</label>
+                                                    <label className="text-xs font-medium text-gray-700 dark:text-white/60">Description (optional)</label>
                                                     <input
                                                         value={description}
                                                         onChange={(e) => setDescription(e.target.value)}
-                                                        className="w-full border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0099ff]"
+                                                        className="w-full border dark:border-white/10 bg-white dark:bg-[#1E1E21] rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-[#0099ff] dark:text-white"
                                                         placeholder="My amazing website"
                                                     />
                                                 </div>
 
-                                                <label className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white p-2 rounded border border-transparent hover:border-gray-100 transition-colors">
+                                                <label className="flex items-center gap-2 text-sm cursor-pointer hover:bg-white dark:hover:bg-white/5 p-2 rounded border border-transparent hover:border-gray-100 dark:hover:border-white/10 transition-colors">
                                                     <input
                                                         type="checkbox"
                                                         checked={isPrivate}
                                                         onChange={(e) => setIsPrivate(e.target.checked)}
-                                                        className="rounded border-gray-300 w-4 h-4"
+                                                        className="rounded border-gray-300 dark:border-white/10 w-4 h-4"
                                                     />
                                                     <div className="flex items-center gap-1.5 flex-1">
-                                                        {isPrivate ? <Lock className="w-3.5 h-3.5 text-gray-500" /> : <Github className="w-3.5 h-3.5 text-gray-500" />}
-                                                        <span className="font-medium text-gray-700 select-none">Make this repository private</span>
+                                                        {isPrivate ? <Lock className="w-3.5 h-3.5 text-gray-500 dark:text-white/40" /> : <Github className="w-3.5 h-3.5 text-gray-500 dark:text-white/40" />}
+                                                        <span className="font-medium text-gray-700 dark:text-white/80 select-none">Make this repository private</span>
                                                     </div>
                                                 </label>
 
@@ -391,8 +391,8 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                                                 </button>
                                             </div>
 
-                                            {error && <p className="text-sm text-red-600 mt-2 text-center">{error}</p>}
-                                            {success && <p className="text-sm text-green-600 mt-2 text-center bg-green-50 p-2 rounded">{success}</p>}
+                                            {error && <p className="text-sm text-red-600 dark:text-red-400 mt-2 text-center">{error}</p>}
+                                            {success && <p className="text-sm text-green-600 dark:text-green-400 mt-2 text-center bg-green-50 dark:bg-green-500/10 p-2 rounded">{success}</p>}
                                         </div>
                                     )}
                                 </div>
@@ -402,5 +402,5 @@ export function GithubSection({ projectId }: GithubSectionProps) {
                 </div>
             </div>
         </div>
-    )
+    );
 }

@@ -16,7 +16,7 @@ export default function Shell({
 }) {
   const { user, isLoaded } = useUser()
   const pathname = usePathname()
-  const { activeTab } = useWorkbench()
+  const { activeTab, isPreviewFullScreen } = useWorkbench()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -63,63 +63,76 @@ export default function Shell({
   if (isDeployPage || isCreatorPage) return <>{children}</>
 
   return (
-    <div className="relative min-h-screen flex flex-col overflow-hidden bg-[#FAF9F5]">
-      {/* Global Sidebar */}
-      <div
-        className="absolute inset-y-0 left-0 z-[100]"
-        onMouseEnter={() => setSidebarHovered(true)}
-        onMouseLeave={() => setSidebarHovered(false)}
-      >
-        <Suspense
-          fallback={
-            <div className="w-[320px] h-screen bg-gray-100/60 animate-pulse" />
-          }
+    <div className={cn("relative min-h-screen flex flex-col overflow-hidden", isChatPage ? "bg-card" : "bg-background")}>
+      {/* Global Sidebar — hidden in fullscreen */}
+      {!isPreviewFullScreen && (
+        <div
+          className="absolute inset-y-0 left-0 z-[100]"
+          onMouseEnter={() => setSidebarHovered(true)}
+          onMouseLeave={() => setSidebarHovered(false)}
         >
-          <SidebarProjects userId={user.id} />
-        </Suspense>
-      </div>
+          <Suspense
+            fallback={
+              <div className="w-[320px] h-screen bg-gray-100/60 animate-pulse" />
+            }
+          >
+            <SidebarProjects userId={user.id} />
+          </Suspense>
+        </div>
+      )}
 
-      {/* Logo */}
-      <div className="absolute top-[-23px] left-2 z-[101] pointer-events-none">
-        <img src="/logo_light.png" width={140} alt="" />
-      </div>
+      {/* Logo — hidden in fullscreen */}
+      {!isPreviewFullScreen && (
+        <div className="absolute top-[-23px] left-2 z-[101] pointer-events-none">
+          <img src="/logo_light.png" width={140} alt="" className="dark:hidden" />
+          <img src="/logo.png" width={110} alt="" className="hidden dark:block mt-[-5px]" />
+        </div>
+      )}
 
-      {/* Top Right Header */}
-      <div className="absolute top-3 right-4 z-[102] flex items-center gap-2">
-        <div id="header-right-portal" className="flex items-center gap-2" />
-        {!pathname?.startsWith("/chat/") && <UserProfileMenu />}
-      </div>
+      {/* Top Right Header — hidden in fullscreen */}
+      {!isPreviewFullScreen && (
+        <div className="absolute top-3 right-4 z-[102] flex items-center gap-2">
+          <div id="header-right-portal" className="flex items-center gap-2" />
+          {!pathname?.startsWith("/chat/") && <UserProfileMenu />}
+        </div>
+      )}
 
-      {/* Top Left Header (Above Sidebar or offset) */}
-      <div
-        className="absolute top-3 transition-all duration-300 z-[102] flex items-center"
-        style={{
-          left: `calc(${currentSidebarWidth}px + 10px + var(--chat-width, 0px))`
-        }}
-      >
-        <div id="header-left-portal" className="flex items-center" />
-      </div>
+      {/* Top Left Header — hidden in fullscreen */}
+      {!isPreviewFullScreen && (
+        <div
+          className="absolute top-3 transition-all duration-300 z-[102] flex items-center"
+          style={{
+            left: `calc(${currentSidebarWidth}px + 10px + var(--chat-width, 0px))`
+          }}
+        >
+          <div id="header-left-portal" className="flex items-center" />
+        </div>
+      )}
+
+      {/* Main content area */}
       <div
         className={cn(
-          "absolute z-10 backdrop-blur-md border border-[#dddcd8] rounded-sm shadow-xs overflow-x-hidden bg-white no-scrollbar",
-          isAlwaysOpenPage ? "transition-none" : "transition-all duration-300",
-          (pathname === "/" || pathname?.startsWith("/super-security")) ? "overflow-hidden" : "overflow-y-auto"
+          "absolute z-10 no-scrollbar transition-all duration-300",
+          isChatPage
+            ? "bg-card border-none rounded-none shadow-none"
+            : "border border-border rounded-md bg-card overflow-hidden",
+          isAlwaysOpenPage ? "transition-none" : "",
+          (pathname === "/" || pathname?.startsWith("/super-security") || isChatPage) ? "" : "overflow-y-auto"
         )}
-        style={{
+        style={isPreviewFullScreen ? {
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+        } : {
           top: "50px",
           left: `${currentSidebarWidth + 10}px`,
           right: "10px",
           bottom: "10px",
-          // backgroundImage: (isChatPage && (activeTab === "preview" || activeTab === "code"))
-          //   ? "linear-gradient(rgba(255,255,255,0.7), rgba(255,255,255,0.7)), url('/bg/ChatIDstylebg.png')"
-          //   : "none",
-          // backgroundRepeat: "no-repeat",
-          // backgroundPosition: "left center",
-          // backgroundSize: "contain",
         }}
         id="main-content-square"
       >
-        {(pathname === "/" || pathname?.startsWith("/super-security")) ? (
+        {(pathname === "/" || pathname?.startsWith("/super-security") || isChatPage) ? (
           <div className="w-full h-full">
             {children}
           </div>

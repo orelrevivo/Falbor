@@ -18,10 +18,10 @@ export function CreditsSection({
     formatTime,
 }: CreditsSectionProps) {
     return (
-        <div className="px-2 py-2 space-y-2 border rounded-sm">
+        <div className="px-2 py-2 space-y-2 border rounded-sm dark:border-white/10 shadow-sm">
             <div className="flex justify-between text-xs">
-                <span className="font-medium text-gray-600">Balance</span>
-                <span className="font-semibold text-gray-900">
+                <span className="font-medium text-gray-600 dark:text-white/80">Balance</span>
+                <span className="font-semibold text-gray-900 dark:text-white/80">
                     ${(credits / 100).toFixed(2)} / ${(maxCredits / 100).toFixed(2)}
                 </span>
             </div>

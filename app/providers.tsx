@@ -1,6 +1,7 @@
 "use client"
 
 import { WorkbenchProvider } from "@/lib/workbench-context"
+import { ThemeProvider } from "next-themes"
 
 export default function Providers({
   children,
@@ -8,8 +9,10 @@ export default function Providers({
   children: React.ReactNode
 }) {
   return (
-    <WorkbenchProvider>
-      {children}
-    </WorkbenchProvider>
+    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false}>
+      <WorkbenchProvider>
+        {children}
+      </WorkbenchProvider>
+    </ThemeProvider>
   )
 }

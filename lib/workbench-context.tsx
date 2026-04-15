@@ -75,10 +75,24 @@ interface WorkbenchContextType {
   isAiStreaming: boolean
   setIsAiStreaming: (enabled: boolean) => void
 
+  // Preview State (for global Navbar access)
+  previewUrl: string
+  setPreviewUrl: (url: string) => void
+  previewPages: string[]
+  setPreviewPages: (pages: string[]) => void
+  selectedDevice: any // DevicePreset
+  setSelectedDevice: (device: any) => void
+  zoom: number
+  setZoom: (zoom: number) => void
+  isPreviewFullScreen: boolean
+  setIsPreviewFullScreen: (isFull: boolean) => void
+  refreshCounter: number
+  refreshPreview: () => void
+
   pluginRegistry: PluginRegistry
   registerPlugin: (plugin: any) => void
   setActivePlugin: (id: string | null) => void
-  
+
   sendPrompt: (prompt: string, isAutomated?: boolean) => void
 }
 
@@ -97,7 +111,18 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
   const [activePluginId, setActivePluginId] = useState<string | null>(null)
   const [autoFixEnabled, setAutoFixEnabled] = useState(true)
   const [isAiStreaming, setIsAiStreaming] = useState(false)
-  const [pluginRegistry, setPluginRegistry] = useState<PluginRegistry>({ 
+  
+  // Preview State
+  const [previewUrl, setPreviewUrl] = useState("")
+  const [previewPages, setPreviewPages] = useState<string[]>(["/"])
+  const [selectedDevice, setSelectedDevice] = useState({ name: "Desktop", width: 1280, height: 800, type: "desktop" })
+  const [zoom, setZoom] = useState(100)
+  const [isPreviewFullScreen, setIsPreviewFullScreen] = useState(false)
+  const [refreshCounter, setRefreshCounter] = useState(0)
+
+  const refreshPreview = () => setRefreshCounter(prev => prev + 1)
+
+  const [pluginRegistry, setPluginRegistry] = useState<PluginRegistry>({
     chatInputButtons: [],
     navbarButtons: [],
     sidebarLinks: [],
@@ -106,7 +131,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      ;(window as any).falbor = {
+      ; (window as any).falbor = {
         ...(window as any).falbor,
         autoFixEnabled,
         setAutoFixEnabled: (val: boolean) => setAutoFixEnabled(val),
@@ -132,9 +157,9 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
         },
         setActivePlugin: (id: string | null) => setActivePluginId(id),
         sendPrompt: (prompt: string) => {
-           if ((window as any).falbor._internalSubmit) {
-             (window as any).falbor._internalSubmit(prompt)
-           }
+          if ((window as any).falbor._internalSubmit) {
+            (window as any).falbor._internalSubmit(prompt)
+          }
         },
         getMessages: () => (window as any).falbor._currentMessages || []
       }
@@ -163,17 +188,23 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
         activePluginId, setActivePluginId,
         autoFixEnabled, setAutoFixEnabled,
         isAiStreaming, setIsAiStreaming,
+        previewUrl, setPreviewUrl,
+        previewPages, setPreviewPages,
+        selectedDevice, setSelectedDevice,
+        zoom, setZoom,
+        isPreviewFullScreen, setIsPreviewFullScreen,
+        refreshCounter, refreshPreview,
         pluginRegistry,
         registerPlugin: (plugin: any) => {
-           if (typeof window !== "undefined" && (window as any).falbor?.registerPlugin) {
-               (window as any).falbor.registerPlugin(plugin)
-           }
+          if (typeof window !== "undefined" && (window as any).falbor?.registerPlugin) {
+            (window as any).falbor.registerPlugin(plugin)
+          }
         },
         setActivePlugin: (id: string | null) => setActivePluginId(id),
         sendPrompt: (prompt: string, isAutomated = false) => {
-            if ((window as any).falbor._internalSubmit) {
-              (window as any).falbor._internalSubmit(undefined, prompt, isAutomated)
-            }
+          if ((window as any).falbor._internalSubmit) {
+            (window as any).falbor._internalSubmit(undefined, prompt, isAutomated)
+          }
         }
       }}
     >

@@ -162,44 +162,48 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
       <div className="flex justify-between items-center">
         <div>
           <h2 className="text-xl font-semibold">General</h2>
-          <p className="text-xs font-mono bg-white px-2 py-1 rounded">{project.id}</p>
+          <p className="text-xs font-mono dark:bg-[#2C2C30] px-2 py-1 rounded bg-[#e7e5df73]">{project.id}</p>
         </div>
-
-        <Button onClick={handleSave} disabled={saving} className="h-7">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="w-[8%] flex items-center justify-center  text-xs font-mono bg-[#e7e5df73] dark:bg-[#2C2C30] cursor-pointer px-2 py-1 rounded"
+        >
           {saving ? (
             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
           ) : (
             <Save className="h-4 w-4 mr-2" />
           )}
-          Save
-        </Button>
+          <span className="w-full text-center">Save</span>
+        </button>
       </div>
 
       {/* TITLE */}
-      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] dark:bg-[#2C2C30] rounded-md">
         <CardContent className="px-2 py-4">
           <h3 className="font-semibold mb-2 ml-1">Main chat title</h3>
           <p className="mb-2 ml-1 mt-[-8px] text-[12px]">
             Get access to your name chat
           </p>
-          <div className="flex items-center bg-white rounded-md">
+          <div className="flex items-center rounded-md">
             <Input
               value={project.title}
-              className="text-lg font-medium bg-white border-none"
-              disabled
+              readOnly
+              className="text-lg font-medium bg-white border-none dark:bg-[#000000ff]/40"
             />
           </div>
         </CardContent>
       </div>
 
       {/* DESCRIPTION */}
-      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] dark:bg-[#2C2C30] rounded-md">
         <CardContent className="px-2 py-4">
           <h3 className="font-semibold text-md mb-2 ml-1">Chat Description</h3>
-          <div className="flex items-center bg-white rounded-md">
+          <div className="flex items-center rounded-md">
             <Textarea
               value={tempProject.description || ""}
               onChange={(e) => updateTempField("description", e.target.value)}
+              className="dark:bg-[#000000ff]/40"
               rows={3}
               placeholder="Project description..."
             />
@@ -208,7 +212,7 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
       </div>
 
       {/* COVER IMAGE */}
-      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] dark:bg-[#2C2C30] rounded-md">
         <CardContent className="px-2 py-4">
           <h3 className="font-semibold text-md mb-2 ml-1">
             Upload a cover photo for the chat
@@ -219,10 +223,11 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
               className="w-full h-32 object-cover rounded mb-2"
             />
           )}
-          <div className="flex items-center bg-white rounded-md">
+          <div className="flex items-center rounded-md">
             <Input
               type="file"
               accept="image/*"
+              className="dark:bg-[#000000ff]/40 w-fit"
               onChange={(e) =>
                 e.target.files && handleImageUpload(e.target.files[0])
               }
@@ -232,7 +237,7 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
       </div>
 
       {/* PROJECT VISIBILITY — DROPDOWN VERSION */}
-      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] dark:bg-[#2C2C30] rounded-md">
         <CardContent className="px-3.5 py-4">
           <h3 className="font-semibold text-md">Project Visibility</h3>
           <p className="mb-2 mt-[-3px] text-[12px]">
@@ -243,7 +248,7 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
             <DropdownMenuTrigger asChild>
               <Button
                 variant="outline"
-                className="w-28 justify-between border bg-white hover:bg-white text-black"
+                className="w-28 justify-between border bg-white hover:bg-white text-black dark:bg-[#000000ff]/40 dark:text-white/60 "
               >
                 <span className="flex items-center gap-2">
                   {tempProject.isPublic ? (
@@ -279,7 +284,7 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
       </div>
 
       {/* DELETE */}
-      <div className="border border-[#e7e5d] bg-[#e7e5df73] rounded-md">
+      <div className="border border-[#e7e5d] bg-[#e7e5df73] dark:bg-[#2C2C30] rounded-md">
         <CardContent className="px-3.5 py-4">
           <h3 className="font-semibold text-md">Delete Project</h3>
           <p className="mb-2 text-[12px]">
@@ -288,7 +293,7 @@ export default function ProjectSettings({ projectId }: ProjectSettingsProps) {
 
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" className="w-38 border bg-white hover:bg-white text-black cursor-pointer">
+              <Button variant="destructive" className="w-38 border bg-white dark:text-white hover:bg-white text-black cursor-pointer">
                 <Trash2 className="h-4 w-4 mr-2" /> Delete Project
               </Button>
             </AlertDialogTrigger>

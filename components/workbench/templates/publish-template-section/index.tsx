@@ -282,7 +282,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
   if (isLoading) {
     return (
       <div className="p-6 flex items-center justify-center">
-        <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        <Loader2 className="w-6 h-6 animate-spin text-gray-400 dark:text-white/20" />
       </div>
     )
   }
@@ -291,22 +291,22 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
     return (
       <div className="p-2 space-y-6">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Turn your website into a reusable template</h2>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h2 className="text-xl font-semibold text-foreground dark:text-white">Turn your website into a reusable template</h2>
+          <p className="text-sm text-muted-foreground dark:text-white/60 mt-1">
             Share your project as a template for others to use and clone.
           </p>
         </div>
 
-        <Card className="mt-6 border bg-white shadow-xs rounded-sm">
-          <CardContent className="pt-">
+        <Card className="mt-6 border dark:border-white/10 bg-white dark:bg-[#1E1E21] shadow-xs rounded-sm">
+          <CardContent className="pt-10">
             <div className="flex flex-col items-center gap-4 text-center">
               <div>
-                <h3 className="text-lg font-semibold text-gray-800">Publish Your Site First</h3>
-                <p className="text-sm text-gray-600 mt-1">
+                <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Publish Your Site First</h3>
+                <p className="text-sm text-gray-600 dark:text-white/40 mt-1">
                   Before creating a template, you need to publish your site to get a live URL.
                 </p>
               </div>
-              <Button onClick={handlePublishSite} disabled={isPublishingSite} className="mt-2 bg-[#0099ff]/20 hover:bg-[#0099ff]/25 text-[#0099ff]">
+              <Button onClick={handlePublishSite} disabled={isPublishingSite} className="mt-2 bg-[#0099ff]/20 hover:bg-[#0099ff]/25 text-[#0099ff] dark:text-[#0099ff] dark:bg-[#0099ff]/10">
                 {isPublishingSite ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -329,10 +329,10 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
   return (
     <div className="p-2 space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-foreground">
+        <h2 className="text-xl font-semibold text-foreground dark:text-white">
           {existingTemplate ? "Edit Template" : "Publish to Template"}
         </h2>
-        <p className="text-sm text-muted-foreground mt-1">
+        <p className="text-sm text-muted-foreground dark:text-white/60 mt-1">
           {existingTemplate
             ? "Update your template details below."
             : "Share your project as a template for others to use and clone."}
@@ -355,26 +355,27 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
 
       {/* Title */}
       <div className="space-y-2">
-        <Label htmlFor="title">Title *</Label>
+        <Label htmlFor="title" className="dark:text-white/80">Title *</Label>
         <Input
           id="title"
           placeholder="Enter template title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           maxLength={100}
+          className="dark:bg-[#111114] dark:border-white/10 dark:text-white"
         />
       </div>
 
       <div className="space-y-2">
-        <Label>Description *</Label>
-        <p className="text-xs text-muted-foreground">Use the formatting toolbar to style your description.</p>
+        <Label className="dark:text-white/80">Description *</Label>
+        <p className="text-xs text-muted-foreground dark:text-white/40">Use the formatting toolbar to style your description.</p>
         <RichTextEditor value={description} onChange={setDescription} placeholder="Describe your template..." />
       </div>
 
       {/* Tags */}
       <div className="space-y-2">
-        <Label>Tags * (up to {MAX_TAGS})</Label>
-        <p className="text-xs text-muted-foreground">
+        <Label className="dark:text-white/80">Tags * (up to {MAX_TAGS})</Label>
+        <p className="text-xs text-muted-foreground dark:text-white/40">
           Add tags to help others find your template (e.g., fitness, e-commerce, portfolio).
         </p>
         <div className="flex gap-2">
@@ -384,6 +385,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
             onChange={(e) => setTagInput(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={tags.length >= MAX_TAGS}
+            className="dark:bg-[#111114] dark:border-white/10 dark:text-white"
           />
           <Button
             type="button"
@@ -391,6 +393,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
             size="icon"
             onClick={addTag}
             disabled={!tagInput.trim() || tags.length >= MAX_TAGS}
+            className="dark:border-white/10 dark:bg-[#111114] dark:text-white dark:hover:bg-white/10"
           >
             <Plus className="w-4 h-4" />
           </Button>
@@ -398,9 +401,9 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
         {tags.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
             {tags.map((tag) => (
-              <Badge key={tag} variant="secondary" className="gap-1 pr-1">
+              <Badge key={tag} variant="secondary" className="gap-1 pr-1 dark:bg-white/5 dark:text-white/60 dark:border-white/10">
                 {tag}
-                <button onClick={() => removeTag(tag)} className="ml-1 hover:bg-muted rounded-full p-0.5">
+                <button onClick={() => removeTag(tag)} className="ml-1 hover:bg-muted dark:hover:bg-white/10 rounded-full p-0.5">
                   <X className="w-3 h-3" />
                 </button>
               </Badge>
@@ -411,11 +414,11 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
 
       {/* Main Image */}
       <div className="space-y-2">
-        <Label>Main Image *</Label>
-        <p className="text-xs text-muted-foreground">This will be the primary image shown in the template gallery.</p>
+        <Label className="dark:text-white/80">Main Image *</Label>
+        <p className="text-xs text-muted-foreground dark:text-white/40">This will be the primary image shown in the template gallery.</p>
         <input type="file" ref={mainImageRef} onChange={handleMainImageUpload} accept="image/*" className="hidden" />
         {mainImage ? (
-          <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-border">
+          <div className="relative w-full aspect-video rounded-lg overflow-hidden border border-border dark:border-white/10">
             <img src={mainImage || "/placeholder.svg"} alt="Main preview" className="w-full h-full object-cover" />
             <button
               onClick={() => setMainImage(null)}
@@ -427,7 +430,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
         ) : (
           <button
             onClick={() => mainImageRef.current?.click()}
-            className="w-full aspect-video h-32 rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground"
+            className="w-full aspect-video h-32 rounded-lg border-2 border-dashed border-border dark:border-white/10 hover:border-primary/50 dark:hover:border-[#0099ff]/50 transition-colors flex flex-col items-center justify-center gap-2 text-muted-foreground dark:text-white/40 hover:text-foreground dark:hover:text-white"
           >
             <Upload className="w-8 h-8" />
             <span className="text-sm">Click to upload main image</span>
@@ -437,8 +440,8 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
 
       {/* Additional Images */}
       <div className="space-y-2">
-        <Label>Additional Images * (minimum {MIN_IMAGES})</Label>
-        <p className="text-xs text-muted-foreground">
+        <Label className="dark:text-white/80">Additional Images * (minimum {MIN_IMAGES})</Label>
+        <p className="text-xs text-muted-foreground dark:text-white/40">
           Upload at least {MIN_IMAGES} additional screenshots of your template.
         </p>
         <input
@@ -451,7 +454,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
         />
         <div className="grid grid-cols-2 gap-3">
           {additionalImages.map((img, index) => (
-            <div key={index} className="relative aspect-video rounded-lg overflow-hidden border border-border">
+            <div key={index} className="relative aspect-video rounded-lg overflow-hidden border border-border dark:border-white/10">
               <img
                 src={img || "/placeholder.svg"}
                 alt={`Preview ${index + 1}`}
@@ -468,7 +471,7 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
           {additionalImages.length < MIN_IMAGES && (
             <button
               onClick={() => additionalImagesRef.current?.click()}
-              className="aspect-video h-32 w-full rounded-lg border-2 border-dashed border-border hover:border-primary/50 transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground"
+              className="aspect-video h-32 w-full rounded-lg border-2 border-dashed border-border dark:border-white/10 hover:border-primary/50 dark:hover:border-[#0099ff]/50 transition-colors flex flex-col items-center justify-center gap-1 text-muted-foreground dark:text-white/40 hover:text-foreground dark:hover:text-white"
             >
               <ImageIcon className="w-6 h-6" />
               <span className="text-xs">
@@ -479,23 +482,23 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
         </div>
       </div>
 
-      <div className="space-y-3 border-t pt-4">
+      <div className="space-y-3 border-t dark:border-white/10 pt-4">
         <div className="flex items-center justify-between">
           <div>
-            <Badge className="mb-1 ml-[-2px]" variant="secondary">
+            <Badge className="mb-1 ml-[-2px] dark:bg-white/10 dark:text-white/80" variant="secondary">
               Beta
             </Badge>
-            <Label>Card Frame Design</Label>
-            <p className="text-xs text-muted-foreground">Add a special frame to make your template stand out.</p>
+            <Label className="dark:text-white/80 block">Card Frame Design</Label>
+            <p className="text-xs text-muted-foreground dark:text-white/40">Add a special frame to make your template stand out.</p>
           </div>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
               type="checkbox"
               checked={useCardDesign}
               onChange={(e) => setUseCardDesign(e.target.checked)}
-              className="rounded border-gray-300"
+              className="rounded border-gray-300 dark:border-white/10 dark:bg-[#111114]"
             />
-            <span className="text-sm">Enable frame</span>
+            <span className="text-sm dark:text-white/80">Enable frame</span>
             {!hasSubscription && <span className="text-xs bg-[#c15f3c] text-white px-1.5 py-0.5 rounded">Pro</span>}
           </label>
         </div>
@@ -506,17 +509,17 @@ export function PublishTemplateSection({ projectId }: PublishTemplateSectionProp
       </div>
 
       <div className="space-y-2">
-        <Label>Site URL</Label>
-        <p className="text-xs text-muted-foreground">Your published site URL will be used automatically.</p>
-        <div className="flex items-center gap-2 p-2 rounded-sm border-[#e4e4e4a8] bg-[#e4e4e4c4]">
-          <span className="text-sm text-gray-700 truncate flex-1">{deployment.deploymentUrl}</span>
+        <Label className="dark:text-white/80">Site URL</Label>
+        <p className="text-xs text-muted-foreground dark:text-white/40">Your published site URL will be used automatically.</p>
+        <div className="flex items-center gap-2 p-2 rounded-sm border-[#e4e4e4a8] dark:border-white/10 bg-[#e4e4e4c4] dark:bg-[#111114]">
+          <span className="text-sm text-gray-700 dark:text-white/80 truncate flex-1">{deployment.deploymentUrl}</span>
           <a
             href={deployment.deploymentUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="p-1 hover:bg-gray-200 rounded transition-colors"
+            className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded transition-colors"
           >
-            <ExternalLink className="w-4 h-4 text-gray-500" />
+            <ExternalLink className="w-4 h-4 text-gray-500 dark:text-white/40" />
           </a>
         </div>
       </div>

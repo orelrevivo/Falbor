@@ -28,11 +28,11 @@ export function SettingsTab({ projectId, messages, activeMessageId, onActivateVe
   const activeSection = settingsSection || "project-settings"
 
   return (
-    <div className="flex w-full h-full overflow-hidden bg-[#fafbfc]">
+    <div className="flex w-full h-full overflow-hidden bg-background">
       {/* <div className="w-64 border-r border-gray-100 bg-white h-full shrink-0">
          <SettingsSidebar activeSection={activeSection as any} onSectionChange={setSettingsSection as any} />
       </div> */}
-      <div className="flex-1 overflow-y-auto w-full px-6 py-2 bg-white/50">
+      <div className="flex-1 overflow-y-auto w-full px-6 py-2 bg-card/50">
         <div className="max-w-4xl mx-auto w-full py-8">
           {activeSection === "project-settings" && <ProjectSettings projectId={projectId} />}
           {activeSection === "versions" && (

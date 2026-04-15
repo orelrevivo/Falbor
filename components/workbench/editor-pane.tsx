@@ -111,8 +111,7 @@ function ImageEditor({
   fileName: string
 }) {
   const [isCropping, setIsCropping] = React.useState(false)
-  const [crop, setCrop] = React.useState({ x: 10, y: 10, width: 80, height: 80 }) // in percentage
-  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [crop, setCrop] = React.useState({ x: 10, y: 10, width: 80, height: 80 })
   const imageRef = React.useRef<HTMLImageElement>(null)
 
   const handleCrop = () => {
@@ -147,12 +146,11 @@ function ImageEditor({
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-[#fafafa] overflow-hidden">
-      {/* Tool Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b bg-white">
+    <div className="h-full w-full flex flex-col bg-[#fafafa] dark:bg-card overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b bg-white dark:bg-card dark:border-white/10">
         <div className="flex flex-col">
-          <span className="text-sm font-medium text-black">{fileName}</span>
-          <span className="text-xs text-gray-400 font-mono">Image Preview</span>
+          <span className="text-sm font-medium text-black dark:text-white">{fileName}</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">Image Preview</span>
         </div>
         <div className="flex items-center gap-3">
           {isCropping ? (
@@ -161,7 +159,7 @@ function ImageEditor({
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 onClick={() => setIsCropping(false)}
-                className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-full transition-all"
+                className="flex items-center gap-2 px-4 py-2 text-xs font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10 rounded-full transition-all"
               >
                 Cancel
               </motion.button>
@@ -171,7 +169,7 @@ function ImageEditor({
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleCrop}
-                className="flex items-center gap-2 px-6 py-2 text-xs font-medium text-white bg-black rounded-full shadow-lg shadow-black/10 transition-all hover:bg-zinc-800"
+                className="flex items-center gap-2 px-6 py-2 text-xs font-medium text-white bg-black dark:bg-white dark:text-black rounded-full shadow-lg shadow-black/10 transition-all hover:bg-zinc-800 dark:hover:bg-zinc-200"
               >
                 <Check className="w-3.5 h-3.5" />
                 Apply Crop
@@ -191,10 +189,8 @@ function ImageEditor({
         </div>
       </div>
 
-      {/* Image Container */}
-      <div className="flex-1 relative flex items-center justify-center p-12 overflow-auto">
-        <div className="relative group max-w-full max-h-full transition-all duration-500 hover:shadow-2xl rounded-xl overflow-hidden border border-black/5 bg-white p-2">
-          {/* Main Image */}
+      <div className="flex-1 relative flex items-center justify-center p-12 overflow-auto bg-[#fafafa] dark:bg-[#0F0F0F]">
+        <div className="relative group max-w-full max-h-full transition-all duration-500 hover:shadow-2xl rounded-xl overflow-hidden border border-black/5 dark:border-white/10 bg-white dark:bg-card p-2">
           <img
             ref={imageRef}
             src={src}
@@ -202,7 +198,6 @@ function ImageEditor({
             className={cn("max-w-full max-h-full object-contain pointer-events-none rounded-lg", isCropping && "opacity-40")}
           />
 
-          {/* Crop Overlay */}
           <AnimatePresence>
             {isCropping && (
               <motion.div
@@ -236,7 +231,6 @@ function ImageEditor({
                   window.addEventListener("mouseup", onMouseUp)
                 }}
               >
-                {/* Crop Box Area */}
                 <motion.div
                   className="absolute border-2 border-[#0070f3] shadow-[0_0_0_9999px_rgba(0,0,0,0.5)] z-20 overflow-hidden"
                   style={{
@@ -247,7 +241,6 @@ function ImageEditor({
                     borderRadius: "4px",
                   }}
                 >
-                  {/* The visible part of the image */}
                   <div className="absolute inset-0 overflow-hidden">
                     <img
                       src={src}
@@ -262,13 +255,10 @@ function ImageEditor({
                       }}
                     />
                   </div>
-                  
-                  {/* Resizable handles could be added here for even better UI */}
                   <div className="absolute inset-0 border border-white/20 pointer-events-none" />
                 </motion.div>
 
-                {/* Grid Lines for crop box */}
-                <div 
+                <div
                   className="absolute pointer-events-none z-30 flex flex-col justify-between"
                   style={{
                     left: `${crop.x}%`,
@@ -326,7 +316,6 @@ export function EditorPane({
   const [currentRoot, setCurrentRoot] = React.useState<string>("")
   const [isApplying, setIsApplying] = React.useState(false)
   const [isModalOpen, setIsModalOpen] = React.useState(false)
-
   const sidebarRef = React.useRef<HTMLDivElement>(null)
 
   const [connectionStatus, setConnectionStatus] = React.useState<{
@@ -336,29 +325,16 @@ export function EditorPane({
   } | null>(null)
   const isReadOnly = role === "viewer"
 
-  const [databaseCredentials, setDatabaseCredentials] =
-    React.useState<DatabaseCredentials>({
-      supabaseUrl: "",
-      anonKey: "",
-    })
+  const [databaseCredentials, setDatabaseCredentials] = React.useState<DatabaseCredentials>({
+    supabaseUrl: "",
+    anonKey: "",
+  })
 
-  const [monacoInstance, setMonacoInstance] =
-    React.useState<typeof import("monaco-editor") | null>(null)
-
-  // 🔔 ShadCN Alert State
   const [alert, setAlert] = React.useState<{
     type: "success" | "error"
     title: string
     message: string
   } | null>(null)
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      import("monaco-editor").then((monaco) => {
-        setMonacoInstance(monaco)
-      })
-    }
-  }, [])
 
   const isSqlFile = selectedFile?.path?.toLowerCase().endsWith(".sql")
   const isEnvFile = React.useMemo(
@@ -371,11 +347,9 @@ export function EditorPane({
     return maskEnv(editedContent)
   }, [isEnvFile, isEditorFocused, editedContent])
 
-  // Fetch connection status
   React.useEffect(() => {
     const checkConnection = async () => {
       try {
-        // 1. Try project-specific credentials (managed database)
         const projectRes = await fetch(`/api/projects/${projectId}/supabase`)
         const projectData = await projectRes.json()
 
@@ -414,7 +388,6 @@ export function EditorPane({
           }
         }
 
-        // 2. Fallback to global user connection
         const response = await fetch("/api/user/supabase-connection")
         const data = await response.json()
         setConnectionStatus(data)
@@ -446,7 +419,6 @@ export function EditorPane({
     setIsSidebarOpen(false)
   }
 
-  // 🚀 Push to server (with UI Alert)
   const handleApplySql = async () => {
     if (!selectedFile || !isSqlFile) return
 
@@ -465,9 +437,7 @@ export function EditorPane({
 
       const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to execute SQL")
-      }
+      if (!response.ok) throw new Error(data.error || "Failed to execute SQL")
 
       setAlert({
         type: "success",
@@ -487,15 +457,9 @@ export function EditorPane({
 
   const handleDisconnectSupabase = async () => {
     try {
-      const response = await fetch("/api/user/supabase-connection", {
-        method: "DELETE",
-      })
-
+      const response = await fetch("/api/user/supabase-connection", { method: "DELETE" })
       const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to disconnect")
-      }
+      if (!response.ok) throw new Error(data.error || "Failed to disconnect")
 
       setConnectionStatus({ connected: false, connection: null })
       setDatabaseCredentials({ supabaseUrl: "", anonKey: "" })
@@ -506,22 +470,12 @@ export function EditorPane({
         message: "Supabase connection removed.",
       })
     } catch (error: any) {
-      setAlert({
-        type: "error",
-        title: "Error",
-        message: error.message,
-      })
+      setAlert({ type: "error", title: "Error", message: error.message })
     }
   }
 
-  const handleConnect = (
-    credentials: DatabaseCredentials,
-    projectRef: string,
-    projectName: string,
-    accessToken: string
-  ) => {
+  const handleConnect = (credentials: DatabaseCredentials, projectRef: string, projectName: string) => {
     setDatabaseCredentials(credentials)
-
     setConnectionStatus({
       connected: true,
       connection: {
@@ -545,9 +499,8 @@ export function EditorPane({
     <div className="flex-1 flex flex-col overflow-hidden relative">
       {selectedFile ? (
         <>
-          {/* Header */}
-          <div className="px-3 py-2 bg-white border-b border-black/10 flex items-center justify-between">
-            <div className="flex items-center text-xs text-black font-mono truncate">
+          <div className="px-3 py-2 bg-white dark:bg-card border-b border-black/10 dark:border-white/10 flex items-center justify-between">
+            <div className="flex items-center text-xs text-black dark:text-white/80 font-mono truncate">
               {selectedFile.path
                 .split("/")
                 .filter(Boolean)
@@ -555,9 +508,7 @@ export function EditorPane({
                   const partialPath = arr.slice(0, index + 1).join("/")
                   return (
                     <React.Fragment key={partialPath}>
-                      {index > 0 && (
-                        <ChevronRight className="w-4 h-4 mx-0.5 text-gray-400" />
-                      )}
+                      {index > 0 && <ChevronRight className="w-4 h-4 mx-0.5 text-gray-400" />}
                       <button
                         onClick={() => handleBreadcrumbClick(partialPath)}
                         className="focus:outline-none cursor-pointer hover:underline"
@@ -582,7 +533,7 @@ export function EditorPane({
               {isDirty && !isReadOnly && (
                 <button
                   onClick={handleSave}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#2b2525] hover:bg-black text-white rounded-lg cursor-pointer transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-[#2b2525] hover:bg-black dark:bg-white dark:text-black dark:hover:bg-zinc-200 text-white rounded-lg cursor-pointer transition-colors shadow-sm"
                 >
                   <Save className="w-3.5 h-3.5" />
                   Save Changes
@@ -595,22 +546,17 @@ export function EditorPane({
                   className={cn(
                     "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg cursor-pointer transition-colors",
                     (isApplying || !connectionStatus?.connected)
-                      ? "opacity-70 cursor-not-allowed bg-gray-100"
-                      : "bg-blue-50 text-blue-600 hover:bg-blue-100"
+                      ? "opacity-70 cursor-not-allowed bg-gray-100 dark:bg-white/5 dark:text-white/40"
+                      : "bg-blue-50 text-blue-600 hover:bg-blue-100 dark:bg-[#0099ff]/20 dark:text-[#0099ff] dark:hover:bg-[#0099ff]/30"
                   )}
                 >
-                  {isApplying ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
+                  {isApplying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
                   {isApplying ? "Pushing..." : "Push to server"}
                 </button>
               )}
             </div>
           </div>
 
-          {/* Editor */}
           <div ref={scrollRef} className="flex-1 overflow-hidden">
             {language === "image" ? (
               <ImageEditor
@@ -618,7 +564,6 @@ export function EditorPane({
                 fileName={selectedFile.path.split("/").pop() || "Image"}
                 onSave={(newContent, newImageData) => {
                   setEditedContent(newContent, newImageData)
-                  // Trigger save with new data
                   handleSave()
                 }}
               />
@@ -626,35 +571,16 @@ export function EditorPane({
               <Editor
                 key={selectedFile.path}
                 height="100%"
-                theme="light"
+                theme={document.documentElement.classList.contains('dark') ? 'vs-dark' : 'light'}
                 language={language}
                 value={displayContent}
                 onMount={(editor, monaco) => {
                   monacoRef.current = editor
-                  // Disable TypeScript/JavaScript validation to remove red squiggly lines
                   if (monaco.languages.typescript) {
-                    const diagnosticOptions = {
-                      noSemanticValidation: true,
-                      noSyntaxValidation: true,
-                    }
+                    const diagnosticOptions = { noSemanticValidation: true, noSyntaxValidation: true }
                     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions(diagnosticOptions)
                     monaco.languages.typescript.javascriptDefaults.setDiagnosticsOptions(diagnosticOptions)
-
-                    // Configure JSX/TSX support
-                    monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-                      target: monaco.languages.typescript.ScriptTarget.Latest,
-                      allowNonTsExtensions: true,
-                      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-                      module: monaco.languages.typescript.ModuleKind.CommonJS,
-                      noEmit: true,
-                      esModuleInterop: true,
-                      jsx: monaco.languages.typescript.JsxEmit.React,
-                      reactNamespace: "React",
-                      allowJs: true,
-                      typeRoots: ["node_modules/@types"],
-                    })
                   }
-
                   editor.onDidFocusEditorWidget(() => setIsEditorFocused(true))
                   editor.onDidBlurEditorWidget(() => setIsEditorFocused(false))
                 }}
@@ -664,42 +590,34 @@ export function EditorPane({
                   minimap: { enabled: false },
                   automaticLayout: true,
                   readOnly: isReadOnly,
-                  showUnused: false, // Disable the "transparent" fading for unused variables
+                  showUnused: false,
                 }}
               />
             )}
           </div>
         </>
       ) : (
-        <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+        <div className="h-full flex items-center justify-center text-sm text-muted-foreground bg-white dark:bg-card">
           Select a file to view
         </div>
       )}
 
-      {/* 🔔 ShadCN Alert (Bottom Right, 3px from bottom) */}
       {alert && (
         <div className="fixed bottom-2 right-0 w-[10%] z-50 px-4 pb-[3px]">
           <Alert className="w-full flex items-start justify-between">
             <div className="flex flex-col gap-1">
-              <AlertTitle className="font-semibold leading-tight">
-                {alert.title}
-              </AlertTitle>
-              <AlertDescription className="leading-snug break-words">
-                {alert.message}
-              </AlertDescription>
+              <AlertTitle className="font-semibold leading-tight">{alert.title}</AlertTitle>
+              <AlertDescription className="leading-snug break-words">{alert.message}</AlertDescription>
             </div>
-
-            <button
-              onClick={() => setAlert(null)}
-              className="ml-3 mt-1 hover:opacity-70 shrink-0"
-            >
+            <button onClick={() => setAlert(null)} className="ml-3 mt-1 hover:opacity-70 shrink-0">
               <X className="w-4 h-4" />
             </button>
           </Alert>
         </div>
       )}
+
       {isSidebarOpen && (
-        <div ref={sidebarRef} className="bg-white shadow-xl absolute ml-3 mt-5 rounded-lg border z-10 w-64 overflow-y-scroll max-h-56">
+        <div ref={sidebarRef} className="bg-white dark:bg-[#1E1E21] shadow-xl absolute ml-3 mt-5 rounded-lg border dark:border-white/10 z-10 w-64 overflow-y-scroll max-h-56">
           <FileSidebar
             files={files}
             onFileSelect={handleFileSelect}
@@ -717,12 +635,10 @@ export function EditorPane({
         credentialsSaved={!!connectionStatus?.connected}
         databaseCredentials={databaseCredentials}
         selectedProjectRef={connectionStatus?.connection?.projectRef || ""}
-        projects={[
-          {
-            ref: connectionStatus?.connection?.projectRef || "",
-            name: connectionStatus?.connection?.projectName || "",
-          },
-        ]}
+        projects={[{
+          ref: connectionStatus?.connection?.projectRef || "",
+          name: connectionStatus?.connection?.projectName || "",
+        }]}
         onDisconnect={handleDisconnectSupabase}
         onConnect={handleConnect}
         isAuthenticated={!!isSignedIn}

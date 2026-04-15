@@ -45,25 +45,25 @@ export function SignupChart({ projectId }: SignupChartProps) {
     const totalSignups = data.reduce((sum, item) => sum + parseInt(item.count as any), 0)
 
     return (
-        <div className="bg-white border rounded-md p-6 shadow-xs">
+        <div className="bg-white dark:bg-card border dark:border-white/10 rounded-md p-6 shadow-xs">
             {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <div>
-                    <h3 className="text-lg font-bold text-gray-900">Signups</h3>
-                    <p className="text-sm text-gray-500 mt-0.5">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Signups</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                         {totalSignups} {totalSignups === 1 ? "user" : "users"} in the last {period} days
                     </p>
                 </div>
 
                 {/* Period Selector */}
-                <div className="flex items-center gap-1 bg-gray-50 rounded-xl p-1">
+                <div className="flex items-center gap-1 bg-gray-50 dark:bg-white/5 rounded-xl p-1">
                     {[7, 30, 90].map((days) => (
                         <button
                             key={days}
                             onClick={() => setPeriod(days as 7 | 30 | 90)}
                             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all cursor-pointer ${period === days
-                                ? "bg-white text-blue-600 border"
-                                : "text-gray-600 hover:text-gray-900"
+                                ? "bg-white dark:bg-white/10 text-blue-600 dark:text-[#0099ff] border dark:border-white/10 shadow-sm"
+                                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
                                 }`}
                         >
                             {days}d

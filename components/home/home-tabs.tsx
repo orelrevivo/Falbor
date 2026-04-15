@@ -23,7 +23,7 @@ export function HomeTabs() {
   return (
     <div className="flex flex-col w-full">
       {/* The Main Container: Dark, rounded, and compact */}
-      <div className="flex flex-col p-1 bg-[#e7e5df] border border-[#e7e5df] rounded-md min-w-[140px]">
+      <div className="flex flex-col p-1 bg-[#e7e5df] border border-[#e7e5df] dark:bg-muted/50 dark:border-border rounded-md min-w-[140px]">
 
         {/* Search / Super Security Button */}
         <button
@@ -31,11 +31,11 @@ export function HomeTabs() {
           className={cn(
             "flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium rounded-sm w-full",
             activeTab === "websites"
-              ? "bg-white text-gray-800 shadow-xs" // Active state
-              : "text-[#878782]" // Inactive state
+              ? "bg-background text-foreground shadow-xs" // Active state
+              : "text-muted-foreground" // Inactive state
           )}
         >
-          <Globe className={cn("w-3.5 h-3.5", activeTab === "websites" ? "text-gray-800" : "text-[#878782]")} />
+          <Globe className={cn("w-3.5 h-3.5", activeTab === "websites" ? "text-foreground" : "text-muted-foreground")} />
           <span>Websites</span>
         </button>
         {/* Computer / Websites Button */}
@@ -44,11 +44,11 @@ export function HomeTabs() {
           className={cn(
             "flex items-center gap-2 px-3 py-1.5 text-[13px] font-medium rounded-sm w-full",
             activeTab === "security"
-              ? "bg-white text-gray-800 shadow-xs" // Active state
-              : "text-[#878782]" // Inactive state
+              ? "bg-background text-foreground shadow-xs" // Active state
+              : "text-muted-foreground" // Inactive state
           )}
         >
-          <Monitor className={cn("w-3.5 h-3.5", activeTab === "security" ? "text-gray-800" : "text-[#878782]")} />
+          <Monitor className={cn("w-3.5 h-3.5", activeTab === "security" ? "text-foreground" : "text-muted-foreground")} />
           <span>Super Security</span>
         </button>
       </div>

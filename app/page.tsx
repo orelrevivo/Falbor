@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import FeatureCards from "@/components/layout/features/FeatureCards"
 import { HomeTabs } from "@/components/home/home-tabs"
 import * as motion from "framer-motion/client"
+import { ThemeHandler } from "@/components/layout/ThemeHandler"
 
 interface ProjectItem {
   id: string
@@ -70,7 +71,7 @@ export default async function HomePage() {
 
   return (
     <div
-      className={`relative min-h-screen flex flex-col ${isAuthenticated ? "overflow-hidden bg-white" : "" //Bg-main
+      className={`relative min-h-screen flex flex-col ${isAuthenticated ? "overflow-hidden bg-background" : ""
         }`}
     >
       <main className="flex flex-1 flex-col items-center w-full">
@@ -78,6 +79,7 @@ export default async function HomePage() {
         {/* ================= NOT AUTH ================= */}
         {!isAuthenticated && (
           <div className="w-full flex flex-col">
+            <ThemeHandler force="light" />
             <LandingScrollHandler />
             <DefaultDemo />
             {/* ✅ FIXED BACKGROUND SECTION */}
@@ -117,13 +119,13 @@ export default async function HomePage() {
         {/* ================= AUTH ================= */}
         {isAuthenticated && (
           <div
-            className="absolute z-10 p-6 sm:p-8 no-scrollbar w-full h-full"
+            className="absolute z-10 p-6 sm:p-8 no-scrollbar w-full h-full bg-card bg-[url('/bg/bg-blue.png')] dark:bg-[url('/bg/bg-blue-dark.png')] bg-no-repeat bg-center bg-cover"
             style={{
               top: "0px",
               left: "0px",
               right: "0px",
               bottom: "0px",
-              overflowY: "hidden"
+              overflowY: "hidden",
             }}
           >
             <div
@@ -132,13 +134,13 @@ export default async function HomePage() {
               <div className="z-10 w-full flex flex-col items-center">
                 <HeroText />
               </div>
-              <img src="/bg/bg-text.png" alt="" className="absolute mt-[-160px] ml-25 w-[50%] pointer-events-none" />
+              {/* <img src="/bg/bg-text.png" alt="" className="absolute mt-[-160px] ml-25 w-[50%] pointer-events-none" /> */}
               <div className="w-full flex justify-center mt-6 z-10">
                 <InputArea isAuthenticated />
               </div>
-              <div className="absolute bottom-[-130px] flex justify-center w-full z-10">
+              {/* <div className="absolute bottom-[-130px] flex justify-center w-full z-10">
                 <FeatureCards />
-              </div>
+              </div> */}
             </div>
           </div>
         )}

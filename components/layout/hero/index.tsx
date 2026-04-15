@@ -63,14 +63,14 @@ function HeroText() {
 
   return (
     <div className="relative p-2 rounded-4xl">
-      <h2 className="font-medium text-black tracking-tight text-4xl montserrat text-center whitespace-nowrap leading-tight">
+      <h2 className="font-medium text-black dark:text-white tracking-tight text-4xl montserrat text-center whitespace-nowrap leading-tight">
         Turn your ideas into{" "}
         <span className="relative inline-block align-baseline min-w-[280px]">
           <span className="invisible block">digital infrastructure</span>
           <span
             className={`absolute left-0 top-0 transition-all duration-300 ease-out ${visible
-                ? "opacity-100 translate-y-0"
-                : "opacity-0 -translate-y-1"
+              ? "opacity-100 translate-y-0"
+              : "opacity-0 -translate-y-1"
               }`}
           >
             {words[index]}

@@ -13,7 +13,7 @@ export function McpHeader() {
                     Model Context Protocol
                 </h1>
             </div>
-            <p className="text-zinc-500 text-md max-w-2xl leading-relaxed">
+            <p className="text-muted-foreground text-md max-w-2xl leading-relaxed">
                 Connect your workspace to powerful external tools. MCP allows the AI to securely interact with your data for advanced automation and insights.
             </p>
         </header>

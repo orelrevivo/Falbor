@@ -426,10 +426,10 @@ function TreeNode({
     if (node.type === "folder") {
       setIsOpen(!isOpen)
     } else if (node.type === "file") {
-      onFileSelect({ 
-        path: node.fullPath, 
-        content: node.content || "", 
-        language: node.language || "typescript" 
+      onFileSelect({
+        path: node.fullPath,
+        content: node.content || "",
+        language: node.language || "typescript"
       })
     }
   }
@@ -444,17 +444,17 @@ function TreeNode({
     <div>
       <div
         className={cn(
-          "flex items-center gap-1 pl-0 px-1 pr-2 py-[4px] hover:bg-[#e4e4e4a8] cursor-pointer text-[13px] relative group",
-          selectedPath === node.fullPath && " bg-[#e4e4e4a8]",
+          "flex items-center gap-1 pl-0 px-1 pr-2 py-[4px] hover:bg-[#e4e4e4a8] dark:hover:bg-[#2C2C30] cursor-pointer text-[13px] relative group",
+          selectedPath === node.fullPath && " bg-[#e4e4e4a8] dark:bg-[#2C2C30]",
           node.isLocked && "opacity-50",
         )}
         style={{ paddingLeft: `${indent + 8}px` }}
         onClick={handleClick}
         onContextMenu={handleContextMenu}
       >
-        <div 
+        <div
           className={cn(
-            "mr-2 cursor-pointer hover:scale-110 transition-all duration-200 shrink-0",
+            "mr-2 cursor-pointer hover:scale-110 shrink-0",
             !isSelectedForTask && "opacity-0 group-hover:opacity-100"
           )}
           onClick={(e) => {
@@ -667,7 +667,7 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
     const reader = new FileReader()
     reader.onload = async (event) => {
       let base64Content = event.target?.result as string
-      
+
       // Image Compression Logic
       const img = new Image()
       img.src = base64Content
@@ -692,10 +692,10 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
         canvas.height = height
         const ctx = canvas.getContext("2d")
         ctx?.drawImage(img, 0, 0, width, height)
-        
+
         // Compress to 0.7 quality to stay under limits
         const compressedBase64 = canvas.toDataURL("image/jpeg", 0.7)
-        
+
         const basePath =
           contextMenu.node!.type === "folder" ? `${contextMenu.node!.fullPath}/` : `${getParentPath(contextMenu.node!.fullPath)}/`
         const newPath = `${basePath}${file.name.replace(/\.[^/.]+$/, "")}.jpg`
@@ -804,70 +804,70 @@ export function FileTree({ files, onFileSelect, selectedPath, projectId, onFiles
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
           >
             <div className="p-2">
-            <DropdownMenuItem
-              onSelect={() => {
-                setNewItem({ targetPath: contextMenu.node!.fullPath, inside: contextMenu.node!.type === "folder", type: "file" })
-                setInputValue("")
-                setContextMenu({ show: false, x: 0, y: 0, node: null })
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2 text-black" /> New File
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                setNewItem({ targetPath: contextMenu.node!.fullPath, inside: contextMenu.node!.type === "folder", type: "folder" })
-                setInputValue("")
-                setContextMenu({ show: false, x: 0, y: 0, node: null })
-              }}
-            >
-              <Folder className="w-4 h-4 mr-2 text-black" /> New Folder
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={() => {
-                fileInputRef.current?.click()
-              }}
-            >
-              <Upload className="w-4 h-4 mr-2 text-black" /> Upload Image
-            </DropdownMenuItem>
-            </div>
-            <hr className="text-[#e4e4e4f1]"/>
-            <div className="p-2">
-            {isImageFile(contextMenu.node.name) && (
               <DropdownMenuItem
                 onSelect={() => {
-                  onFileSelect?.({
-                    path: contextMenu.node!.fullPath,
-                    content: contextMenu.node!.content || "",
-                    imageData: contextMenu.node!.imageData,
-                    language: "image",
-                  } as any)
+                  setNewItem({ targetPath: contextMenu.node!.fullPath, inside: contextMenu.node!.type === "folder", type: "file" })
+                  setInputValue("")
                   setContextMenu({ show: false, x: 0, y: 0, node: null })
                 }}
               >
-                <Crop className="w-4 h-4 mr-2 text-black" /> Edit Image (Crop)
+                <Plus className="w-4 h-4 mr-2 text-black" /> New File
               </DropdownMenuItem>
-            )}
-            <DropdownMenuItem
-              onSelect={() => {
-                setInputValue(contextMenu.node!.name)
-                setRenaming(contextMenu.node!.fullPath)
-                setContextMenu({ show: false, x: 0, y: 0, node: null })
-              }}
-            >
-              <Edit className="w-4 h-4 mr-2 text-black" /> Rename
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={handleToggleLock}
-            >
-              {contextMenu.node.isLocked ? <Unlock className="w-4 h-4 mr-2 text-black" /> : <Lock className="w-4 h-4 mr-2 text-black" />}
-              {contextMenu.node.isLocked ? "Unlock" : "Lock"}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={handleDelete}
-              className="text-destructive/90 focus:text-destructive"
-            >
-              <Trash className="w-4 h-4 mr-2 text-destructive/60" /> Delete
-            </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  setNewItem({ targetPath: contextMenu.node!.fullPath, inside: contextMenu.node!.type === "folder", type: "folder" })
+                  setInputValue("")
+                  setContextMenu({ show: false, x: 0, y: 0, node: null })
+                }}
+              >
+                <Folder className="w-4 h-4 mr-2 text-black" /> New Folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => {
+                  fileInputRef.current?.click()
+                }}
+              >
+                <Upload className="w-4 h-4 mr-2 text-black" /> Upload Image
+              </DropdownMenuItem>
+            </div>
+            <hr className="text-[#e4e4e4f1]" />
+            <div className="p-2">
+              {isImageFile(contextMenu.node.name) && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    onFileSelect?.({
+                      path: contextMenu.node!.fullPath,
+                      content: contextMenu.node!.content || "",
+                      imageData: contextMenu.node!.imageData,
+                      language: "image",
+                    } as any)
+                    setContextMenu({ show: false, x: 0, y: 0, node: null })
+                  }}
+                >
+                  <Crop className="w-4 h-4 mr-2 text-black" /> Edit Image (Crop)
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem
+                onSelect={() => {
+                  setInputValue(contextMenu.node!.name)
+                  setRenaming(contextMenu.node!.fullPath)
+                  setContextMenu({ show: false, x: 0, y: 0, node: null })
+                }}
+              >
+                <Edit className="w-4 h-4 mr-2 text-black" /> Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={handleToggleLock}
+              >
+                {contextMenu.node.isLocked ? <Unlock className="w-4 h-4 mr-2 text-black" /> : <Lock className="w-4 h-4 mr-2 text-black" />}
+                {contextMenu.node.isLocked ? "Unlock" : "Lock"}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={handleDelete}
+                className="text-destructive/90 focus:text-destructive"
+              >
+                <Trash className="w-4 h-4 mr-2 text-destructive/60" /> Delete
+              </DropdownMenuItem>
             </div>
           </DropdownMenuContent>
         </DropdownMenu>

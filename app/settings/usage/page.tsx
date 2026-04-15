@@ -49,7 +49,7 @@ export default function UsagePage() {
                         Usage & Resource Credits
                     </h1>
                 </div>
-                <p className="text-zinc-500 text-md max-w-2xl leading-relaxed">
+                <p className="text-muted-foreground text-md max-w-2xl leading-relaxed">
                     Monitor your credit consumption across all your chats and projects.
                 </p>
             </header>
@@ -58,57 +58,57 @@ export default function UsagePage() {
                 {/* Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div
-                        className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
+                        className="p-6 border border-border rounded-sm bg-card shadow-xs flex flex-col"
                     >
-                        <h3 className="text-sm font-medium text-zinc-500 mb-2">Active Plan</h3>
-                        <p className="text-2xl font-bold text-zinc-900 capitalize">
+                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Active Plan</h3>
+                        <p className="text-2xl font-bold text-foreground capitalize">
                             {subscription?.subscriptionTier || "Free"}
                         </p>
                     </div>
 
                     <div
-                        className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
+                        className="p-6 border border-border rounded-sm bg-card shadow-xs flex flex-col"
                     >
-                        <h3 className="text-sm font-medium text-zinc-500 mb-2">Total Credits</h3>
+                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Total Credits</h3>
                         <div className="flex items-center gap-2">
-                            <span className="text-2xl font-bold text-zinc-900">
+                            <span className="text-2xl font-bold text-foreground">
                                 {subscription ? (subscription.balance / 100).toFixed(2) : "0.00"}
                             </span>
-                            <span className="text-sm text-zinc-400 font-normal underline decoration-dashed underline-offset-4">USD Value</span>
+                            <span className="text-sm text-muted-foreground/50 font-normal underline decoration-dashed underline-offset-4">USD Value</span>
                         </div>
                     </div>
 
                     <div
-                        className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
+                        className="p-6 border border-border rounded-sm bg-card shadow-xs flex flex-col"
                     >
-                        <h3 className="text-sm font-medium text-zinc-500 mb-2">Free Monthly Credits</h3>
-                        <p className="text-2xl font-bold text-zinc-900">
+                        <h3 className="text-sm font-medium text-muted-foreground mb-2">Free Monthly Credits</h3>
+                        <p className="text-2xl font-bold text-foreground">
                             $1.50
                         </p>
-                        <p className="text-xs text-zinc-400 mt-1">Included in every account</p>
+                        <p className="text-xs text-muted-foreground/50 mt-1">Included in every account</p>
                     </div>
                 </div>
 
                 {/* Usage History Table */}
                 <div
-                    className="p-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col"
+                    className="p-6 border border-border rounded-sm bg-card shadow-xs flex flex-col"
                 >
                     <div className="flex items-center gap-2 mb-6">
-                        <Database className="w-5 h-5 text-zinc-400" />
-                        <h2 className="text-lg font-semibold text-zinc-900">Usage by Chat</h2>
+                        <Database className="w-5 h-5 text-muted-foreground/40" />
+                        <h2 className="text-lg font-semibold text-foreground">Usage by Chat</h2>
                     </div>
 
                     {isLoading ? (
-                        <div className="py-10 text-center text-zinc-500">Loading usage history...</div>
+                        <div className="py-10 text-center text-muted-foreground">Loading usage history...</div>
                     ) : usage.length === 0 ? (
-                        <div className="py-10 text-center text-zinc-500 bg-zinc-50 rounded-lg border border-dashed border-zinc-200">
+                        <div className="py-10 text-center text-muted-foreground bg-muted/30 rounded-lg border border-dashed border-border">
                             No usage history registered yet. Start a chat to see data.
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead>
-                                    <tr className="border-b border-zinc-100 text-sm text-zinc-400 font-medium">
+                                    <tr className="border-b border-border text-sm text-muted-foreground font-medium">
                                         <th className="pb-3 pr-4">Chat Name</th>
                                         <th className="pb-3 px-4">Date Created</th>
                                         <th className="pb-3 px-4 text-center">Messages</th>
@@ -116,26 +116,26 @@ export default function UsagePage() {
                                         <th className="pb-3 pl-4"></th>
                                     </tr>
                                 </thead>
-                                <tbody className="text-sm divide-y divide-zinc-50">
+                                <tbody className="text-sm divide-y divide-border/50">
                                     {usage.map((item) => (
-                                        <tr key={item.projectId} className="group hover:bg-zinc-50 transition-colors">
+                                        <tr key={item.projectId} className="group hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0">
                                             <td className="py-4 pr-4">
                                                 <div className="flex items-center gap-3">
-                                                    <div className="w-8 h-8 flex items-center justify-center bg-zinc-100 rounded text-zinc-400">
+                                                    <div className="w-8 h-8 flex items-center justify-center bg-muted rounded text-muted-foreground">
                                                         <MessageSquare className="w-4 h-4" />
                                                     </div>
-                                                    <span className="font-medium text-zinc-900 truncate max-w-[200px]">
+                                                    <span className="font-medium text-foreground truncate max-w-[200px]">
                                                         {item.projectTitle || "Untitled Chat"}
                                                     </span>
                                                 </div>
                                             </td>
-                                            <td className="py-4 px-4 text-zinc-600">
+                                            <td className="py-4 px-4 text-muted-foreground">
                                                 {new Date(item.createdAt).toLocaleDateString()}
                                             </td>
-                                            <td className="py-4 px-4 text-center text-zinc-600">
+                                            <td className="py-4 px-4 text-center text-muted-foreground">
                                                 {item.messageCount}
                                             </td>
-                                            <td className="py-4 px-4 text-right font-medium text-zinc-900">
+                                            <td className="py-4 px-4 text-right font-medium text-foreground">
                                                 ${(item.totalCost / 100).toFixed(2)}
                                             </td>
                                             <td className="py-4 pl-4 text-right">

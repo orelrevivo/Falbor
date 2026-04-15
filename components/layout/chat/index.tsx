@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2 } from "lucide-react"
+import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2, Wrench, Copy as CopyIcon, ExternalLink } from "lucide-react"
 import {
   Loader,
   X,
@@ -32,7 +32,7 @@ import {
 import { Link1Icon } from "@radix-ui/react-icons"
 import { Switch } from "@/components/ui/switch"
 import type { Message } from "@/config/schema"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuPortal, DropdownMenuSubContent } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -197,16 +197,18 @@ const EMAIL_TEMPLATES = [
 ]
 const MODEL_OPTIONS: ModelOption[] = [
   {
-    id: "falmax",
-    label: "FalMax",
+    id: "gpt-5",
+    label: "GPT 5",
+    isPremium: false,
+    iconUrl: "/icons/openai.png",
+    description: "OpenAI's state-of-the-art flagship model with unmatched reasoning and coding intelligence."
+  },
+  {
+    id: "claude-opus-4.6-fast",
+    label: "Claude Opus 4.6 Fast",
     isPremium: true,
-    iconUrl: "/icons/falbor.png",
-    description: "Professional model specialized in building games, complex websites, and long-form technical tasks.",
-    subModels: [
-      { id: "gemini-3-flash-preview", label: "Gemini 3 Flash Preview", iconUrl: "/icons/gemini.png", color: "#1a73e8" },
-      { id: "x-ai/grok-3", label: "Grok 3", iconUrl: "/icons/grok-light.png", color: "#000000" },
-      { id: "openai/gpt-5.1", label: "GPT-5.1", iconUrl: "/icons/ChatGPT_logo.svg-Photoroom.png", color: "#10a37f" },
-    ]
+    iconUrl: "/icons/claude.png",
+    description: "Fast mode consumes tokens significantly faster than other models. Monitor your usage closely."
   },
   {
     id: "claude-opus-4.6",
@@ -223,75 +225,34 @@ const MODEL_OPTIONS: ModelOption[] = [
     description: "Fast and efficient model for quick responses and lightweight tasks."
   },
   {
-    id: "grok-4.1-fast",
-    label: "Grok 4.1 Fast",
-    isPremium: true,
-    iconUrl: "/icons/grok-light.png",
-    description: "xAI's latest high-speed model with real-time knowledge and advanced logic."
-  },
-  {
-    id: "grok-4-fast",
-    label: "Grok 4 Fast",
-    isPremium: true,
-    iconUrl: "/icons/grok-light.png",
-    description: "Balanced high-performance model with excellent reasoning capabilities."
-  },
-  // {
-  //   id: "glm-4.7-flash",
-  //   label: "GLM 4.7 Flash",
-  //   isPremium: false,
-  //   iconUrl: "/icons/zAI.png",
-  //   description: "Ultra-fast multimodal model optimized for low latency and high-speed processing."
-  // },
-  {
-    id: "moonshotai/kimi-k2.5",
-    label: "Kimi K2.5",
-    isPremium: true,
-    iconUrl: "/icons/moonshotai.avif",
-    description: "Moonshot AI's latest multimodal model with exceptional reasoning and long-context capabilities."
-  },
-  {
-    id: "moonshotai/kimi-k2-thinking",
-    label: "Kimi K2 Thinking",
-    isPremium: true,
-    iconUrl: "/icons/moonshotai.avif",
-    description: "Specialized Kimi model optimized for deep thinking, complex problem-solving, and logical deduction."
-  },
-  // {
-  //   id: "minimax/minimax-m2.7",
-  //   label: "MiniMax M2.7",
-  //   isPremium: true,
-  //   iconUrl: "/icons/minimax.avif",
-  //   description: "MiniMax's next-generation model with significant improvements in coding and technical writing."
-  // },
-  // {
-  //   id: "minimax/minimax-m2.5",
-  //   label: "MiniMax M2.5",
-  //   isPremium: true,
-  //   iconUrl: "/icons/minimax.avif",
-  //   description: "Balanced high-performance model from MiniMax for diverse creative and analytical tasks."
-  // },
-  {
-    id: "gemini-3.1-flash-lite",
-    label: "Gemini 3.1 Flash Lite",
+    id: "gemini-3-flash",
+    label: "Gemini 3 Flash",
     isPremium: false,
     iconUrl: "/icons/gemini.png",
     description: "Google's ultra-lightweight and fast multimodal model."
   },
-  {
-    id: "glm-5-turbo",
-    label: "GLM 5 Turbo",
-    isPremium: false,
-    iconUrl: "/icons/zAI.png",
-    description: "Powerful general-purpose model with strong reasoning and instruction following."
-  },
-  {
-    id: "gpt-4o",
-    label: "GPT 4o",
-    isPremium: true,
-    iconUrl: "/icons/openai.png",
-    description: "OpenAI's latest high-speed model with advanced reasoning and instruction following."
-  },
+  // {
+  //   id: "falmax",
+  //   label: "FalMax",
+  //   isPremium: true,
+  //   iconUrl: "/icons/falbor.png",
+  //   description: "Professional model specialized in building games, complex websites, and long-form technical tasks.",
+  //   soon: true,
+  //   subModels: [
+  //     { id: "gpt-5", label: "GPT 5", iconUrl: "/icons/ChatGPT_logo.svg-Photoroom.png", color: "#10a37f" },
+  //     { id: "gemini-3.1-flash", label: "Gemini 3.1 Flash", iconUrl: "/icons/gemini.png", color: "#1a73e8" },
+  //     { id: "claude-opus-4.6", label: "Claude Opus 4.6", iconUrl: "/icons/claude.png", color: "#1a73e8" },
+  //     { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", iconUrl: "/icons/claude.png", color: "#1a73e8" },
+  //     // { id: "grok-4-fast", label: "Grok 4 Fast", iconUrl: "/icons/grok-light.png", color: "#000000" },
+  //   ]
+  // },
+  // {
+  //   id: "glm-5-turbo",
+  //   label: "GLM 5 Turbo",
+  //   isPremium: false,
+  //   iconUrl: "/icons/zAI.png",
+  //   description: "Powerful general-purpose model with strong reasoning and instruction following."
+  // },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -424,7 +385,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     projectId,
     onNewMessage,
     placeholder = "Ask anything... to get started",
-    initialModel = "gemini-3.1-flash-lite",
+    initialModel = "gpt-5",
     connected = false,
     onCloseIdeas,
     isAutomated = false,
@@ -482,8 +443,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
 
   useEffect(() => {
-    if (balanceData?.subscriptionTier === "none" && selectedModel !== "gemini-3.1-flash-lite") {
-      setSelectedModel("gemini-3.1-flash-lite")
+    if (balanceData?.subscriptionTier === "none" && selectedModel !== "gpt-5") {
+      setSelectedModel("gpt-5")
     }
   }, [balanceData?.subscriptionTier, selectedModel])
 
@@ -515,7 +476,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     setMounted(true)
   }, [])
 
-  const [showConfirmation, setShowConfirmation] = useState(false)
+
   const [pendingSubmitData, setPendingSubmitData] = useState<{
     userMessage: string
     selectedImage: { data: string; mimeType: string } | null
@@ -556,6 +517,45 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [mentionStartIndex, setMentionStartIndex] = useState<number>(-1)
   const [showGoogleDriveModal, setShowGoogleDriveModal] = useState(false)
   const [showMapsModal, setShowMapsModal] = useState(false)
+  const [showCloneDropdown, setShowCloneDropdown] = useState(false)
+  const [showClonePanel, setShowClonePanel] = useState(false)
+  const [cloneUrl, setCloneUrl] = useState("")
+  const [isCloning, setIsCloning] = useState(false)
+  const [cloneError, setCloneError] = useState<string | null>(null)
+  const cloneDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close clone dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (cloneDropdownRef.current && !cloneDropdownRef.current.contains(event.target as Node)) {
+        setShowCloneDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
+  }, [])
+
+  // Simple clone text insert — backend does all the heavy lifting
+  const handleInsertCloneText = () => {
+    if (isLoading || isViewer) return
+    const clonePrefix = "Clone this website URL: "
+    setMessage(prev => {
+      const newMsg = prev ? `${prev}\n${clonePrefix}` : clonePrefix
+      return newMsg
+    })
+    setIsActive(true)
+    setShowCloneDropdown(false)
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        // Move cursor to end
+        const len = textareaRef.current.value.length
+        textareaRef.current.setSelectionRange(len, len)
+        textareaRef.current.style.height = 'auto'
+        textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
+      }
+    }, 0)
+  }
 
   const handleSelectMapsBusiness = (businessInfo: string) => {
     setMessage(prev => (prev ? `${prev}\n\n${businessInfo}` : businessInfo))
@@ -841,8 +841,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
   useEffect(() => {
     localStorage.setItem(tasksKey, JSON.stringify(tasks))
   }, [tasks, tasksKey])
-  const createProject = async (withCredentials: boolean) => {
-    if (!pendingSubmitData) return
+  const createProject = async (withCredentials: boolean, data?: any) => {
+    const submitData = data || pendingSubmitData
+    if (!submitData) return
     setIsLoading(true)
 
     let supabaseUrl = ""
@@ -852,7 +853,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     let dbPassword = ""
 
     try {
-      if (pendingSubmitData.isFalborDb) {
+      if (submitData.isFalborDb) {
         setIsProvisioning(true)
         try {
           const provRes = await fetch("/api/supabase/provision", {
@@ -881,7 +882,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       let neonPassword = ""
       let neonProjectRef = ""
 
-      if (pendingSubmitData.isNeonDb) {
+      if (submitData.isNeonDb) {
         setIsProvisioning(true)
         try {
           const provRes = await fetch("/api/neon/provision", {
@@ -923,7 +924,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         }
       }
 
-      if (!pendingSubmitData.isAutomated) {
+      if (!submitData.isAutomated) {
         const deductRes = await fetch("/api/user/credits", {
           method: "POST",
         })
@@ -940,7 +941,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           alert(errData.error || "Failed to process your request. Please try again.")
           return
         }
-        await fetchBalance()
+        await refetchBalance()
       }
       localStorage.removeItem(draftKey)
       localStorage.removeItem(filesKey)
@@ -956,19 +957,19 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
 
       const body: any = {
-        message: pendingSubmitData.userMessage,
-        imageData: pendingSubmitData.selectedImage,
+        message: submitData.userMessage,
+        imageData: submitData.selectedImage,
         uploadedFiles: null,
-        discussMode: pendingSubmitData.isDiscussMode,
-        isAutomated: pendingSubmitData.isAutomated,
-        selectedModel: pendingSubmitData.selectedModel,
-        isFalborDb: pendingSubmitData.isFalborDb,
-        isNeonDb: pendingSubmitData.isNeonDb,
-        selectedFramework: pendingSubmitData.selectedFramework,
+        discussMode: submitData.isDiscussMode,
+        isAutomated: submitData.isAutomated,
+        selectedModel: submitData.selectedModel,
+        isFalborDb: submitData.isFalborDb,
+        isNeonDb: submitData.isNeonDb,
+        selectedFramework: submitData.selectedFramework,
       }
 
       // Inject credentials directly into the project creation (so they are saved immediately)
-      if (pendingSubmitData.isFalborDb) {
+      if (submitData.isFalborDb) {
         body.supabaseUrl = supabaseUrl
         body.anonKey = anonKey
         body.serviceRoleKey = serviceRoleKey
@@ -977,7 +978,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
         // Also inject into the first message content so it's visible in history
         body.message += `\n\n## Database Connection (Managed by Falbor)\nDatabase provisioned successfully.\nVITE_SUPABASE_URL=${supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${anonKey}\nSUPABASE_SERVICE_ROLE_KEY=${serviceRoleKey}`
-      } else if (pendingSubmitData.isNeonDb) {
+      } else if (submitData.isNeonDb) {
         body.neonUrl = neonUrl
         body.neonPassword = neonPassword
         body.neonProjectRef = neonProjectRef
@@ -1600,7 +1601,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       userMessage += `\n\n## Design System: ${selectedDesign || "Custom"}\n${JSON.stringify(designConfig, null, 2)}`
     }
     if (!projectId) {
-      setPendingSubmitData({
+      const submitData = {
         userMessage,
         selectedImage: selectedImage ? { ...selectedImage } : null,
         isDiscussMode,
@@ -1609,10 +1610,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         isFalborDb,
         isNeonDb,
         selectedFramework,
-      })
+      }
+      setPendingSubmitData(submitData)
 
       // Automatically send message without asking about database
-      await createProject(isFalborDb || isNeonDb)
+      await createProject(isFalborDb || isNeonDb, submitData)
       return
     }
 
@@ -1693,7 +1695,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
         abortControllerRef.current = new AbortController()
         try {
-          const effectiveModel = balanceData?.subscriptionTier === "none" ? "gemini-3.1-flash-lite" : selectedModel
+          const effectiveModel = balanceData?.subscriptionTier === "none" ? "gpt-5" : selectedModel
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1742,6 +1744,18 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       streamError = true
                       alert(`Error: ${data.error}`)
                       break
+                    }
+                    if (data.cloneScreenshot) {
+                      // Prepend the captured screenshot as a visible image in the AI message
+                      // This lets the user confirm what site was captured before code is generated
+                      const screenshotMd = `🖼️ **Captured Screenshot of [${data.cloneUrl || "target site"}](${data.cloneUrl || ""})**\n\n<clone-screenshot src="${data.cloneScreenshot}" />\n\n---\n\n`
+                      accumulated = screenshotMd
+                      onNewMessage({
+                        ...tempAssistant,
+                        content: accumulated,
+                        id: tempAssistantId,
+                        isAutomated: false,
+                      })
                     }
                     if (data.text) {
                       accumulated += data.text
@@ -1813,7 +1827,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         }
       } else if (projectId) {
         abortControllerRef.current = new AbortController()
-        const effectiveModel = balanceData?.subscriptionTier === "none" ? "gemini-3.1-flash-lite" : selectedModel
+        const effectiveModel = balanceData?.subscriptionTier === "none" ? "gpt-5" : selectedModel
         await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1954,35 +1968,37 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           </Button>
         </div>
       )}
-      <div className={hasSubscription ? "bg-[#dbd9d9b2] p-[5px] rounded-[12px]" : ""}>
+      {/* bg-[#dbd9d9b2] p-[5px] rounded-[12px] */}
+      <div className={hasSubscription ? "" : ""}>
         <form
           onSubmit={handleSubmit}
-          className={`relative p-1 rounded-lg`}
+          className={cn(
+            "relative p-1 rounded-lg border border-border/50 shadow-sm transition-all",
+            "bg-card dark:bg-[#2C2C30] text-foreground"
+          )}
           style={{
-            backgroundColor: "#ffffff",
-            border: "1px solid #8373732c",
             transition: "background-image 200ms ease",
             backgroundImage: `
-      linear-gradient(#ffffff, #ffffff),
-      /* TOP border (colored section only) */
-      linear-gradient(
-        to right,
-        ${isActive ? "#888888ff" : "rgba(158, 158, 158, 1)"} 0%,
-        rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 18%,
-        rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 35%,
-        rgba(219, 219, 217, 0.7) 50%,
-        #dbd9d9b2 60%
-      ),
-      /* LEFT border (colored section only) */
-      linear-gradient(
-        to bottom,
-        ${isActive ? "#888888ff" : "rgba(158, 158, 158, 1)"} 0%,
-        rgba(158, 158, 158, ${isActive ? "1" : "0.45"}) 22%,
-        rgba(158, 158, 158, ${isActive ? "0.85" : "0.25"}) 40%,
-        rgba(219, 219, 217, 0.7) 55%,
-        #dbd9d9b2 65%
-      )
-    `,
+              linear-gradient(var(--chat-background, var(--card)), var(--chat-background, var(--card))),
+              /* TOP border (colored section only) */
+              linear-gradient(
+                to right,
+                ${isActive ? "#0099ff" : "var(--border)"} 0%,
+                rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 18%,
+                rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 35%,
+                rgba(219, 219, 217, 0.7) 50%,
+                var(--border) 60%
+              ),
+              /* LEFT border (colored section only) */
+              linear-gradient(
+                to bottom,
+                ${isActive ? "#0099ff" : "var(--border)"} 0%,
+                rgba(0, 153, 255, ${isActive ? "1" : "0.45"}) 22%,
+                rgba(0, 153, 255, ${isActive ? "0.85" : "0.25"}) 40%,
+                rgba(219, 219, 217, 0.7) 55%,
+                var(--border) 65%
+              )
+            `,
             backgroundOrigin: "padding-box, border-box, border-box",
             backgroundClip: "padding-box, border-box, border-box",
           }}
@@ -2332,7 +2348,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
                   : isDiscussMode ? "Discuss anything..." : placeholder
             }
-            className="w-full min-h-[120px] max-h-[120px] resize-none bg-transparent text-black placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full min-h-[120px] max-h-[120px] resize-none bg-transparent text-foreground placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
             disabled={isLoading || isDailyLimitReached || isViewer}
           />
           <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
@@ -2342,7 +2358,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                 variant="ghost"
                 size="sm"
                 onClick={onCancelEdit}
-                className="absolute top-1/2 left-7.5 transform -translate-y-1/2 h-7 px-3 text-xs text-black BackgroundStyleButton ml-2"
+                className="absolute top-1/2 left-7.5 transform -translate-y-1/2 h-7 px-3 text-xs text-foreground BackgroundStyleButton ml-2"
               >
                 Cancel
               </Button>
@@ -2354,33 +2370,149 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             ) : (
               <div className="flex items-center">
                 <div className="relative flex items-center" ref={menuRef}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div
-                        onClick={() => {
-                          fileInputRef.current?.click()
-                          setShowMenu(false)
-                        }}
-                        className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
-                      >
-                        <img src="/icons/attachment.png" className="w-4 h-4 " alt="" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>{isViewer ? "Viewing mode" : "Attachment & Images"}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <div
-                    onClick={() => !message.trim() && setShowMapsModal(true)}
-                    className={cn(
-                      "flex items-center gap-1 h-7 px-2 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1 transition-all hover:bg-blue-50 whitespace-nowrap",
-                      (isLoading || message.trim()) && "cursor-not-allowed opacity-50"
-                    )}
-                  >
-                    <img src="/icons/business-report.png" className="w-4 h-4 shrink-0" alt="" />
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <div
+                            className={cn(
+                              "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
+                              (isLoading || isViewer) && "cursor-not-allowed opacity-50 relative"
+                            )}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </div>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{isViewer ? "Viewing mode" : "Tools & Attachments"}</p>
+                      </TooltipContent>
+                    </Tooltip>
 
-                    <span className="leading-none">Business</span>
+                    <DropdownMenuContent
+                      side="top"
+                      align="start"
+                      className="w-48 p-0.5 bg-white dark:bg-[#1E1E21] border border-gray-200 dark:border-white/10 rounded-md shadow-xs z-[100]"
+                    >
+                      {/* File Upload Button */}
+                      <DropdownMenuItem
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 px-1.5 mb-0.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]"
+                      >
+                        <div className="w-5 h-5 flex items-center justify-center rounded-md bg-gray-50 dark:bg-black/20">
+                          <img src="/icons/attachment.png" className="w-3 h-3 dark:invert" alt="" />
+                        </div>
+                        <span className="font-medium text-gray-700 dark:text-white/90">Upload File</span>
+                      </DropdownMenuItem>
+
+                      {/* Database Button / Submenu */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger
+                          onClick={() => {
+                            if (projectId && onOpenDatabase) {
+                              onOpenDatabase()
+                            }
+                          }}
+                          className="flex items-center gap-2 px-1.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]"
+                        >
+                          <div className="w-5 h-5 flex items-center justify-center rounded-md bg-gray-50 dark:bg-black/20">
+                            <img src="/icons/database.png" className="w-3 h-3 dark:hidden" alt="" />
+                            <img src="/icons/database-dark.png" className="w-3 h-3 hidden dark:block" alt="" />
+                          </div>
+                          <span className="font-medium text-gray-700 dark:text-white/90">Data Connections</span>
+                        </DropdownMenuSubTrigger>
+
+                        {(!projectId || !onOpenDatabase) && (
+                          <DropdownMenuPortal>
+                            <DropdownMenuSubContent
+                              sideOffset={8}
+                              className="w-52 p-1 bg-white dark:bg-[#1E1E21] border border-gray-200 dark:border-white/10 rounded-md shadow-xs"
+                            >
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (!hasSubscription) {
+                                    setShowPremiumAlert(true);
+                                    return;
+                                  }
+                                  setIsFalborDb(true);
+                                  setIsNeonDb(false);
+                                }}
+                                className="flex items-center gap-2 px-1.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]"
+                              >
+                                <img src="/icons/falbor.png" className="w-5 h-5" alt="" />
+                                <span className={cn(!hasSubscription && "opacity-70")}>Falbor Database</span>
+                                <Badge className={cn("text-[10px] h-4 px-1.5", !hasSubscription && "opacity-50")}>Pro</Badge>
+                                {!hasSubscription ? (
+                                  <Lock className="h-3 w-3 ml-auto text-gray-500" />
+                                ) : (
+                                  isFalborDb && <Check className="h-3 w-3 ml-auto" />
+                                )}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => { setIsFalborDb(false); setIsNeonDb(false); setShowDatabaseModal(true); }}
+                                className="flex items-center gap-2 px-1.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]"
+                              >
+                                <img src="/icons/supabase.png" className="w-5 h-5" alt="" />
+                                <span>Connect Supabase</span>
+                                {!isFalborDb && !isNeonDb && credentialsSaved && <Check className="h-3 w-3 ml-auto text-green-600" />}
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => { setIsFalborDb(false); setIsNeonDb(false); setCredentialsSaved(false); }}
+                                className="flex items-center gap-2 px-1.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]"
+                              >
+                                <img src="/icons/database-off.png" className="w-5 h-5" alt="" />
+                                <span>Create without DB</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuSubContent>
+                          </DropdownMenuPortal>
+                        )}
+                      </DropdownMenuSub>
+
+                      {/* Business Button */}
+                      <DropdownMenuItem
+                        onClick={() => !message.trim() && setShowMapsModal(true)}
+                        disabled={isLoading || message.trim().length > 0}
+                        className={cn(
+                          "flex items-center gap-2 px-1.5 mb-0.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]",
+                          (isLoading || message.trim()) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        <div className="w-5 h-5 flex items-center justify-center rounded-md bg-gray-50 dark:bg-black/20">
+                          <img src="/icons/business-report.png" className="w-3.5 h-3.5 dark:hidden" alt="" />
+                          <img src="/icons/business-report-dark.png" className="w-3.5 h-3.5 hidden dark:block" alt="" />
+                        </div>
+                        <span className="font-medium text-gray-700 dark:text-white/90">Business</span>
+                      </DropdownMenuItem>
+
+                      {/* Move Business button here too? The user said "the two buttons", 
+                          but typically Business and Clone are part of the toolkit. 
+                          Keeping Clone standalone as per current setup unless asked otherwise.
+                      */}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Clone Button */}
+                  <div className="relative" ref={cloneDropdownRef}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div
+                          id="clone-tool-button"
+                          onClick={handleInsertCloneText}
+                          className={cn(
+                            "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all",
+                            (isLoading || isViewer) && "cursor-not-allowed opacity-50"
+                          )}
+                        >
+                          <Wrench className="w-4 h-4" />
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Clone Website</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
+
+                  {/* Business button removed from here, now in Plus menu */}
                   {menuMode === "main" ? (
                     <div className="space-y-0.5">
                       {/* <Tooltip>
@@ -2391,7 +2523,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                                 setMenuMode("design")
                               }
                             }}
-                            className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
+                            className={cn("h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1", isLoading && "cursor-not-allowed opacity-50 relative")}
                           >
                             <Palette className="h-4 w-4 text-black/90" />
                           </div>
@@ -2402,7 +2534,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       </Tooltip> */}
                     </div>
                   ) : (
-                    <div className="space-y-0.5 bg-white border border-[#cfcfd1] rounded-md p-0.5 w-[200px]">
+                    <div className="space-y-0.5 bg-card border border-border rounded-md p-0.5 w-[200px]">
                       <div onClick={() => setMenuMode("main")} className="flex items-center px-2 py-1.5 text-xs rounded-sm BackgroundStyle cursor-default w-full">
                         <ArrowLeft className="h-3 w-3 mr-2" />
                         Back
@@ -2443,7 +2575,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         setPreviewUrl: (url: string) => window.dispatchEvent(new CustomEvent('falbor-set-preview-url', { detail: { url } }))
                       })}
                       className={cn(
-                        "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-black flex items-center justify-center transition-all hover:scale-105 active:scale-95",
+                        "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground flex items-center justify-center transition-all hover:scale-105 active:scale-95",
                         isLoading && "cursor-not-allowed opacity-50 relative"
                       )}
                     >
@@ -2479,7 +2611,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
-                      className="h-7 px-2.5 text-[12px] shadow-none rounded-md bg-white text-black ml-2 hover:bg-[#e7e7e7] transition-colors cursor-pointer"
+                      className="h-7 px-2.5 border-dashed border-border text-[12px] bg-white dark:bg-[#2C2C30] shadow-none rounded-md text-foreground ml-2 hover:bg-muted transition-colors cursor-pointer border"
                       disabled={isLoading || isViewer}
                       variant="ghost"
                       size="sm"
@@ -2488,12 +2620,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       <span className="truncate max-w-[100px]">
                         {currentModel.label}
                         {currentModel.id === 'falmax' && (
-                          <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
+                          <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-500/10 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-500/20">teams+</span>
                         )}
                       </span>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48 max-h-[400px] overflow-y-auto bg-white border border-gray-200 shadow-md border border-[#cfcfd1] z-[100]">
+                  <DropdownMenuContent align="start" className="w-48 max-h-[400px] overflow-y-auto bg-card border border-border shadow-md z-[100]">
                     <TooltipProvider>
                       {MODEL_OPTIONS.map((model) => (
                         <Tooltip key={model.id}>
@@ -2501,8 +2633,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                             <DropdownMenuItem
                               onClick={() => !model.soon && handleModelSelect(model.id)}
                               className={cn(
-                                "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7]",
-                                selectedModel === model.id && "bg-[#e7e7e7]",
+                                "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7] dark:hover:bg-[#2C2C30]",
+                                selectedModel === model.id && "bg-[#e7e7e7] dark:bg-[#2C2C30]",
                                 model.soon && "opacity-70 cursor-not-allowed"
                               )}
                             >
@@ -2511,15 +2643,15 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                               </div>
                               <span className="text-sm font-medium">
                                 {model.label}
-                                {model.id === 'falmax' && (
+                                {/* {model.id === 'falmax' && (
                                   <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
-                                )}
+                                )} */}
                               </span>
                               {model.isPremium && !hasSubscription && (
                                 <Lock className="w-3 h-3 ml-auto text-gray-700" />
                               )}
                               {model.soon && (
-                                <span className="ml-1 text-[10px] font-bold text-gray-700 bg-gray-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-gray-100/50">Soon</span>
+                                <span className="ml-1 text-[10px] font-bold text-gray-700 bg-gray-50 px-1 border border-gray-200 rounded uppercase tracking-tighter shadow-sm">Soon</span>
                               )}
                             </DropdownMenuItem>
                           </TooltipTrigger>
@@ -2548,120 +2680,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
-              <div
-                className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
-                onMouseEnter={() => setShowDatabaseHover(true)}
-                onMouseLeave={() => setShowDatabaseHover(false)}
-                onClick={(e) => {
-                  if (projectId && onOpenDatabase) {
-                    onOpenDatabase()
-                  }
-                }}
-              >
-                <img src="/icons/database.png" className="w-4 h-4 " alt="" />
-                {/* {isFalborDb && <Badge className="ml-auto">Falbor</Badge>}
-                    {credentialsSaved && !isFalborDb && <Badge className="ml-auto">Connected</Badge>} */}
-
-                {showDatabaseHover && (!projectId || !onOpenDatabase) && (
-                  <div
-                    className="absolute z-50 w-46
-                              focus:bg-accent focus:text-accent-foreground data-[variant=destructive]:text-destructive 
-                              data-[variant=destructive]:focus:bg-destructive/10
-                              dark:data-[variant=destructive]:focus:bg-destructive/20 
-                              data-[variant=destructive]:focus:text-destructive data-[variant=destructive]:*:[svg]:!text-destructive
-                              [&_svg:not([class*='text-'])]:text-muted-foreground 
-                              items-center gap-2 rounded-md px-0.5 py-0.5 text-sm
-                              outline-hidden select-none data-[disabled]:pointer-events-none 
-                              data-[disabled]:opacity-50 data-[inset]:pl-8 [&_svg]:pointer-events-none [&_svg]:shrink-0 
-                              [&_svg:not([class*='size-'])]:size-4 bg-white shadow-md border border-[#cfcfd1] rounded-md p-0.5"
-                    onMouseEnter={() => setShowDatabaseHover(true)}
-                    onMouseLeave={() => setShowDatabaseHover(false)}
-                  >
-                    <TooltipProvider>
-                      {/* <Tooltip>
-                                    <TooltipTrigger asChild>
-                                      <div
-                                        className="flex items-center w-full px-2 h-8 py-1.5 text-sm rounded-md hover:bg-white cursor-pointer"
-                                        onClick={(e) => { e.stopPropagation(); setIsNeonDb(true); setIsFalborDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
-                                      >
-                                        <img src="/icons/Max.png" className="w-10 h-10 mr-2" alt="" />
-                                        <span className="flex-1 text-left">Falbor Database Max</span>
-                                        {isNeonDb && <Check className="h-4 w-4 text-black" />}
-                                      </div>
-                                    </TooltipTrigger>
-                                    <TooltipContent>
-                                      <p>Use the professional Neon-powered database (Recommended)</p>
-                                    </TooltipContent>
-                                  </Tooltip> */}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className="flex items-center w-full px-2 py-1.5 h-8 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(true); setIsNeonDb(false); setShowMenu(false); setShowDatabaseHover(false); }}
-                          >
-                            <img src="/icons/falbor.png" className="w-6 h-6 mr-2" alt="" />
-                            <span className="flex-1 text-left">Falbor Database</span>
-                            {isFalborDb && <Check className="h-4 w-4 text-black" />}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p>Use the Falbor built-in database (Supabase)</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setShowDatabaseModal(true); setShowMenu(false); setShowDatabaseHover(false); }}
-                          >
-                            <img src="/icons/supabase.png" className="w-6 h-6 mr-2" alt="" />
-                            <span className="flex-1 text-left">Connect Supabase</span>
-                            {!isFalborDb && !isNeonDb && credentialsSaved && <Check className="h-4 w-4 text-green-600" />}
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p>Connect your own Supabase database</p>
-                        </TooltipContent>
-                      </Tooltip>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <div
-                            className="flex items-center w-full h-8 px-2 py-1.5 text-sm rounded-md hover:bg-[#e7e7e7] cursor-pointer"
-                            onClick={(e) => { e.stopPropagation(); setIsFalborDb(false); setIsNeonDb(false); setCredentialsSaved(false); setShowMenu(false); setShowDatabaseHover(false); }}
-                          >
-                            <img src="/icons/database-off.png" className="w-6 h-6 mr-2" alt="" />
-                            <span className="flex-1 text-left">Create without DB</span>
-                          </div>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p>Proceed without connecting any database</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
-                )}
+              <div className="flex items-center gap-1.5 ml-1">
+                {/* Database Toggle and Hover panel removed from here, now in Plus menu */}
               </div>
-              {/* Voice Input Button */}
-              {!isListening && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      onClick={handleVoiceToggle}
-                      className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
-                      title="Voice input"
-                      disabled={isLoading}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <AudioLinesIcon className="w-4 h-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Voice input</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
               {!isImproving && message.trim() && !isLoading && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -2672,11 +2693,33 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       variant="ghost"
                       size="sm"
                     >
-                      <img src="/icons/Improving.png" alt="" />
+                      <img src="/icons/Improving.png" className="dark:hidden" alt="" />
+                      <img src="/icons/Improving-dark.png" className="hidden dark:block" alt="" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
                     <p>Enhance prompt</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {/* Voice Input Button */}
+              {!isListening && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      onClick={handleVoiceToggle}
+                      className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-muted text-foreground"
+                      title="Voice input"
+                      disabled={isLoading}
+                      variant="ghost"
+                      size="sm"
+                    >
+                      <AudioLinesIcon className="w-4 h-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>Voice input</p>
                   </TooltipContent>
                 </Tooltip>
               )}
@@ -2695,7 +2738,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       size={isProvisioning || editingMessage ? "default" : "icon"}
                       className={cn(
                         "h-7 p-1.5 rounded-md mr-1 transition-colors w-7",
-                        (isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-white hover:bg-black/5 border border-black/20")),
+                        (isListening ? "bg-red-500 hover:bg-red-600" : (effectiveIsLoading ? "bg-[#0099ff]/30" : "bg-card hover:bg-muted border border-border")),
                         (!effectiveIsLoading && !isListening &&
                           ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
                             !isAuthenticated || isViewer)) ? "cursor-not-allowed opacity-50" : "cursor-pointer"
@@ -2709,12 +2752,12 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       ) : isViewer ? (
                         <Lock className="w-3.5 h-3.5 text-red-500" />
                       ) : (
-                        <ArrowUp className="w-6 h-6 text-black" />
+                        <ArrowUp className="w-6 h-6 text-foreground" />
                       )}
                     </Button>
                   </TooltipTrigger>
                   {isViewer && (
-                    <TooltipContent side="top" align="center" className="bg-white text-black border shadow-md font-medium">
+                    <TooltipContent side="top" align="center" className="bg-card text-foreground border border-border shadow-md font-medium">
                       <p className="flex items-center gap-2">
                         <Lock className="w-3 h-3 text-red-500" />
                         You cannot send messages.
@@ -2729,16 +2772,15 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
         {/* Upgrade Banner & Daily Limit Indicator */}
         {!hasSubscription && (
-          <div className="mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] bg-[#dbd9d9b2]/80 flex items-center justify-between">
-            <div className="flex flex-col gap-0.5 ml-2">
-              <p className="text-[13px] text-zinc-600 font-medium">
-                {isDailyLimitReached
-                  ? `Credits renew in ${formatTime(dailyResetTimer)}`
-                  : `You have`} {5 - (balanceData?.dailyMessageCount || 0)} messages left for today.
-              </p>
-              {!isDailyLimitReached && (
-                <div className="flex items-center gap-1.5">
-                  {/* <div className="flex gap-0.5">
+          <div className="relative mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] z-[-10] bg-muted backdrop-blur-sm flex items-center justify-between">            <div className="flex flex-col gap-0.5 ml-2">
+            <p className="text-[13px] text-zinc-600 font-medium">
+              {isDailyLimitReached
+                ? `Credits renew in ${formatTime(dailyResetTimer)}`
+                : `You have`} {5 - (balanceData?.dailyMessageCount || 0)} messages left for today.
+            </p>
+            {!isDailyLimitReached && (
+              <div className="flex items-center gap-1.5">
+                {/* <div className="flex gap-0.5">
                     {[1, 2, 3, 4, 5].map((i) => (
                       <div
                         key={i}
@@ -2749,9 +2791,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                       />
                     ))}
                   </div> */}
-                </div>
-              )}
-            </div>
+              </div>
+            )}
+          </div>
             <Link href="/pricing">
               <Button
                 size="sm"
@@ -2764,31 +2806,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           </div>
         )}
       </div>
-      <Dialog open={showConfirmation} onOpenChange={setShowConfirmation}>
-        <DialogContent>
-          <DialogTitle>Confirm Build</DialogTitle>
-          <p>Are you sure you want to build this project without a database connection?</p>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setShowConfirmation(false)
-                setShowDatabaseModal(true)
-              }}
-            >
-              No, connect a database
-            </Button>
-            <Button
-              onClick={() => {
-                setShowConfirmation(false)
-                createProject(false)
-              }}
-            >
-              Yes, continue without database
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+
       <Dialog open={!!selectedFile} onOpenChange={() => setSelectedFile(null)}>
         <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto p-0 z-[9999]">
           <div className="flex justify-between items-center mb-4 px-4 py-2">

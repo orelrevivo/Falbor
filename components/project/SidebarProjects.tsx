@@ -104,11 +104,11 @@ const ProjectItemRow = ({
   handleDeleteProject: (id: string, e: React.MouseEvent) => void;
   setIsProjectMenuOpen: (open: boolean) => void;
 }) => (
-  <div className="group flex items-center gap-2 px-1 z-[50] rounded-sm BackgroundStyle relative">
+  <div className="group flex items-center gap-2 px-1 z-[50] rounded-sm BackgroundStyle border border-transparent hover:border-border transition-all relative">
     <Link href={`/chat/${project.id}`} className="flex items-center gap-3 flex-1 min-w-0 py-0.5">
       <div className={cn(
         "flex-shrink-0 h-6 w-6 rounded-md flex items-center justify-center transition-colors",
-        project.is_owner ? "text-gray-900" : "text-gray-900"
+        project.is_owner ? "text-foreground" : "text-foreground"
       )}>
         {project.is_github_clone && project.github_url ? (
           <GitBranch className="h-3.5 w-3.5" />
@@ -119,7 +119,7 @@ const ProjectItemRow = ({
         )}
       </div>
       <div className="flex-1 min-w-0 flex flex-col gap-0.5">
-        <span className="text-[12px] font-medium text-zinc-700 truncate group-hover:text-zinc-900 transition-colors">
+        <span className="text-[12px] font-medium text-muted-foreground truncate group-hover:text-foreground transition-colors">
           {project.title || 'Untitled Project'}
         </span>
       </div>
@@ -313,7 +313,7 @@ export default function SidebarProjects({
             <div className="ml-2 mt-15 pb-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
               <Link href="/" className='flex flex-col gap-1'>
                 <Button className={cn(
-                  "py-2 bg-transparent text-zinc-700 border border-[#0099ff] bg-white BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                  "py-2 bg-transparent text-foreground border border-[#0099ff] bg-background BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
                 )}>
                   <ArrowLeft className="h-4 w-4 shrink-0" />
                   <span className="font-medium text-[13px]">Back</span>
@@ -323,36 +323,39 @@ export default function SidebarProjects({
               <Button
                 onClick={() => setActiveTab("preview")}
                 className={cn(
-                  "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
-                  activeTab === "preview" ? "BackgroundStyleButton text-black" : "",
-                  "w-full px-3.5"
+                  "py-2 bg-transparent border-none rounded-md flex items-center gap-2 justify-start w-full px-3.5 py-1 transition-all",
+                  "text-muted-foreground hover:text-foreground dark:text-white/70 dark:hover:text-white",
+                  activeTab === "preview"
+                    ? "BackgroundStyleButton text-foreground dark:text-white font-bold"
+                    : "BackgroundStyle hover:bg-zinc-200/50 dark:hover:bg-white/10"
                 )}
               >
-                <Globe className="h-4 w-4 shrink-0" />
+                <Globe className={cn("h-4 w-4 shrink-0", activeTab === "preview" ? "text-primary dark:text-white" : "text-muted-foreground dark:text-white/60")} />
                 <span className="font-medium text-[13px]">Preview</span>
               </Button>
 
               <Button
                 onClick={() => setActiveTab("code")}
                 className={cn(
-                  "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
-                  activeTab === "code" ? "BackgroundStyleButton text-black" : "",
-                  "w-full px-3.5"
+                  "py-2 bg-transparent border-none rounded-md flex items-center gap-2 justify-start w-full px-3.5 py-1 transition-all",
+                  "text-muted-foreground hover:text-foreground dark:text-white/70 dark:hover:text-white",
+                  activeTab === "code"
+                    ? "BackgroundStyleButton text-foreground dark:text-white font-bold"
+                    : "BackgroundStyle hover:bg-zinc-200/50 dark:hover:bg-white/10"
                 )}
               >
-                <Code2 className="h-4 w-4 shrink-0" />
+                <Code2 className={cn("h-4 w-4 shrink-0", activeTab === "code" ? "text-primary dark:text-white" : "text-muted-foreground dark:text-white/60")} />
                 <span className="font-medium text-[13px]">Code</span>
               </Button>
 
-              <div className="pt-2 mt-2 border-t border-zinc-200 flex flex-col gap-1">
+              <div className="pt-2 mt-2 border-t border-border flex flex-col gap-1">
                 {[
-                  { id: "tables", icon: Database, label: "Tables" },
-                  { id: "users", icon: Users, label: "Users" },
-                  { id: "ai", icon: Sparkles, label: "AI" },
-                  { id: "usage", icon: BarChart3, label: "Usage" },
-                  { id: "auth_providers", icon: ShieldCheck, label: "Auth Providers" },
-                  // { id: "credentials", icon: Key, label: "Credentials" },
-                  { id: "feedback", icon: MessageSquare, label: "Feedback" },
+                  { id: "tables", icon: Database, label: "Database" },
+                  { id: "users", icon: Users, label: "Authentication" },
+                  { id: "ai", icon: Sparkles, label: "AI Settings" },
+                  { id: "usage", icon: BarChart3, label: "Consumption" },
+                  { id: "auth_providers", icon: ShieldCheck, label: "Social Auth" },
+                  { id: "feedback", icon: MessageSquare, label: "Analytics" },
                   { id: "emails", icon: Mail, label: "Emails" },
                   { id: "storage", icon: HardDrive, label: "Storage" },
                   { id: "functions", icon: Cpu, label: "Functions" },
@@ -364,32 +367,28 @@ export default function SidebarProjects({
                       setDatabaseTab(item.id as any);
                     }}
                     className={cn(
-                      "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                      "py-2 bg-transparent border-none rounded-md flex items-center gap-2 justify-start w-full px-3.5 py-1 transition-all",
+                      "text-muted-foreground hover:text-foreground dark:text-white/60 dark:hover:text-white",
                       activeTab === "database" && databaseTab === item.id
-                        ? "BackgroundStyleButton text-black"
-                        : ""
+                        ? "BackgroundStyleButton text-foreground dark:text-white font-bold shadow-sm"
+                        : "BackgroundStyle hover:bg-zinc-200/50 dark:hover:bg-white/5"
                     )}
                   >
                     <div className="flex items-center gap-2">
-                      <item.icon className="h-4 w-4 shrink-0" />
+                      <item.icon className={cn("h-4 w-4 shrink-0", activeTab === "database" && databaseTab === item.id ? "text-primary dark:text-white" : "text-muted-foreground dark:text-white/60")} />
                       <span className="font-medium text-[13px]">{item.label}</span>
                     </div>
-
-                    {/* {item.isNew && (
-                      <Badge className="text-[10px] px-1.5 py-0 h-4 rounded-sm">
-                        New
-                      </Badge>
-                    )} */}
                   </Button>
                 ))}
               </div>
 
-              <div className="pt-2 mt-2 border-t border-zinc-200 flex flex-col gap-1">
+              <div className="pt-2 mt-2 border-t border-border flex flex-col gap-1">
                 {[
                   { id: "project-settings", label: "General", icon: Settings },
-                  { id: "sushi", label: "Social Content", icon: Rocket, isNew: true },
-    { id: "analytics", label: "Analytics", icon: BarChart3, soon: true }, // ⭐ soon feature
+                  { id: "sushi", label: "Social Content", icon: Rocket },
+                  { id: "analytics", label: "Analytics", icon: BarChart3, soon: true }, // ⭐ soon feature
                   { id: "security", label: "Security", icon: Shield },
+                  { id: "publish-template", label: "Publish Template", icon: FileText },
                   { id: "secrets", label: "Secrets", icon: Key },
                   { id: "automations", label: "Automations", icon: CheckSquare },
                   { id: "github", label: "GitHub", icon: Github },
@@ -408,19 +407,16 @@ export default function SidebarProjects({
                       setSettingsSection(item.id as any);
                     }}
                     className={cn(
-                      "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                      "py-2 bg-transparent rounded-md flex items-center gap-2 justify-start w-full px-3.5 py-1 transition-all",
+                      "text-muted-foreground hover:text-foreground dark:text-white/70 dark:hover:text-white",
                       activeTab === "settings" && settingsSection === item.id
-                        ? "BackgroundStyleButton text-black"
-                        : "",
-                      item.soon ? "opacity-80 cursor-not-allowed" : "",
+                        ? "BackgroundStyleButton text-foreground dark:text-white font-bold shadow-sm"
+                        : "BackgroundStyle hover:bg-zinc-200/50 dark:hover:bg-white/10",
+                      item.soon ? "opacity-50 cursor-not-allowed" : "",
                       "w-full px-3.5"
                     )}
                   >
-                    {item.soon ? (
-                      <BarChart3 className="h-4 w-4 shrink-0" />
-                    ) : (
-                      <item.icon className="h-4 w-4 shrink-0" />
-                    )}
+                    <item.icon className={cn("h-4 w-4 shrink-0", activeTab === "settings" && settingsSection === item.id ? "text-primary dark:text-white" : "text-muted-foreground dark:text-white/60")} />
 
                     <span className="font-medium text-[13px] flex items-center gap-2">
                       {item.label}
@@ -469,7 +465,7 @@ export default function SidebarProjects({
             <div className="ml-2 mt-15 pb-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
               <Link href="/" className='flex flex-col gap-1'>
                 <Button className={cn(
-                  "py-2 bg-transparent text-zinc-700 border border-[#0099ff] bg-white BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                  "py-2 bg-transparent text-foreground border border-[#0099ff] bg-background BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
                 )}>
                   <ArrowLeft className="h-4 w-4 shrink-0" />
                   <span className="font-medium text-[13px]">Back</span>
@@ -488,11 +484,11 @@ export default function SidebarProjects({
                   <Link href={item.id} key={item.id}>
                     <Button
                       className={cn(
-                        "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
-                        pathname === item.id ? "BackgroundStyleButton text-black" : "hover:text-zinc-900"
+                        "py-2 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        pathname === item.id ? "BackgroundStyleButton text-black dark:text-white" : "hover:text-zinc-900"
                       )}
                     >
-                      <item.icon className={cn("h-4 w-4 shrink-0", pathname === item.id ? "text-black" : "text-zinc-500")} />
+                      <item.icon className={cn("h-4 w-4 shrink-0", pathname === item.id ? "text-black dark:text-white" : "text-zinc-500 dark:text-white/80")} />
                       {effectiveHovered && <span className="font-medium text-[13px]">{item.label}</span>}
                     </Button>
                   </Link>
@@ -503,11 +499,11 @@ export default function SidebarProjects({
             {/* Footer with user profile */}
             {user && (
               <div className="mb-3 ml-3 pr-3">
-                <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 transition-colors cursor-pointer group">
+                <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer group">
                   {user.imageUrl ? <img src={user.imageUrl} alt="User" className="h-8 w-8 rounded-full object-cover shadow-sm" /> : <div className="h-8 w-8 rounded-full bg-zinc-500 flex items-center justify-center text-white text-xs font-bold">{user.firstName?.slice(0, 1)}</div>}
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-semibold text-zinc-900 truncate">{user.fullName || "User"}</p>
-                    <p className="text-[10px] text-zinc-500 truncate">{user.primaryEmailAddress?.emailAddress}</p>
+                    <p className="text-[11px] font-semibold text-foreground truncate">{user.fullName || "User"}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{user.primaryEmailAddress?.emailAddress}</p>
                   </div>
                 </div>
               </div>
@@ -576,7 +572,7 @@ export default function SidebarProjects({
                   <Button
                     onClick={() => setSearchOpen(true)}
                     className={cn(
-                      "py-2 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                      "py-2 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
                       "w-full px-3.5"
                     )}
                   >
@@ -584,13 +580,13 @@ export default function SidebarProjects({
                     {effectiveHovered && <span className="font-medium text-[13px]">Search</span>}
                   </Button>
                 ) : (
-                  <div className="mb-1 p-1 bg-white/50 rounded-lg border border-zinc-100 mb-2">
+                  <div className="">
                     <div className="relative flex items-center">
                       <Search className="absolute left-2.5 h-3.5 w-3.5 text-zinc-400" />
                       <Input
                         autoFocus
                         placeholder="Search projects..."
-                        className="h-9 pl-8 pr-8 text-[13px] border-none bg-transparent focus-visible:ring-0 shadow-none"
+                        className="h-7 pl-8 pr-8 text-[13px] bg-[#2C2C30]"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => {
@@ -639,7 +635,7 @@ export default function SidebarProjects({
               <Link href="/">
                 <Button
                   className={cn(
-                    "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                    "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
                     "w-full px-3.5"
                   )}
                 >
@@ -650,7 +646,7 @@ export default function SidebarProjects({
               <Link href="/projects">
                 <Button
                   className={cn(
-                    "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                    "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
                     "w-full px-3.5"
                   )}
                 >
@@ -664,7 +660,7 @@ export default function SidebarProjects({
                   <Link href="/templates">
                     <Button
                       className={cn(
-                        "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
                         "w-full px-3.5"
                       )}
                     >
@@ -675,7 +671,7 @@ export default function SidebarProjects({
                   <Link href="/pricing">
                     <Button
                       className={cn(
-                        "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
                         "w-full px-3.5"
                       )}
                     >
@@ -686,7 +682,7 @@ export default function SidebarProjects({
                   <Link href="/settings">
                     <Button
                       className={cn(
-                        "py-2 mb-1 bg-transparent text-zinc-700 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                        "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
                         "w-full px-3.5"
                       )}
                     >
@@ -702,7 +698,7 @@ export default function SidebarProjects({
                 <div className="mt-4 space-y-4">
                   {favoriteProjects.length > 0 && (
                     <div>
-                      <div className="px-2 py-1 text-[13px] text-gray-800">Favorites</div>
+                      <div className="px-2 py-1 text-[13px] text-gray-800 dark:text-white/80">Favorites</div>
                       {favoriteProjects.map(project => (
                         <ProjectItemRow
                           key={project.id}
@@ -716,7 +712,7 @@ export default function SidebarProjects({
                     </div>
                   )}
                   <div>
-                    <div className="px-2 py-1 text-[13px] text-gray-800">Recent Projects</div>
+                    <div className="px-2 py-1 text-[13px] text-gray-800 dark:text-white/80">Recent Projects</div>
                     {recentProjects.map(project => (
                       <ProjectItemRow
                         key={project.id}
@@ -735,11 +731,11 @@ export default function SidebarProjects({
             {/* Footer */}
             {effectiveHovered && user && (
               <div className="mb-3 ml-3 pr-3">
-                <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 transition-colors cursor-pointer group">
+                <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer group">
                   {user.imageUrl ? <img src={user.imageUrl} alt="User" className="h-8 w-8 rounded-full object-cover shadow-sm" /> : <div className="h-8 w-8 rounded-full bg-zinc-500 flex items-center justify-center text-white text-xs font-bold">{user.firstName?.slice(0, 1)}</div>}
                   <div className="flex-1 min-w-0">
-                    <p className="text-[11px] font-semibold text-zinc-900 truncate">{user.fullName || "User"}</p>
-                    <p className="text-[10px] text-zinc-500 truncate">{user.primaryEmailAddress?.emailAddress}</p>
+                    <p className="text-[11px] font-semibold text-foreground truncate">{user.fullName || "User"}</p>
+                    <p className="text-[10px] text-muted-foreground truncate">{user.primaryEmailAddress?.emailAddress}</p>
                   </div>
                 </div>
               </div>

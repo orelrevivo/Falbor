@@ -49,7 +49,7 @@ export default function FeatureCards() {
               <div
                 key={i}
                 onClick={next}
-                className="cursor-pointer w-[420px] h-[70px] flex-shrink-0 bg-[#dbd9d9b2] border border-[#cac9c7] text-black rounded-sm px-3 flex items-center justify-between relative"
+                className="cursor-pointer w-[420px] h-[70px] flex-shrink-0 bg-[#dbd9d9b2] dark:bg-[#2C2C30] text-black dark:text-white rounded-sm px-3 flex items-center justify-between relative"
               >
                 {/* TEXT */}
                 <div className="mt-[-7px] px-2">
@@ -63,16 +63,16 @@ export default function FeatureCards() {
                 </div>
                 {/* RIGHT SIDE */}
                 {card.type === "button" ? (
-                 <div className={`bg-[#adababb2] w-[40%] p-[5px] rounded-[12px]`}>
-                  <button
-                    className={cn(
-                      "flex items-center w-[100%] text-center gap-1 text-sm px-3 py-1.5 rounded-[8px] transition-colors cursor-default bg-white border border-black/30 text-black/80",
-                      card.buttonClass
-                    )}
-                  >
-                   <span className="text-center w-full">{card.buttonText}</span>
-                  </button>
-                 </div>
+                  <div className={`bg-[#adababb2] w-[40%] p-[5px] rounded-[12px]`}>
+                    <button
+                      className={cn(
+                        "flex items-center w-[100%] text-center gap-1 text-sm px-3 py-1.5 rounded-[8px] transition-colors cursor-default bg-white border border-black/30 text-black/80",
+                        card.buttonClass
+                      )}
+                    >
+                      <span className="text-center w-full">{card.buttonText}</span>
+                    </button>
+                  </div>
                 ) : (
                   <img
                     src={card.img}
@@ -97,11 +97,10 @@ export default function FeatureCards() {
           <button
             key={i}
             onClick={() => goTo(i)}
-            className={`w-1.5 h-1.5 rounded-full ${
-              index === i
-                ? "bg-white"
-                : "bg-gray-400/40"
-            }`}
+            className={`w-1.5 h-1.5 rounded-full ${index === i
+              ? "bg-white"
+              : "bg-gray-400/40"
+              }`}
           />
         ))}
       </div>

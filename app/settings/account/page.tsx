@@ -20,6 +20,7 @@ import ActivityGraph from "./activity-graph"
 import { ProfileForm } from "./profile-form"
 
 import { NotificationSettings } from "./notification-settings"
+import { ColorSchemeSection } from "./color-scheme-section"
 
 import { userProfiles } from "@/config/schema"
 import { eq } from "drizzle-orm"
@@ -67,6 +68,7 @@ export default async function AccountPage() {
 
                 <ProfileForm user={userData} initialProfile={profile} />
                 <NotificationSettings initialProfile={profile} />
+                <ColorSchemeSection />
             </div>
 
             {/* Activity Section */}

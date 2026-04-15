@@ -729,16 +729,16 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
   const connection = connectionStatus?.connection
 
   return (
-    <div className="flex h-full w-full bg-white font-sans text-gray-900 overflow-hidden">
+    <div className="flex h-full w-full bg-white dark:bg-[#0F0F0F] font-sans text-gray-900 dark:text-zinc-100 overflow-hidden">
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="flex-1 overflow-auto relative py-8 px-6">
+        <div className="flex-1 overflow-auto relative py-8 px-6 bg-white dark:bg-[#0F0F0F]">
           <div className="max-w-5xl mx-auto w-full">
             {activeTab === "tables" && (
               <div className="p-6 space-y-4">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-md text-gray-900 font-bold">Database</h3>
-                    <p className="text-[12px] text-gray-500">Manage and browse your database tables.</p>
+                    <h3 className="text-md text-gray-900 dark:text-white font-bold">Database</h3>
+                    <p className="text-[12px] text-gray-500 dark:text-gray-400">Manage and browse your database tables.</p>
                   </div>
                   <div className="relative">
                     <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -747,18 +747,18 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                       placeholder="Filter tables..."
                       value={tableSearchTerm}
                       onChange={(e) => setTableSearchTerm(e.target.value)}
-                      className="pl-9 pr-4 py-1.5 bg-white h-7 border rounded-md text-xs focus:bg-white focus:border-blue-200 outline-none transition-all w-32 md:w-48"
+                      className="pl-9 pr-4 py-1.5 bg-white dark:bg-white/5 h-7 border border-gray-100 dark:border-white/10 rounded-md text-xs focus:bg-white dark:focus:bg-white/10 focus:border-blue-200 outline-none transition-all w-32 md:w-48 dark:text-white"
                     />
                   </div>
                 </div>
 
                 {filteredTables.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="w-16 h-16 rounded-2xl bg-gray-50 flex items-center justify-center mb-4">
-                      <Table2 className="w-8 h-8 text-gray-200" />
+                    <div className="w-16 h-16 rounded-2xl bg-gray-50 dark:bg-white/5 flex items-center justify-center mb-4">
+                      <Table2 className="w-8 h-8 text-gray-200 dark:text-gray-700" />
                     </div>
-                    <h4 className="text-sm font-bold text-gray-900">{tableSearchTerm ? "No matching tables" : "No tables found"}</h4>
-                    <p className="text-xs text-gray-500 mt-1 max-w-[240px]">
+                    <h4 className="text-sm font-bold text-gray-900 dark:text-white">{tableSearchTerm ? "No matching tables" : "No tables found"}</h4>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-[240px]">
                       {tableSearchTerm ? "Try a different search term." : "AI will automatically create tables based on your requirements."}
                     </p>
                   </div>
@@ -775,12 +775,12 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <div className="p-2 rounded-xl bg-gray-50 text-gray-400 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <div className="p-2 rounded-xl bg-gray-50 dark:bg-white/5 text-gray-400 group-hover:bg-blue-50 dark:group-hover:bg-[#0099ff]/10 group-hover:text-blue-600 dark:group-hover:text-[#0099ff] transition-colors">
                               <Table2 className="w-4 h-4" />
                             </div>
                             <div>
-                              <span className="text-sm font-bold">{table.name}</span>
-                              <span className="text-[10px] ml-2 text-gray-400 font-medium uppercase tracking-tighter">{table.columns.length} columns</span>
+                              <span className="text-sm font-bold dark:text-white">{table.name}</span>
+                              <span className="text-[10px] ml-2 text-gray-400 dark:text-gray-500 font-medium uppercase tracking-tighter">{table.columns.length} columns</span>
                             </div>
                           </div>
                           <ChevronRight className={cn("w-4 h-4 text-gray-300 transition-transform duration-200", selectedTable?.name === table.name && "rotate-90 text-blue-600")} />
@@ -1502,7 +1502,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                                     roundedSelection: true,
                                     scrollBeyondLastLine: false,
                                     readOnly: false,
-                                    theme: "vs",
+                                    theme: document.documentElement.classList.contains('dark') ? "vs-dark" : "vs",
                                     padding: { top: 20 },
                                     automaticLayout: true,
                                   }}
@@ -1531,7 +1531,7 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                                           [`mailer_templates_${selectedEmailTemplate}_content`]: currentContent + ` {{ ${variable} }}`
                                         })
                                       }}
-                                      className="px-3 py-1.5 bg-gray-50 hover:bg-white hover:border-blue-200 border border-gray-100 rounded-lg text-[11px] font-mono text-gray-600 transition-all shadow-sm active:scale-95"
+                                      className="px-3 py-1.5 bg-gray-50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 hover:border-blue-200 dark:hover:border-blue-500/50 border border-gray-100 dark:border-white/10 rounded-lg text-[11px] font-mono text-gray-600 dark:text-gray-400 transition-all shadow-sm active:scale-95"
                                     >
                                       {"{{ " + variable + " }}"}
                                     </button>
@@ -2026,11 +2026,11 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
 
                 {/* Feedback Detail View */}
                 {selectedFeedback && (
-                  <div className="w-1/2 flex flex-col bg-white overflow-y-auto animate-in fade-in slide-in-from-right-2 duration-300">
+                  <div className="w-1/2 flex flex-col bg-white dark:bg-card border-l dark:border-white/10 overflow-y-auto animate-in fade-in slide-in-from-right-2 duration-300">
                     <div className="p-6 space-y-6">
                       <div className="flex items-center justify-between">
-                        <h3 className="font-bold text-gray-900">Feedback Details</h3>
-                        <button onClick={() => setSelectedFeedback(null)} className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                        <h3 className="font-bold text-gray-900 dark:text-white">Feedback Details</h3>
+                        <button onClick={() => setSelectedFeedback(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg transition-colors">
                           <X className="w-4 h-4 text-gray-400" />
                         </button>
                       </div>
@@ -2096,20 +2096,20 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
               <div className="p-8 max-w-4xl mx-auto space-y-8">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">Falbor AI Settings</h3>
-                    <p className="text-sm text-gray-500 mt-1">Configure your project's AI capabilities and API keys.</p>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Falbor AI Settings</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Configure your project's AI capabilities and API keys.</p>
                   </div>
                   <Sparkles className="w-8 h-8 text-blue-500 opacity-20" />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* API Key Card */}
-                  <div className="bg-white border rounded-sm p-6 shadow-xs">
+                  <div className="bg-white dark:bg-card border dark:border-white/10 rounded-md p-6 shadow-xs">
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600">
+                      <div className="w-10 h-10 rounded-2xl bg-blue-50 dark:bg-[#0099ff]/10 flex items-center justify-center text-blue-600 dark:text-[#0099ff]">
                         <Key className="w-5 h-5" />
                       </div>
-                      <h4 className="text-sm font-bold text-gray-900">Project API Key</h4>
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white">Project API Key</h4>
                     </div>
 
                     <div className="space-y-4">
@@ -2139,12 +2139,12 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
                   </div>
 
                   {/* Integration Card */}
-                  <div className="bg-white border rounded-sm p-6 shadow-xs">
+                  <div className="bg-white dark:bg-card border dark:border-white/10 rounded-md p-6 shadow-xs">
                     <div className="flex items-center gap-3 mb-6">
-                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                         <Terminal className="w-5 h-5" />
                       </div>
-                      <h4 className="text-sm font-bold text-gray-900">Integration Code</h4>
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white">Integration Code</h4>
                     </div>
 
                     <div className="space-y-3">
@@ -2265,8 +2265,8 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
               <div className="p-8 max-w-4xl mx-auto space-y-8">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">Resource Usage</h3>
-                    <p className="text-sm text-gray-500 mt-1">Track your project's AI message consumption and limits.</p>
+                    <h3 className="text-xl font-bold text-gray-900 dark:text-white">Resource Usage</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Track your project's AI message consumption and limits.</p>
                   </div>
                   <BarChart3 className="w-8 h-8 text-blue-500 opacity-20" />
                 </div>
@@ -2328,8 +2328,8 @@ export function DatabasePanel({ projectId, filesOverride, onSendMessage }: Datab
 
           {/* Add User Modal */}
           {showAddUserModal && (
-            <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-[#1E1E21] rounded-2xl shadow-2xl w-full max-w-sm border border-gray-100 dark:border-white/10 overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200">
                 <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
                   <h3 className="font-bold text-gray-900">Create New User</h3>
                   <button onClick={() => setShowAddUserModal(false)} className="p-1 hover:bg-gray-200 rounded-lg transition-colors">

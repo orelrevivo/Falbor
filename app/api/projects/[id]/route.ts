@@ -117,3 +117,35 @@ export async function PATCH(
     return new NextResponse("Internal Error", { status: 500 })
   }
 }
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { userId } = await auth()
+    if (!userId) {
+      return new NextResponse("Unauthorized", { status: 401 })
+    }
+
+    const { id } = await params
+
+    // Only owners can delete projects
+    const [project] = await db
+      .select()
+      .from(projects)
+      .where(and(eq(projects.id, id), eq(projects.userId, userId)))
+      .limit(1)
+
+    if (!project) {
+      return new NextResponse("Project not found or unauthorized", { status: 404 })
+    }
+
+    await db.delete(projects).where(eq(projects.id, id))
+
+    return new NextResponse("Success", { status: 200 })
+  } catch (error) {
+    console.error("[PROJECT_DELETE]", error)
+    return new NextResponse("Internal Error", { status: 500 })
+  }
+}

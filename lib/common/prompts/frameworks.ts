@@ -290,6 +290,14 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    headers: {
+      // Allow external images (wixstatic, framerusercontent, ctfassets, etc.)
+      // to load inside the WebContainer preview iframe
+      "Cross-Origin-Embedder-Policy": "unsafe-none",
+      "Cross-Origin-Resource-Policy": "cross-origin",
+    },
+  },
 })
 \`\`\`
 

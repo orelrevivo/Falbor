@@ -28,17 +28,17 @@ export function McpTabs({ connections, onDisconnect, onSuccess }: McpTabsProps) 
     return (
         <Tabs defaultValue="apps" className="h-full flex flex-col">
             <div className="flex items-center justify-between mb-8">
-                <TabsList className="bg-white shadow-xs flex items-center">
+                <TabsList className="bg-card border border-border shadow-xs flex items-center">
 
                     <TabsTrigger
                         value="apps"
-                        className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+                        className="gap-2 text-foreground data-[state=active]:text-[#0099ff] cursor-pointer"
                     >
                         Applications
                     </TabsTrigger>
                     <TabsTrigger
                         value="custom"
-                        className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+                        className="gap-2 text-foreground data-[state=active]:text-[#0099ff] cursor-pointer"
                     >
                         Castium MCP
                     </TabsTrigger>
@@ -49,7 +49,7 @@ export function McpTabs({ connections, onDisconnect, onSuccess }: McpTabsProps) 
                         placeholder="Search MCPs..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="h-10 pl-10 pr-3 text-xs font-bold rounded-xl bg-white border border-zinc-200 focus:border-[#0099ff] focus:ring-1 focus:ring-[#0099ff]/10"
+                        className="h-10 pl-10 pr-3 text-xs font-bold rounded-xl bg-card border border-border focus:border-[#0099ff] focus:ring-1 focus:ring-[#0099ff]/10"
                     />
                 </div>
             </div>

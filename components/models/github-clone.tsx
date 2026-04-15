@@ -224,19 +224,19 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
 
         {/* HEADER — ONLY FOR SUBSCRIBED USERS */}
         {hasSubscription && (
-          <div className="bg-[#0099ff]/10 rounded-t-md h-24 flex items-center justify-center shrink-0">
+          <div className="bg-[#0099ff]/10 dark:bg-[#0099ff]/10 rounded-t-md h-24 flex items-center justify-center shrink-0">
             <Github className="w-12 h-12 text-[#0099ff]" />
           </div>
         )}
 
-        <div className="flex-1 overflow-hidden flex flex-col">
+        <div className="flex-1 overflow-hidden flex flex-col dark:bg-[#1E1E21]">
           {/* TITLE — ONLY FOR SUBSCRIBED USERS */}
           {hasSubscription && (
             <div className="text-center pt-4 shrink-0">
-              <p className="text-black font-medium">
+              <p className="text-black dark:text-white font-medium">
                 Import from GitHub
               </p>
-              <p className="text-black/70 text-sm">
+              <p className="text-black/70 dark:text-white/70 text-sm">
                 Paste a URL or select from your connected repositories
               </p>
             </div>
@@ -247,10 +247,10 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
           ) : !hasSubscription ? (
             /* 🔒 NO SUBSCRIPTION VIEW */
             <div className="text-center space-y-2 px-3 py-6">
-              <p className="text-black">
+              <p className="text-black dark:text-white">
                 You don’t have a subscription
               </p>
-              <p className="text-black/70 text-sm mt-[-14px]">
+              <p className="text-black/70 dark:text-white/70 text-sm mt-[-14px]">
                 Upgrade to unlock GitHub cloning
               </p>
               <Button
@@ -286,7 +286,7 @@ export function GithubCloneDialog({ open, onOpenChange }: GithubCloneDialogProps
                 </button>
                 {error && !cloningRepo && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-                <div className="flex gap-2 text-xs text-black/50 justify-center">
+                <div className="flex gap-2 text-xs text-black/50 dark:text-white/50 justify-center">
                   <LinkIcon className="w-3 h-3 mt-0.5" />
                   Paste any public github project URL to import
                 </div>
@@ -391,11 +391,11 @@ export function GithubClone() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden h-8 sm:flex text-sm font-medium cursor-pointer border py-1 px-4 rounded-4xl text-[#000000] items-center gap-2 w-full sm:w-auto"
+        className="hidden h-8 sm:flex text-sm font-medium cursor-pointer border py-1 px-4 rounded-4xl text-[#000000] dark:text-white/80 items-center gap-2 w-full sm:w-auto"
       >
         <span className="flex items-center gap-2">
           <Github className="w-4 h-4" />
-          <span className="text-sm font-light">Clone from GitHub</span>
+          <span className="text-sm font-light dark:text-white/80">Clone from GitHub</span>
         </span>
 
         {!hasSubscription && (

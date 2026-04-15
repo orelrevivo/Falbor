@@ -14,12 +14,12 @@ export default async function SettingsLayout({
     }
 
     return (
-        <div className="relative min-h-screen bg-[#FAF9F5] overflow-hidden">
+        <div className="relative min-h-screen bg-background overflow-hidden">
 
 
             {/* Settings Content Area - Matching Landing Page Style */}
             <div
-                className="absolute z-10 p-6 sm:p-8 overflow-auto bg-white"
+                className="absolute z-10 p-6 sm:p-8 overflow-auto bg-card"
                 style={{
                     top: "0px",
                     left: "0px",

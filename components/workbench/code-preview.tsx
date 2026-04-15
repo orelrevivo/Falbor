@@ -57,6 +57,7 @@ interface CodePreviewProps {
   messages?: any[]
   activeMessageId?: string | null
   onActivateVersion?: (messageId: string) => void
+  onToggleTerminal?: () => void
 }
 interface TerminalTab {
   id: number
@@ -158,7 +159,7 @@ function CustomPreviewToolbar({
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-[#f5f5f5] border-b border-gray-200">
+    <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-b border-border">
       {/* Navigation Buttons */}
       <div className="flex items-center gap-1">
         <button
@@ -244,7 +245,7 @@ function CustomPreviewToolbar({
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="/"
-          className="w-full px-3 py-0.5 text-sm bg-white border border-gray-300 rounded-full focus:outline-none focus:ring-0 focus:border-transparent"
+          className="w-full px-3 py-0.5 text-sm bg-background border border-border rounded-full focus:outline-none focus:ring-0 focus:border-transparent"
         />
       </form>
 
@@ -261,7 +262,7 @@ function CustomPreviewToolbar({
         </button>
 
         {showDeviceMenu && (
-          <div className="absolute right-0 top-0 mt-1 p-1 bg-white border rounded-lg z-50 min-w-[160px]">
+          <div className="absolute right-0 top-0 mt-1 p-1 bg-card border rounded-lg z-50 min-w-[160px]">
             {DEVICE_SIZES.map((device) => (
               <button
                 key={device.name}
@@ -385,6 +386,7 @@ export function CodePreview({
   messages,
   activeMessageId,
   onActivateVersion,
+  onToggleTerminal,
 }: CodePreviewProps) {
   const [files, setFiles] = useState<
     Array<{ path: string; content: string; imageData?: string; language: string; type?: string; isLocked?: boolean }>
@@ -404,11 +406,6 @@ export function CodePreview({
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [isSearching, setIsSearching] = useState(false)
   const [showDownloadMenu, setShowDownloadMenu] = useState(false)
-  const [pyodideReady, setPyodideReady] = useState(false)
-  const [filesLoaded, setFilesLoaded] = useState(false)
-  const [terminalError, setTerminalError] = useState<string | null>(null)
-  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([{ id: 1, title: "Python REPL" }])
-  const [activeTerminalTab, setActiveTerminalTab] = useState(1)
   const [projectMetadata, setProjectMetadata] = useState<any>(null)
   const [isPushing, setIsPushing] = useState(false)
   const [gitError, setGitError] = useState<string | null>(null)
@@ -424,13 +421,8 @@ export function CodePreview({
       setInternalTabValue(initialTab)
     }
   }, [initialTab])
-  const terminals = useRef<Map<number, any>>(new Map())
-  const fitAddons = useRef<Map<number, any>>(new Map())
-  const terminalRefs = useRef<Map<number, HTMLDivElement>>(new Map())
   const scrollRef = useRef<HTMLDivElement>(null)
   const monacoRef = useRef<any>(null)
-  const pyodideRef = useRef<any>(null)
-  const replBuffers = useRef<Map<number, { buffer: string; prompt: string }>>(new Map())
   const { getToken } = useAuth()
   const [isInspectorMode, setIsInspectorMode] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -442,6 +434,7 @@ export function CodePreview({
   const [historyIndex, setHistoryIndex] = useState(0)
   const [selectedDevice, setSelectedDevice] = useState<DeviceSize>(DEVICE_SIZES[2]) // Default to Desktop
   const [sandpackKey, setSandpackKey] = useState(0) // For forcing refresh
+  const { isPreviewFullScreen } = useWorkbench()
 
   const toggleInspectorMode = () => {
     setIsInspectorMode((prev) => !prev);
@@ -604,24 +597,7 @@ export function CodePreview({
   const filesKey = useMemo(() => effectiveFiles.map((f) => `${f.path}:${f.content.length} `).join("|"), [effectiveFiles])
 
   useEffect(() => {
-    if (effectiveFiles.length === 0) {
-      setProjectType(null)
-      return
-    }
-    const hasPy = effectiveFiles.some((f) => f.language === "python" || f.path.endsWith(".py"))
-    const hasJsTs = effectiveFiles.some(
-      (f) =>
-        f.language === "javascript" ||
-        f.language === "typescript" ||
-        f.path.match(/\.j(sx?)$/) ||
-        f.path.match(/\.ts(x?)$/) ||
-        f.path.match(/\.html$/) ||
-        f.path.match(/\.css$/),
-    )
-    if (hasPy && !hasJsTs) {
-      setProjectType("python")
-    } else if (hasJsTs || effectiveFiles.length > 0) {
-      // Default to react/web if there are any files
+    if (effectiveFiles.length > 0) {
       setProjectType("react")
     } else {
       setProjectType(null)
@@ -639,162 +615,6 @@ export function CodePreview({
     return <div dangerouslySetInnerHTML={{ __html: result }} />
   }, [])
 
-  useEffect(() => {
-    if (projectType !== "python") {
-      setPyodideReady(false)
-      pyodideRef.current = null
-      return
-    }
-    let scriptLoaded = false
-    const script = document.createElement("script")
-    script.src = "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/pyodide.js"
-    script.onload = async () => {
-      scriptLoaded = true
-      try {
-        const pyodide = await (window as any).loadPyodide({
-          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.1/full/",
-          stdin: () => "",
-        })
-        pyodideRef.current = pyodide
-        setPyodideReady(true)
-        console.log("[Python Preview] Pyodide loaded successfully")
-        loadFilesIntoPyodide()
-      } catch (error) {
-        console.error("[Python Preview] Failed to load Pyodide:", error)
-      }
-    }
-    document.head.appendChild(script)
-    return () => {
-      if (scriptLoaded && document.head.contains(script)) {
-        document.head.removeChild(script)
-      }
-    }
-  }, [projectType])
-  const loadFilesIntoPyodide = useCallback(async () => {
-    if (projectType !== "python" || !pyodideRef.current || effectiveFiles.length === 0) return
-    try {
-      console.log("[Python Preview] Loading", effectiveFiles.length, "files to Pyodide FS")
-      for (const file of effectiveFiles) {
-        if (!file.path || typeof file.content !== "string") continue
-        const fullPath = "/" + file.path
-        const dirPath = fullPath.substring(0, fullPath.lastIndexOf("/"))
-        if (dirPath && dirPath !== "/") {
-          try {
-            pyodideRef.current.FS.mkdirTree(dirPath)
-          } catch (e) {
-            // Ignore if exists
-          }
-        }
-        pyodideRef.current.FS.writeFile(fullPath, new TextEncoder().encode(file.content))
-      }
-      setFilesLoaded(true)
-      console.log("[Python Preview] Files loaded")
-      terminalTabs.forEach((tab) => {
-        const term = terminals.current.get(tab.id)
-        if (term) {
-          term.writeln("\n✓ Files loaded! Run 'exec(open(\"main.py\").read())' to test your code.")
-        }
-      })
-    } catch (error) {
-      console.error("[Python Preview] File load error:", error)
-    }
-  }, [effectiveFiles, filesKey, terminalTabs, projectType])
-  useEffect(() => {
-    loadFilesIntoPyodide()
-  }, [loadFilesIntoPyodide])
-  const initTerminalForTab = useCallback(
-    async (tabId: number) => {
-      if (projectType !== "python") return
-      const dom = terminalRefs.current.get(tabId)
-      if (!dom || terminals.current.has(tabId)) return
-      try {
-        const { Terminal } = await import("@xterm/xterm")
-        const { FitAddon } = await import("@xterm/addon-fit")
-        const term = new Terminal({
-          cursorBlink: true,
-          fontSize: 13,
-          fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-          theme: { background: "#000000", foreground: "#ffffff" },
-          convertEol: true,
-        })
-        const fitAddon = new FitAddon()
-        term.loadAddon(fitAddon)
-        term.open(dom)
-        fitAddon.fit()
-        terminals.current.set(tabId, term)
-        fitAddons.current.set(tabId, fitAddon)
-        replBuffers.current.set(tabId, { buffer: "", prompt: ">>> " })
-        if (pyodideReady) {
-          setupPyodideREPL(tabId, term)
-        }
-        console.log(`[Python Preview] Terminal ${tabId} ready`)
-      } catch (error) {
-        console.error(`[Python Preview] Terminal init error for ${tabId}: `, error)
-      }
-    },
-    [pyodideReady, projectType],
-  )
-  const setupPyodideREPL = useCallback(
-    (tabId: number, term: any) => {
-      const bufferInfo = replBuffers.current.get(tabId)
-      if (!bufferInfo) return
-      pyodideRef.current.runPython(`
-    import sys
-class StdoutRedirect:
-    def __init__(self, write_func):
-    self.write_func = write_func
-    def write(self, text):
-    self.write_func(text)
-    def flush(self):
-    pass
-    sys.stdout = StdoutRedirect(lambda text: js.term_write(text))
-      `)
-      term.writeln("\nPython 3.12 REPL (Pyodide)")
-      term.writeln("Files loaded. Ready to run code!")
-      term.write(bufferInfo.prompt)
-      const onData = (data: string) => {
-        const char = data.charCodeAt(0)
-        if (char === 13) {
-          term.write("\r\n")
-          const code = bufferInfo.buffer + "\n"
-          bufferInfo.buffer = ""
-          pyodideRef.current
-            .runPythonAsync(code)
-            .then((result: any) => {
-              if (result !== undefined) term.write(result.toString() + "\r\n")
-            })
-            .catch((error: any) => {
-              const errorMsg = error.message || String(error)
-              term.write(errorMsg + "\r\n")
-              const fileMatch = errorMsg.match(/File "(.+?)", line (\d+)/)
-              onError?.({
-                message: errorMsg,
-                file: fileMatch?.[1],
-                line: fileMatch?.[2],
-              })
-            })
-          term.write(bufferInfo.prompt)
-        } else if (char === 127 || char === 8) {
-          if (bufferInfo.buffer.length > 0) {
-            bufferInfo.buffer = bufferInfo.buffer.slice(0, -1)
-            term.write("\b \b")
-          }
-        } else if (char >= 32 && char <= 126) {
-          bufferInfo.buffer += data
-          term.write(data)
-        }
-      }
-      term.onData(onData)
-        ; (term as any).disposeOnData = onData
-    },
-    [onError],
-  )
-  const addTab = useCallback(() => {
-    if (projectType !== "python") return
-    const newId = Date.now()
-    setTerminalTabs((prev) => [...prev, { id: newId, title: `REPL ${prev.length + 1} ` }])
-    setActiveTerminalTab(newId)
-  }, [projectType])
   const fetchFiles = useCallback(async () => {
     if (!projectId) return
     try {
@@ -870,9 +690,14 @@ class StdoutRedirect:
   }, [effectiveFiles, projectId, currentVersion])
   useEffect(() => {
     fetchFiles()
-    const interval = setInterval(fetchFiles, 5000)
+    // Poll less frequently and only if active generation or if we have no files yet
+    const interval = setInterval(() => {
+      if (isCodeGenerating || effectiveFiles.length === 0) {
+        fetchFiles()
+      }
+    }, 10000)
     return () => clearInterval(interval)
-  }, [fetchFiles])
+  }, [fetchFiles, isCodeGenerating, effectiveFiles.length])
 
   // ─── Post-Generation Sync & Auto-Download ──────────────────
   const wasGenerating = useRef(false)
@@ -883,7 +708,12 @@ class StdoutRedirect:
       // Generation just finished!
       wasGenerating.current = false
 
-      // 1. Sync files with server immediately
+      // 1. Optimistically sync files so they show in Code tab immediately
+      if (filesOverride && filesOverride.length > 0) {
+        setFiles(filesOverride)
+      }
+
+      // 2. Sync files with server
       fetchFiles()
     }
   }, [isCodeGenerating, fetchFiles])
@@ -1055,7 +885,6 @@ class StdoutRedirect:
       scrollRef={scrollRef}
       monacoRef={monacoRef}
       editorOptions={editorOptions}
-      loading={!pyodideReady && projectType === "python"}
       isSplitScreen={isSplitScreen}
       onExitSplit={onExitSplit}
     />
@@ -1066,76 +895,78 @@ class StdoutRedirect:
       <Tabs value={tabValue} onValueChange={handleTabChange} className="h-full flex flex-col">
         {typeof document !== 'undefined' && document.getElementById('header-left-portal') ? (
           createPortal(
-            <div className="flex items-center">
-              {/* <TabsList className="bg-white shadow-xs flex items-center">
-                <TabsTrigger
-                  value="preview"
-                  className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
+            !isPreviewFullScreen ? (
+              <div className="flex items-center ml-10 mt-1.5">
+                <TabsList className="bg-white dark:bg-card border border-gray-200 dark:border-white/10 shadow-xs flex items-center">
+                  <TabsTrigger
+                    value="preview"
+                    className="gap-2 text-black dark:text-white/80 data-[state=active]:text-[#0099ff] dark:data-[state=active]:text-white cursor-pointer"
+                  >
+                    <Globe className="w-4 h-4" />
+                  </TabsTrigger>
+
+                  <TabsTrigger
+                    value="code"
+                    className="gap-2 text-black dark:text-white/80 data-[state=active]:text-[#0099ff] dark:data-[state=active]:text-white cursor-pointer"
+                  >
+                    <Code2 className="w-4 h-4" />
+                  </TabsTrigger>
+
+                  <div className="border-l border-gray-300 dark:border-white/10 h-[90%] ml-1 mr-1" />
+
+                  <TabsTrigger
+                    value="database"
+                    className="gap-2 text-black dark:text-white/80 data-[state=active]:text-[#0099ff] dark:data-[state=active]:text-white cursor-pointer"
+                  >
+                    <Database className="w-4 h-4" />
+                  </TabsTrigger>
+                </TabsList>
+
+                <button
+                  className={cn(
+                    "ml-3 cursor-pointer transition-colors",
+                    tabValue === "settings"
+                      ? "text-[#0099ff]"
+                      : "text-gray-700 hover:text-gray-900 dark:text-white/70 dark:hover:text-white"
+                  )}
+                  onClick={() => handleTabChange("settings")}
                 >
-                  <Globe className="w-4 h-4" />
-                </TabsTrigger>
+                  <Settings className="w-4 h-4" />
+                </button>
 
-                <TabsTrigger
-                  value="code"
-                  className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-                >
-                  <Code2 className="w-4 h-4" />
-                </TabsTrigger>
-
-                <div className="border-l border-gray-300 h-[90%] ml-1 mr-1" />
-
-                <TabsTrigger
-                  value="database"
-                  className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
-                >
-                  <Database className="w-4 h-4" />
-                </TabsTrigger>
-              </TabsList>
-
-              <button
-                className={cn(
-                  "ml-3 cursor-pointer",
-                  tabValue === "settings"
-                    ? "text-[#0099ff]"
-                    : "text-gray-700 hover:text-gray-900"
+                {isGitHubImport && (
+                  <div className="ml-4 flex items-center gap-2">
+                    <div className="h-4 w-[1px] bg-gray-300 mx-1" />
+                    {projectMetadata?.isGitAdopted ? (
+                      <button
+                        onClick={handleGitPush}
+                        disabled={isPushing}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0099ff]/10 text-[#0099ff] dark:bg-white/10 dark:text-white hover:bg-[#0099ff]/20 dark:hover:bg-white/20 text-xs font-medium transition-colors disabled:opacity-50"
+                      >
+                        {isPushing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCommit className="w-3.5 h-3.5" />}
+                        Push to GitHub
+                      </button>
+                    ) : (
+                      <button
+                        onClick={handleGitAdopt}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black dark:bg-white text-white dark:text-black hover:bg-black/90 dark:hover:bg-white/90 text-xs font-medium transition-colors"
+                      >
+                        <Github className="w-3.5 h-3.5" />
+                        Adopt project to Git
+                      </button>
+                    )}
+                    {(gitError || gitSuccess) && (
+                      <div className={cn(
+                        "text-[10px] px-2 py-0.5 rounded-md",
+                        gitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
+                      )}>
+                        {gitError || gitSuccess}
+                      </div>
+                    )}
+                  </div>
                 )}
-                onClick={() => handleTabChange("settings")}
-              >
-                <Settings className="w-4 h-4" />
-              </button> */}
-
-              {isGitHubImport && (
-                <div className="ml-4 flex items-center gap-2">
-                  <div className="h-4 w-[1px] bg-gray-300 mx-1" />
-                  {projectMetadata?.isGitAdopted ? (
-                    <button
-                      onClick={handleGitPush}
-                      disabled={isPushing}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0099ff]/10 text-[#0099ff] hover:bg-[#0099ff]/20 text-xs font-medium transition-colors disabled:opacity-50"
-                    >
-                      {isPushing ? <Loader2 className="w-3 h-3 animate-spin" /> : <GitCommit className="w-3.5 h-3.5" />}
-                      Push to GitHub
-                    </button>
-                  ) : (
-                    <button
-                      onClick={handleGitAdopt}
-                      className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-black text-white hover:bg-black/90 text-xs font-medium transition-colors"
-                    >
-                      <Github className="w-3.5 h-3.5" />
-                      Adopt project to Git
-                    </button>
-                  )}
-                  {(gitError || gitSuccess) && (
-                    <div className={cn(
-                      "text-[10px] px-2 py-0.5 rounded-md",
-                      gitError ? "bg-red-50 text-red-600" : "bg-green-50 text-green-600"
-                    )}>
-                      {gitError || gitSuccess}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>,
+              </div>
+            ) : <></>,
             document.getElementById('header-left-portal')!
           )
         ) : (
@@ -1217,59 +1048,18 @@ class StdoutRedirect:
 
         <div className={cn(
           "flex-1 flex flex-col relative overflow-hidden",
-          isSplitScreen || (tabValue !== "preview" && tabValue !== "code") ? "" : " bg-[#ffffff] shadow-xs"
+          isSplitScreen || (tabValue !== "preview" && tabValue !== "code") ? "" : " bg-card shadow-xs"
         )}>
           <div className="flex-1 flex flex-col overflow-hidden">
             {isSplitScreen ? (
               <div className="flex-1 flex w-full h-full overflow-hidden">
-                <div className="w-1/2 border-r border-[#d6d6d6] flex flex-col h-full bg-white z-20">
+                <div className="w-1/2 border-r border-border flex flex-col h-full bg-card z-20">
                   {renderCodeTab()}
                 </div>
                 <div className="w-1/2 flex flex-col h-full z-10 bg-[#e5e5e5]">
-                  {projectType === "python" ? (
-                    <div className="flex-1 flex flex-col bg-[#202020]">
-                      <div className="px-3 py-2 bg-white text-white text-sm flex items-center justify-between border-b border-gray-700">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <TerminalIcon className="w-4 h-4 flex-shrink-0 text-black" />
-                          <div className="flex items-center gap-1 flex-1 overflow-hidden">
-                            {terminalTabs.map((tab) => (
-                              <button
-                                key={tab.id}
-                                onClick={() => setActiveTerminalTab(tab.id)}
-                                className={`px-2 py-1 text-xs rounded whitespace-nowrap overflow-hidden text-ellipsis ${activeTerminalTab === tab.id
-                                  ? "bg-[#dad8d8] hover:bg-[#e7e7e7] text-black"
-                                  : "bg-[#e4e4e4] hover:bg-[#e7e7e7] text-black"
-                                  }`}
-                                title={tab.title}
-                              >
-                                {tab.title}
-                              </button>
-                            ))}
-                            <button
-                              onClick={addTab}
-                              className="p-1 bg-[#e4e4e4] hover:bg-[#e7e7e7] text-black rounded flex-shrink-0"
-                              title="New REPL"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                        {!filesLoaded && <span className="text-xs text-gray-400">(Loading files...)</span>}
-                      </div>
-                      <div className="flex-1 relative">
-                        {terminalTabs.map((tab) => (
-                          <div
-                            key={tab.id}
-                            ref={(el) => {
-                              if (el && !terminalRefs.current.has(tab.id)) {
-                                terminalRefs.current.set(tab.id, el)
-                                initTerminalForTab(tab.id)
-                              }
-                            }}
-                            className={`absolute inset-0 px-4 text-black ${activeTerminalTab === tab.id ? "block" : "hidden"}`}
-                          />
-                        ))}
-                      </div>
+                  {projectType === null ? (
+                    <div className="flex-1 flex items-center justify-center bg-card h-full">
+                      <FeatureShowcaseDark />
                     </div>
                   ) : (
                     <WebContainerPreview
@@ -1278,99 +1068,11 @@ class StdoutRedirect:
                       isTerminalOpen={isTerminalOpen}
                       isCodeGenerating={isCodeGenerating}
                       onSendMessage={onSendMessage}
+                      onToggleTerminal={onToggleTerminal}
                     />
                   )}
                 </div>
               </div>
-            ) : projectType === null ? (
-              <div className="flex-1 flex items-center justify-center bg-white">
-                <FeatureShowcaseDark />
-              </div>
-            ) : projectType === "python" ? (
-              <>
-                <TabsContent
-                  value="preview"
-                  className="flex-1 m-0 flex flex-col overflow-hidden rounded-bl-lg"
-                >
-                  {!pyodideReady ? (
-                    <div className="flex-1 flex items-center justify-center bg-gray-50">
-                      <div className="text-center">
-                        <div className="animate-spin rounded-full h-8 w-8 border-2 border-gray-300 border-t-blue-600 mx-auto mb-3"></div>
-                        <p className="text-sm text-gray-500">Loading Pyodide Python runtime...</p>
-                      </div>
-                    </div>
-                  ) : effectiveFiles.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center bg-black text-white">
-                      <div className="text-center">
-                        <p className="text-sm">Waiting for AI to generate Python files...</p>
-                        <p className="text-xs text-gray-400 mt-1">Switch to Code tab to edit.</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex-1 flex flex-col bg-[#202020]">
-                      <div className="px-3 py-2 bg-white text-white text-sm flex items-center justify-between border-b border-gray-700">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <TerminalIcon className="w-4 h-4 flex-shrink-0 text-black" />
-                          <div className="flex items-center gap-1 flex-1 overflow-hidden">
-                            {terminalTabs.map((tab) => (
-                              <button
-                                key={tab.id}
-                                onClick={() => setActiveTerminalTab(tab.id)}
-                                className={`px-2 py-1 text-xs rounded whitespace-nowrap overflow-hidden text-ellipsis ${activeTerminalTab === tab.id
-                                  ? "bg-[#dad8d8] hover:bg-[#e7e7e7] text-black"
-                                  : "bg-[#e4e4e4] hover:bg-[#e7e7e7] text-black"
-                                  }`}
-                                title={tab.title}
-                              >
-                                {tab.title}
-                              </button>
-                            ))}
-                            <button
-                              onClick={addTab}
-                              className="p-1 bg-[#e4e4e4] hover:bg-[#e7e7e7] text-black rounded flex-shrink-0"
-                              title="New REPL"
-                            >
-                              <Plus className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                        {!filesLoaded && <span className="text-xs text-gray-400">(Loading files...)</span>}
-                      </div>
-                      <div className="flex-1 relative">
-                        {terminalTabs.map((tab) => (
-                          <div
-                            key={tab.id}
-                            ref={(el) => {
-                              if (el && !terminalRefs.current.has(tab.id)) {
-                                terminalRefs.current.set(tab.id, el)
-                                initTerminalForTab(tab.id)
-                              }
-                            }}
-                            className={`absolute inset-0 px-4 text-black ${activeTerminalTab === tab.id ? "block" : "hidden"}`}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </TabsContent>
-                <TabsContent
-                  value="code"
-                  className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
-                >
-                  {renderCodeTab()}
-                </TabsContent>
-                <TabsContent
-                  value="settings"
-                  className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
-                >
-                  <SettingsTab
-                    projectId={projectId}
-                    messages={messages || []}
-                    activeMessageId={activeMessageId ?? null}
-                    onActivateVersion={onActivateVersion || (() => { })}
-                  />
-                </TabsContent>
-              </>
             ) : (
               <div className="h-full flex flex-col overflow-hidden">
                 <TabsContent
@@ -1378,13 +1080,20 @@ class StdoutRedirect:
                   forceMount={true}
                   className={tabValue === "preview" ? "flex-1 m-0 p-0 overflow-hidden flex flex-col" : "hidden"}
                 >
-                  <WebContainerPreview
-                    projectId={projectId}
-                    files={effectiveFiles}
-                    isTerminalOpen={isTerminalOpen}
-                    isCodeGenerating={isCodeGenerating}
-                    onSendMessage={onSendMessage}
-                  />
+                  {projectType === null ? (
+                    <div className="flex-1 flex items-center justify-center bg-card h-full">
+                      <FeatureShowcaseDark />
+                    </div>
+                  ) : (
+                    <WebContainerPreview
+                      projectId={projectId}
+                      files={effectiveFiles}
+                      isTerminalOpen={isTerminalOpen}
+                      isCodeGenerating={isCodeGenerating}
+                      onSendMessage={onSendMessage}
+                      onToggleTerminal={onToggleTerminal}
+                    />
+                  )}
                 </TabsContent>
                 <TabsContent
                   value="code"

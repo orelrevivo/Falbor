@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { WebContainer } from "@webcontainer/api"
+import type { WebContainer } from "@webcontainer/api"
+import { getWebContainerInstance } from "@/lib/webcontainer-singleton"
 
 interface PreviewPageProps {
   params: Promise<{
@@ -32,10 +33,10 @@ export default function PreviewPage({ params }: PreviewPageProps) {
         setError(null)
         console.log("[v0] Starting WebContainer initialization for project:", projectId)
 
-        // Boot WebContainer instance
-        const container = await WebContainer.boot()
+        // Boot WebContainer instance (using singleton)
+        const container = await getWebContainerInstance()
         webContainerRef.current = container
-        console.log("[v0] WebContainer booted successfully")
+        console.log("[v0] WebContainer retrieved from singleton")
 
         // Fetch project files from API
         const filesResponse = await fetch(`/api/projects/${projectId}/files`)

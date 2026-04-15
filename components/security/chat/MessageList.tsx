@@ -65,6 +65,10 @@ function parseAIResponse(content: string) {
     rawjson: /(?:^|\n)\{([\s\S]*?puntuación|score[\s\S]*?)\}(?:\n|$)/gi,
   };
 
+  // 2. Extract Code Blocks (Prioritizing files)
+  const codeRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]*?)["']?)?\s*\r?\n([\s\S]*?)(?:```|$)/g
+  const codeBlocks: Array<{ filename: string; code: string; language: string; isOpen?: boolean }> = []
+
   const matches: Array<{ type: string; start: number; fullMatch: string; content: any }> = [];
 
   for (const [type, regex] of Object.entries(tagRegexes)) {
@@ -94,6 +98,31 @@ function parseAIResponse(content: string) {
     }
   }
 
+  for (const match of content.matchAll(codeRegex)) {
+    const language = match[1] || "typescript"
+    const filename = match[2]
+    const isClosed = match[0].endsWith("```")
+
+    if (filename) {
+      const content = { 
+        filename: filename.trim(), 
+        code: match[3].trim(), 
+        language, 
+        isOpen: !isClosed 
+      }
+      
+      if (!matches.find(m => m.start <= match.index! && m.start + m.fullMatch.length >= match.index! + match[0].length)) {
+        codeBlocks.push(content)
+        matches.push({
+          type: "codeBlock",
+          start: match.index!,
+          fullMatch: match[0],
+          content
+        })
+      }
+    }
+  }
+
   matches.sort((a, b) => a.start - b.start);
 
   const parts: Array<{ type: string; content: any }> = [];
@@ -120,7 +149,7 @@ function parseAIResponse(content: string) {
     }
   }
 
-  return { parts };
+  return { parts, codeBlocks };
 }
 
 export function MessageList({ messages, currentScreenshot, browserScanSteps, chatEndRef }: MessageListProps) {
@@ -130,18 +159,19 @@ export function MessageList({ messages, currentScreenshot, browserScanSteps, cha
     setExpandedSections(prev => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getIcon = (type: string) => {
+  const getIcon = (type: string, content?: any) => {
     switch (type) {
       case "thinking": return Brain;
       case "planning": return Lightbulb;
       case "search": return Search;
       case "scan": return ScanSearch;
       case "tasks": return List;
+      case "codeBlock": return TerminalIcon;
       default: return Brain;
     }
   };
 
-  const getTitle = (type: string) => {
+  const getTitle = (type: string, content?: any) => {
     switch (type) {
       case "thinking": return "Thinking Process";
       case "planning": return "Security Plan";
@@ -152,6 +182,7 @@ export function MessageList({ messages, currentScreenshot, browserScanSteps, cha
       case "implosion": return "System Implosion";
       case "results":
       case "rawjson": return "Audit Scoreboard";
+      case "codeBlock": return content?.filename ? `Code Generation ${content.filename}` : "Architecting System Files";
       default: return type.charAt(0).toUpperCase() + type.slice(1);
     }
   };
@@ -254,6 +285,24 @@ export function MessageList({ messages, currentScreenshot, browserScanSteps, cha
             <RefreshCw className="w-3 h-3" />
             Trigger Deep Implosion
           </Button>
+        </div>
+      );
+    }
+
+    if (type === "codeBlock") {
+      return (
+        <div className="p-0 overflow-hidden bg-[#1e1e1e] rounded-sm">
+          <div className="p-3 border-b border-white/5 bg-white/5 flex items-center justify-between">
+            <span className="text-[10px] font-mono text-zinc-500">{content.filename}</span>
+            <div className="flex gap-1.5">
+              <div className="w-2 h-2 rounded-full bg-red-400/20" />
+              <div className="w-2 h-2 rounded-full bg-amber-400/20" />
+              <div className="w-2 h-2 rounded-full bg-emerald-400/20" />
+            </div>
+          </div>
+          <div className="p-4 max-h-[500px] overflow-auto no-scrollbar font-mono text-[12px] text-zinc-300 leading-relaxed whitespace-pre">
+            {content.code}
+          </div>
         </div>
       );
     }
@@ -366,10 +415,18 @@ export function MessageList({ messages, currentScreenshot, browserScanSteps, cha
                         );
                       }
 
-                      const Icon = getIcon(part.type);
-                      const title = getTitle(part.type);
+                      const Icon = getIcon(part.type, part.content);
+                      const title = getTitle(part.type, part.content);
                       const sectionKey = `msg-${i}-part-${pIdx}`;
-                      const isOpen = expandedSections[sectionKey] || false;
+                      
+                      // Identify if this is the last message being streamed
+                      const isLastMessage = i === messages.length - 1;
+                      const isLastPart = pIdx === parts.length - 1;
+                      const isActive = isLastMessage && isLastPart;
+
+                      const isOpen = (isActive && part.type === "codeBlock") || 
+                                   (part.type === "codeBlock" && part.content.isOpen) || 
+                                   (expandedSections[sectionKey] ?? false);
 
                       return (
                         <Collapsible

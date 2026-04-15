@@ -1,6 +1,7 @@
 // components/workbench/search-sidebar.tsx
 import { Loader, Loader2 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { cn } from "@/lib/utils"
 
 type ProjectFile = {
   path: string
@@ -34,23 +35,24 @@ export function SearchSidebar({
   files,
 }: SearchSidebarProps) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-card">
       <div className="p-2">
         <Input
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search files and code..."
+          className="h-8 text-xs"
         />
       </div>
 
       <div className="flex-1 overflow-y-auto chat-messages-scroll">
         {isSearching ? (
           <div className="flex items-center justify-center p-4">
-            <Loader className="w-5 h-5 animate-spin text-black/50" />
+            <Loader className="w-5 h-5 animate-spin text-muted-foreground" />
           </div>
         ) : searchResults.length > 0 ? (
           <div className="p-2">
-            <p className="text-xs text-white/50 mb-2">{searchResults.length} results</p>
+            <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider mb-2 px-1">{searchResults.length} results</p>
             {searchResults.map((result, idx) => (
               <div
                 key={idx}
@@ -58,20 +60,22 @@ export function SearchSidebar({
                   const file = files.find((f) => f.path === result.path)
                   if (file) onResultClick(result.path)
                 }}
-                className="p-2 hover:bg-[#e4e4e4] cursor-pointer rounded text-xs"
+                className={cn(
+                  "p-2 hover:bg-zinc-200/50 dark:hover:bg-white/5 cursor-pointer rounded-md text-xs mb-1 transition-colors border border-transparent hover:border-border dark:hover:border-white/10"
+                )}
               >
-                <div className="text-gray-400 font-mono mb-1">{result.path}</div>
-                <div className="text-black/60 mb-1">Line {result.line}</div>
-                <pre className="text-black/80 overflow-x-auto whitespace-pre-wrap break-words">
+                <div className="text-primary dark:text-[#0099ff] font-mono text-[10px] truncate mb-1">{result.path}</div>
+                <div className="text-muted-foreground text-[10px] mb-1">Line {result.line}</div>
+                <pre className="text-foreground/80 dark:text-white/80 overflow-x-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed">
                   {highlightMatch(result.content, result.matches)}
                 </pre>
               </div>
             ))}
           </div>
         ) : searchQuery ? (
-          <div className="p-4 text-center text-white/50 text-sm">No results found</div>
+          <div className="p-4 text-center text-muted-foreground text-xs italic">No results found</div>
         ) : (
-          <div className="p-4 text-center text-white/50 text-sm">Start typing to search</div>
+          <div className="p-4 text-center text-muted-foreground text-xs italic">Start typing to search</div>
         )}
       </div>
     </div>

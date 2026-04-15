@@ -224,16 +224,16 @@ export function UserProfileMenu() {
                 className={`h-6.5 px-4 cursor-pointer rounded-sm text-[12px] font-medium transition-all flex items-center gap-2
                 ${isCreator
                         ? "bg-[#313131] hover:bg-[#3a3a3a] text-white/90 border-none shadow-none"
-                        : "bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 shadow-xs"
+                        : "bg-white dark:bg-[#2C2C30] hover:bg-gray-50 dark:hover:bg-[#3a3a3a] text-gray-800 dark:text-white/80 border shadow-xs"
                     }`}
             >
-                <DollarSign className={`w-2 h-2 ${isCreator ? "text-white/90" : "text-gray-800"}`} />
+                <DollarSign className={`w-2 h-2 ${isCreator ? "text-white/90" : "text-gray-800 dark:text-white/80"}`} />
                 <span>{(balance / 100).toFixed(2)}</span>
             </Button>
 
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <button className="relative h-7 w-7 cursor-pointer rounded-full overflow-hidden transition-all shadow-sm">
+                    <button className="relative h-6 w-6 cursor-pointer rounded-full overflow-hidden transition-all shadow-sm">
                         <Avatar className="h-full w-full">
                             <AvatarImage src={user.imageUrl} />
                             <AvatarFallback className="text-xs">
@@ -246,8 +246,8 @@ export function UserProfileMenu() {
                 <DropdownMenuContent
                     className={`w-60 p-1 mr-3 rounded-lg
                     ${isCreator
-                            ? "bg-[#313131] border-none shadow-none text-white/90"
-                            : "bg-white border border-gray-200 shadow-xs"
+                            ? "bg-[#313131] dark:bg-[#2C2C30] border-none shadow-none text-white/90"
+                            : "bg-white dark:bg-[#2C2C30] border border-white/10 shadow-xs"
                         }`}
                     align="end"
                     forceMount
@@ -263,11 +263,11 @@ export function UserProfileMenu() {
                         </Avatar>
 
                         <div className="flex flex-col">
-                            <p className={`text-xs font-semibold ${isCreator ? "text-white" : "text-gray-900"}`}>
+                            <p className={`text-xs font-semibold ${isCreator ? "text-white" : "text-gray-900 dark:text-white/80"}`}>
                                 {user.fullName || user.username}
                             </p>
 
-                            <p className={`text-[11px] truncate max-w-[150px] ${isCreator ? "text-white/60" : "text-gray-500"}`}>
+                            <p className={`text-[11px] truncate max-w-[150px] ${isCreator ? "text-white/60" : "text-gray-500 dark:text-white/80"}`}>
                                 {user.primaryEmailAddress?.emailAddress}
                             </p>
                         </div>
@@ -286,7 +286,7 @@ export function UserProfileMenu() {
 
                     <DropdownMenuItem
                         onClick={() => router.push("/super-security")}
-                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : "dark:hover:bg-[#2C2C30]"}`}
                     >
                         <Shield className="w-3.5 h-3.5" />
                         <span className="text-xs flex-1">Super Security</span>
@@ -295,7 +295,7 @@ export function UserProfileMenu() {
 
                     <DropdownMenuItem
                         onClick={() => router.push(`/creator/workspace`)}
-                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : "dark:hover:bg-[#2C2C30]"}`}
                     >
                         <DashboardIcon className="w-3.5 h-3.5" />
                         <span className="text-xs flex-1">Creator Workspace</span>
@@ -303,7 +303,7 @@ export function UserProfileMenu() {
 
                     <DropdownMenuItem
                         onClick={() => router.push(`/profile/${user.id}`)}
-                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : "dark:hover:bg-[#2C2C30]"}`}
                     >
                         <User className="w-3.5 h-3.5" />
                         <span className="text-xs flex-1">Profile</span>
@@ -311,7 +311,7 @@ export function UserProfileMenu() {
 
                     <DropdownMenuItem
                         onClick={() => clerk.openUserProfile()}
-                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : ""}`}
+                        className={`gap-2 px-3 py-2 rounded-md cursor-pointer ${isCreator ? "hover:bg-white/10" : "dark:hover:bg-[#2C2C30]"}`}
                     >
                         <Settings className="w-3.5 h-3.5" />
                         <span className="text-xs">Account Settings</span>

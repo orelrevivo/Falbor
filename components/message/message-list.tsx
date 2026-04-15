@@ -41,6 +41,7 @@ import {
   Shield,
   AudioLinesIcon,
   Check,
+  Code2
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import ReactMarkdown from "react-markdown"
@@ -170,6 +171,10 @@ function parseAIResponse(content: string) {
     workSummary: /<WorkSummary>([\s\S]*?)<\/WorkSummary>/gi,
     checkPackages: /<CheckPackages\s*\/?>/gi,
     apiSearch: /<APISearch name="([^"]+)">([\s\S]*?)<\/APISearch>/gi,
+    verifyingSolution: /<VerifyingSolution name="([^"]+)">([\s\S]*?)<\/VerifyingSolution>/gi,
+    terminal: /<Terminal>([\s\S]*?)<\/Terminal>/gi,
+    internetSearch: /<InternetSearch>([\s\S]*?)<\/InternetSearch>/gi,
+    data: /<Data>([\s\S]*?)<\/Data>/gi,
   }
 
   // Tags that should NEVER bleed into the visible text content
@@ -181,7 +186,8 @@ function parseAIResponse(content: string) {
     "DiscoverGmailTools", "TestGmailTools", "CompileGmailFindings",
     "DiscoverDiscordTools", "TestDiscordTools", "CompileDiscordFindings",
     "DiscoverMessengerTools", "TestMessengerTools", "CompileMessengerFindings",
-    "Scan", "WorkSummary", "CheckPackages", "APISearch"
+    "Scan", "WorkSummary", "CheckPackages", "APISearch",
+    "Terminal", "InternetSearch", "VerifyingSolution", "Data"
   ]
 
   let processedContent = content
@@ -284,23 +290,35 @@ function parseAIResponse(content: string) {
     }
   }
 
-  const codeRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]+)["']?)?\s*\r?\n([\s\S]*?)```/g
+  // 2. Extract Code Blocks (Prioritizing files)
+  // This regex matches fully closed blocks AND partially open ones during streaming
+  const codeRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]*?)["']?)?\s*\r?\n([\s\S]*?)(?:```|$)/g
   const codeBlocks: Array<{ filename: string; code: string; language: string; isOpen?: boolean }> = []
+
   for (const match of processedContent.matchAll(codeRegex)) {
     const language = match[1] || "typescript"
     const filename = match[2]
+    const isClosed = match[0].endsWith("```")
 
-    // ONLY extract as workbench codeBlock if an explicit filename was provided via file="..." attribute
-    // Otherwise it's a general code snippet that should stay in the chat bubble
+    // ONLY extract as workbench codeBlock if an explicit filename was provided
     if (filename) {
-      const content = { filename: filename.trim(), code: match[3].trim(), language, isOpen: false }
-      codeBlocks.push(content)
-      matches.push({
-        type: "codeBlock",
-        start: match.index!,
-        fullMatch: match[0],
-        content
-      })
+      const content = {
+        filename: filename.trim(),
+        code: match[3].trim(),
+        language,
+        isOpen: !isClosed
+      }
+
+      // Don't add to matches if it's already covered by a tag (unlikely but safe)
+      if (!matches.find(m => m.start <= match.index! && m.start + m.fullMatch.length >= match.index! + match[0].length)) {
+        codeBlocks.push(content)
+        matches.push({
+          type: "codeBlock",
+          start: match.index!,
+          fullMatch: match[0],
+          content
+        })
+      }
     }
   }
 
@@ -318,23 +336,7 @@ function parseAIResponse(content: string) {
   }
   let finalText = processedContent.substring(lastEnd).trim()
 
-  // Live Code Block Tracking at the end (robust for streaming)
-  const openCodeRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]+)["']?)?\s*\r?\n?([\s\S]*?)$/g
-  const openMatch = openCodeRegex.exec(finalText)
-  if (openMatch) {
-    const lang = openMatch[1] || "typescript"
-    const file = openMatch[2]
-
-    if (file) {
-      const textBefore = finalText.substring(0, openMatch.index).trim()
-      if (textBefore) parts.push({ type: "text", content: textBefore })
-
-      const content = { filename: file.trim(), code: openMatch[3].trim(), language: lang, isOpen: true }
-      parts.push({ type: "codeBlock", content })
-      codeBlocks.push(content)
-      finalText = "" // consumed
-    }
-  }
+  // consummed as code blocks in the unified loop above
 
   if (finalText) {
     const simpleTypes = [
@@ -403,7 +405,7 @@ function parseAIResponse(content: string) {
     } else {
       // Strip any remaining orphaned tag content and trailing garbage before showing as text
       const safeText = finalText
-        .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck)[^>]*>/gi, "")
+        .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|codeBlock|ImportCard|AIOnly|InternalFinishCheck)[^>]*>/gi, "")
         .replace(/([_\-*=~`#]){3,}\s*$/gm, "")
         .replace(/\n{3,}/g, "\n\n")
         .trim()
@@ -1176,8 +1178,8 @@ export function MessageList({
       messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
 
     const messageWrapperClass = cn(
-      "relative w-full rounded-lg px-1 py-2",
-      message.role === "user" ? "BackgroundStyleButton text-[13px] text-black" : "text-[13px] text-black",
+      "relative w-full rounded-lg px-1 py-1",
+      message.role === "user" ? "bg-[#e7e5df] dark:bg-[#2C2C30] text-[13px] text-foreground" : "text-[13px] text-foreground/90",
     )
 
     const renderedMessage = (
@@ -1187,7 +1189,7 @@ export function MessageList({
         aria-label={`${message.role} message`}
       >
         {message.role === "user" ? (
-          <div className={cn("w-full transition-all", message.isAutomated && "border-l-4 border-red-500 pl-4 py-2 bg-red-50/10 rounded-r-xl")}>
+          <div className={cn("w-full transition-all", message.isAutomated && "")}>
             <div className="flex items-center justify-between mb-2 px-3 absolute top-3 right-0">
               {message.isAutomated && (
                 <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500 text-white shadow-lg shadow-red-500/20 rounded-full text-[10px] font-bold mr-4 animate-pulse">
@@ -1195,7 +1197,7 @@ export function MessageList({
                   SPARK FIX TRIGGERED
                 </div>
               )}
-              <div className="flex items-center gap-1 text-[10px] mr-3 text-black/30">
+              <div className="flex items-center gap-1 text-[10px] mr-3 text-muted-foreground/50">
                 <Clock className="w-3 h-3" />
                 <span>{formatTimeAgo(message.createdAt)}</span>
               </div>
@@ -1207,7 +1209,7 @@ export function MessageList({
                     const { mainText } = parseUserContent(message.content)
                     onEdit?.(message.id, mainText || message.content)
                   }}
-                  className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
+                  className="p-0 h-auto text-foreground/70 flex items-center gap-1 cursor-pointer"
                   aria-label="User message options"
                 >
                   <Edit className="w-3.5 h-3.5" />
@@ -1217,7 +1219,7 @@ export function MessageList({
                     variant="link"
                     size="sm"
                     onClick={() => toggleMessageExpand(message.id)}
-                    className="p-0 h-auto text-black/70 flex items-center gap-1 cursor-pointer"
+                    className="p-0 h-auto text-foreground/70 flex items-center gap-1 cursor-pointer"
                   >
                     {expandedMessages[message.id] ? (
                       <ChevronUp className="w-4 h-4" />
@@ -1233,7 +1235,7 @@ export function MessageList({
                 typeof message.imageData === "string" ? (
                   <button
                     onClick={() => setSelectedImage(message.imageData as string)}
-                    className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
+                    className="block rounded border border-border/40 hover:border-border/60 transition-colors overflow-hidden"
                     aria-label="View uploaded image"
                   >
                     <img
@@ -1247,7 +1249,7 @@ export function MessageList({
                     <button
                       key={idx}
                       onClick={() => setSelectedImage(img.url)}
-                      className="block rounded border border-black/10 hover:border-black/20 transition-colors overflow-hidden"
+                      className="block rounded border border-border/40 hover:border-border/60 transition-colors overflow-hidden"
                       aria-label={`View image ${idx + 1}`}
                     >
                       <img
@@ -1264,7 +1266,7 @@ export function MessageList({
                 <button
                   key={idx}
                   onClick={() => setSelectedFile(file)}
-                  className="flex items-center gap-2 px-3 py-2 bg-black/5 hover:bg-black/10 rounded transition-colors text-sm w-full text-left"
+                  className="flex items-center gap-2 px-3 py-2 bg-muted hover:bg-muted/80 border border-border/20 rounded transition-colors text-sm w-full text-left"
                   aria-label={`View file ${file.name}`}
                 >
                   <FileText className="w-4 h-4 flex-shrink-0" />
@@ -1298,10 +1300,10 @@ export function MessageList({
                                           content: part.content.fileContent,
                                         })
                                       }
-                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg bg-card dark:bg-white/5 border border-border/40 dark:border-white/10 hover:bg-muted/40 dark:hover:bg-white/10 transition-all cursor-pointer text-xs dark:text-white/80"
                                       aria-label={`View file ${part.content.name}`}
                                     >
-                                      <FileText className="w-3 h-3 text-gray-600" />
+                                      <FileText className="w-3 h-3 text-gray-600 dark:text-gray-400" />
                                       <span className="truncate max-w-[100px]">{part.content.name}</span>
                                     </button>
                                   </TooltipTrigger>
@@ -1326,10 +1328,10 @@ export function MessageList({
                                           content: part.content,
                                         })
                                       }
-                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg bg-card dark:bg-white/5 border border-border/40 dark:border-white/10 hover:bg-muted/40 dark:hover:bg-white/10 transition-all cursor-pointer text-xs dark:text-white/80"
                                       aria-label="View pasted text"
                                     >
-                                      <FileText className="w-3 h-3 text-gray-600" />
+                                      <FileText className="w-3 h-3 text-gray-600 dark:text-gray-400" />
                                       <span className="truncate max-w-[100px]">
                                         {part.content.substring(0, 15)}...
                                       </span>
@@ -1356,7 +1358,7 @@ export function MessageList({
                                           content: `Supabase URL: ${part.content.supabaseUrl}\nAnon Key: ${part.content.anonKey}`,
                                         })
                                       }
-                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg bg-card dark:bg-white/5 border border-border/40 dark:border-white/10 hover:bg-muted/40 dark:hover:bg-white/10 transition-all cursor-pointer text-xs dark:text-white/80"
                                       aria-label="View database connection"
                                     >
                                       <CheckCircle2 className="w-3 h-3" />
@@ -1384,7 +1386,7 @@ export function MessageList({
                                           content: part.content.json,
                                         })
                                       }
-                                      className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-white bg-white/90 hover:bg-[#e4e4e4c4] transition-all cursor-pointer text-xs"
+                                      className="flex items-center gap-2 px-2 py-1 rounded-lg bg-card dark:bg-white/5 border border-border/40 dark:border-white/10 hover:bg-muted/40 dark:hover:bg-white/10 transition-all cursor-pointer text-xs dark:text-white/80"
                                       aria-label={`View design system ${part.content.name}`}
                                     >
                                       <div
@@ -1413,8 +1415,8 @@ export function MessageList({
                         className={cn(
                           mainText.length > 200 &&
                           !(expandedMessages[message.id] ?? false) &&
-                          "max-h-32 overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent",
-                          message.isAutomated && message.content.includes("Terminal Error Detected") && "bg-black/90 p-4 rounded-lg font-mono text-green-400 border border-green-500/30 shadow-2xl"
+                          "overflow-hidden relative after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:h-8 after:bg-gradient-to-t after:to-transparent",
+                          message.isAutomated && message.content.includes("Terminal Error Detected") && "bg-white dark:bg-[#000000ff] px-4 py-3 rounded-lg font-mono text-black dark:text-white/70 border border-white/40"
                         )}
                       >
                         <ReactMarkdown
@@ -1423,9 +1425,8 @@ export function MessageList({
                             code: ({ node, inline, className, children, ...props }: any) => {
                               if (message.isAutomated && message.content.includes("Terminal Error Detected") && !inline) {
                                 return (
-                                  <div className="relative group">
-                                    <div className="absolute -top-6 left-0 text-[10px] text-green-500/50 uppercase font-bold tracking-widest">Live Terminal Output</div>
-                                    <code className={cn("block bg-transparent text-green-400 p-0 overflow-x-auto text-[13px] leading-relaxed", className)} {...props}>
+                                  <div className="relative group text-[11px] text-black dark:text-white/70">
+                                    <code className={cn("", className)} {...props}>
                                       {children}
                                     </code>
                                   </div>
@@ -1433,17 +1434,17 @@ export function MessageList({
                               }
                               return <code className={className} {...props}>{children}</code>
                             },
-                            h1: ({ children }: any) => <h1 className={cn("text-xl font-bold mb-3", message.isAutomated ? "text-green-300" : "")}>{children}</h1>,
-                            h2: ({ children }: any) => <h2 className={cn("text-lg font-bold mb-2", message.isAutomated ? "text-green-300" : "")}>{children}</h2>,
-                            h3: ({ children }: any) => <h3 className={cn("text-base font-bold mb-1", message.isAutomated ? "text-green-300" : "")}>{children}</h3>,
+                            h1: ({ children }: any) => <h1 className={cn("text-xl font-bold mb-3", message.isAutomated ? "text-[11px] text-black dark:text-text-white/70" : "")}>{children}</h1>,
+                            h2: ({ children }: any) => <h2 className={cn("text-lg font-bold mb-2", message.isAutomated ? "text-[11px] text-black dark:text-text-white/70" : "")}>{children}</h2>,
+                            h3: ({ children }: any) => <h3 className={cn("text-base font-bold mb-1", message.isAutomated ? "text-[11px] text-black dark:text-text-white/70" : "")}>{children}</h3>,
                             strong: ({ children }: { children?: React.ReactNode }) => (
-                              <strong className={cn("font-bold", message.isAutomated ? "text-green-300" : "text-black")}>{children}</strong>
+                              <strong className={cn("font-bold", message.isAutomated ? "text-[11px] text-black dark:text-white/70" : "text-black dark:text-white/90")}>{children}</strong>
                             ),
                             em: ({ children }: { children?: React.ReactNode }) => (
-                              <em className={cn("italic", message.isAutomated ? "text-green-400/70" : "text-black/80")}>{children}</em>
+                              <em className={cn("italic", message.isAutomated ? "text-[11px] text-black dark:text-white/70" : "text-black/80 dark:text-white/70")}>{children}</em>
                             ),
                             p: ({ children }: { children?: React.ReactNode }) => (
-                              <p className={cn("text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0", message.isAutomated ? "text-green-400" : "text-black/90")}>
+                              <p className={cn("text-sm whitespace-pre-wrap leading-relaxed mb-1 last:mb-0", message.isAutomated ? "text-[11px] text-black dark:text-white/70" : "text-black/90 dark:text-white/80")}>
                                 {children}
                               </p>
                             ),
@@ -1461,11 +1462,11 @@ export function MessageList({
                           {mainText}
                         </ReactMarkdown>
                         {message.content.includes("Terminal Error Detected") && (
-                          <div className="mt-4 pt-2 border-t border-green-500/20 flex items-center justify-between">
-                            <div className="text-[9px] text-green-500/40 uppercase tracking-widest font-bold">Falbor AI Autopilot Active</div>
+                          <div className="mt-4 pt-2 border-t border-text-white/70 flex items-center justify-between">
+                            <div className="text-[9px] text-black dark:text-white/70">Falbor AI Autopilot Active</div>
                             <div className="flex gap-1">
-                              <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-ping" />
-                              <div className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white/70 animate-ping" />
+                              <div className="w-1.5 h-1.5 rounded-full bg-black dark:bg-white/70" />
                             </div>
                           </div>
                         )}
@@ -1480,8 +1481,9 @@ export function MessageList({
           <div className="w-full">
             <div className="flex items-center justify-between mb-2 px-1">
               <div className="flex items-center gap-2 ml-8 mt-3 mb-4">
-                <img src="/logo_light.png" alt="AI" className="w-24 absolute left-0 object-contain" />
-                <div className="flex items-center gap-1 text-[10px] text-black/30" />
+                <img src="/logo_light.png" alt="AI" className="w-24 absolute left-0 object-contain dark:hidden" />
+                <img src="/logo.png" alt="AI" className="w-24 absolute left-0 object-contain hidden dark:block" />
+                <div className="flex items-center gap-1 text-[10px] text-black/30 dark:text-white/40" />
               </div>
               {!(index === messages.length - 1 && isStreaming) && (
                 <DropdownMenu>
@@ -1492,19 +1494,19 @@ export function MessageList({
                       className="h-6 w-6 p-0 hover:bg-[#e4e4e4] cursor-pointer"
                       aria-label="AI message options"
                     >
-                      <MoreVertical className="h-3.5 w-3.5 text-black/40" />
+                      <MoreVertical className="h-3.5 w-3.5 text-black/40 dark:text-white/40" />
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-[200px] p-1.5 bg-white border border-[#e4e4e4] shadow-xs rounded-lg">
+                  <DropdownMenuContent align="end" className="dark:border-white/40 w-[200px] p-1.5 bg-white border border-[#e4e4e4] shadow-xs rounded-lg dark:bg-[#000000ff] dark:text-white/40">
                     <DropdownMenuItem
-                      className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
+                      className="cursor-pointer text-xs flex items-center dark:hover:bg-[#2C2C30] gap-2 hover:bg-gray-50 p-2 rounded-md text-gray-700 dark:text-white/40"
                       onClick={() => onRegenerate?.(message.id)}
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
                       Recreate Response
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-50 p-2 rounded-md transition-colors font-medium text-gray-700"
+                      className="cursor-pointer text-xs flex items-center dark:hover:bg-[#2C2C30] gap-2 hover:bg-gray-50 p-2 rounded-md text-gray-700 dark:text-white/40"
                       onClick={() => {
                         const sections = parseAIResponse(message.content)
                         const textToCopy =
@@ -1521,16 +1523,16 @@ export function MessageList({
                       {copiedId === message.id ? "Copied!" : "Copy Message"}
                     </DropdownMenuItem>
                     {(message.tokensUsed || message.cost) && (
-                      <div className="border-t border-gray-100 mt-1 pt-1 px-2 py-1.5">
-                        <div className="text-[10px] font-semibold text-black/30 uppercase tracking-wider mb-1">Usage</div>
+                      <div className="border-t border-white/40 mt-1 pt-1 px-2 py-1.5">
+                        <div className="text-[10px] text-black/30 dark:text-white/80 mb-1">Usage</div>
                         {message.tokensUsed && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-black/50">
+                          <div className="flex items-center gap-1.5 text-[11px] text-black/50 dark:text-white/80">
                             <Zap className="w-3 h-3" />
-                            <span>{message.tokensUsed.toLocaleString()} tokens</span>
+                            <span className="dark:text-white/80">{message.tokensUsed.toLocaleString()} tokens</span>
                           </div>
                         )}
                         {message.cost && (
-                          <div className="flex items-center gap-1.5 text-[11px] text-black/50 mt-0.5">
+                          <div className="flex items-center gap-1.5 text-[11px] text-black/50 mt-0.5 dark:text-white/80">
                             <Database className="w-3 h-3" />
                             <span>${(message.cost / 100).toFixed(2)} credits</span>
                           </div>
@@ -1618,8 +1620,8 @@ function WorkSummaryView({
         size="sm"
         onClick={() => setIsExpanded(!isExpanded)}
         className={cn(
-          "h-8 px-3 gap-2 bg-white border border-[#e4e4e4] hover:bg-gray-50 text-gray-900 text-xs w-fit rounded-md transition-all shadow-xs",
-          isExpanded && "border-blue-500 ring-1 ring-blue-500/10"
+          "h-8 px-3 gap-2 bg-white dark:bg-white/5 border border-[#e4e4e4] dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 text-gray-900 dark:text-white/90 text-xs w-fit rounded-md transition-all shadow-xs",
+          isExpanded && "border-blue-500 ring-1 ring-blue-500/10 dark:ring-blue-500/20"
         )}
       >
         <Edit className="w-3.5 h-3.5 text-blue-500" />
@@ -1643,12 +1645,12 @@ function WorkSummaryView({
           >
             <div className="pt-2 pb-1 space-y-3">
               {/* Files List */}
-              <div className="bg-gray-50/50 rounded-lg border border-gray-100 p-2 space-y-1.5">
+              <div className="bg-gray-50/50 dark:bg-white/5 rounded-lg border border-gray-100 dark:border-white/10 p-2 space-y-1.5">
                 {files.map((file: any, idx: number) => (
                   <div key={idx} className="flex items-center justify-between text-[11px] px-1.5 py-1">
                     <div className="flex items-center gap-2 max-w-[70%]">
                       <GetFileIcon name={file.name} />
-                      <span className="truncate font-mono text-gray-700">{file.name}</span>
+                      <span className="truncate font-mono text-gray-700 dark:text-gray-300">{file.name}</span>
                     </div>
                     <div className="flex items-center gap-2 font-medium">
                       {file.added > 0 && (
@@ -1673,8 +1675,8 @@ function WorkSummaryView({
                     size="sm"
                     onClick={() => onActivateVersion?.(message.id)}
                     className={cn(
-                      "h-7 px-2.5 gap-2 bg-white border border-[#e4e4e4] hover:bg-gray-50 text-gray-900 text-[10px] rounded-sm transition-all",
-                      activeMessageId === message.id ? "border-blue-500 shadow-sm" : ""
+                      "h-7 px-2.5 gap-2 bg-white dark:bg-white/5 border border-[#e4e4e4] dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/10 text-gray-900 dark:text-white/80 text-[10px] rounded-sm transition-all",
+                      activeMessageId === message.id ? "border-blue-500 dark:border-blue-400 shadow-sm" : ""
                     )}
                   >
                     <HistoryIcon className="w-3 h-3 text-gray-500" />
@@ -1685,7 +1687,7 @@ function WorkSummaryView({
 
               {/* Brief Summary Text */}
               {summaryText && (
-                <div className="text-[12px] text-gray-600 leading-relaxed pl-1 italic border-l-2 border-gray-200">
+                <div className="text-[12px] text-gray-600 dark:text-gray-400 leading-relaxed pl-1 italic border-l-2 border-gray-200 dark:border-white/10">
                   {summaryText}
                 </div>
               )}
@@ -1763,11 +1765,11 @@ function AIMessageContent({
 
   const markdownComponents = {
     strong: ({ children }: { children?: React.ReactNode }) => (
-      <strong className="font-bold text-black bg-[#e4e4e4] px-1.5 py-1 rounded text-sm">{children}</strong>
+      <strong className="font-bold text-black dark:text-white/90 bg-[#e4e4e4] dark:bg-white/10 px-1.5 py-1 rounded text-sm">{children}</strong>
     ),
-    em: ({ children }: { children?: React.ReactNode }) => <em className="italic text-black/80">{children}</em>,
+    em: ({ children }: { children?: React.ReactNode }) => <em className="italic text-black/80 dark:text-white/70">{children}</em>,
     p: ({ children }: { children?: React.ReactNode }) => (
-      <div className="text-sm leading-relaxed whitespace-pre-wrap mb-1 last:mb-0">{children}</div>
+      <div className="text-sm leading-relaxed whitespace-pre-wrap mb-1 last:mb-0 dark:text-white/80">{children}</div>
     ),
     ul: ({ children }: { children?: React.ReactNode }) => (
       <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
@@ -1788,7 +1790,7 @@ function AIMessageContent({
       const code = String(children).replace(/\n$/, "")
 
       if (inline) {
-        return <code className="px-1.5 py-0.5 rounded text-sm text-black font-mono" {...props}>{children}</code>
+        return <code className="px-1.5 py-0.5 rounded text-sm text-black dark:text-white/90 font-mono bg-black/5 dark:bg-white/10" {...props}>{children}</code>
       }
       const [copied, setCopied] = useState(false);
 
@@ -1799,6 +1801,7 @@ function AIMessageContent({
         // reset after 2 seconds
         setTimeout(() => setCopied(false), 2000);
       };
+      const isDark = document.documentElement.classList.contains("dark"); // or your state
 
       return (
         <div className="relative group">
@@ -1826,7 +1829,9 @@ function AIMessageContent({
               paddingRight: "1.25rem", // Extra padding to ensure 5px clearance before the edge if needed
               fontSize: "11px",
               lineHeight: "1.5",
-              background: "#f0f0f0",
+              color: isDark ? "#f0f0f0" : "#2C2C30",
+              background: isDark ? "#2C2C30" : "#f0f0f0",
+
             }}
             codeTagProps={{
               style: {
@@ -1858,9 +1863,9 @@ function AIMessageContent({
       case "search":
         return "Knowledge Discovery"
       case "fileChecks":
-        return `Code Validation (${content.length})`
+        return `Code Validation ${content.length}`
       case "files":
-        return `Generated Assets (${content.length})`
+        return `Generated Assets ${content.length}`
       case "importCard":
         return "GitHub Repo Integration"
       case "testing":
@@ -1895,6 +1900,16 @@ function AIMessageContent({
         return "Dependency Sync"
       case "apiSearch":
         return content.name ? `Searching ${content.name} Docs` : "API Documentation Research"
+      case "verifyingSolution":
+        return content.name ? `Verifying ${content.name} Solution` : "Integrity Verification"
+      case "terminal":
+        return "Terminal Operations"
+      case "internetSearch":
+        return "Broad Internet Search"
+      case "data":
+        return "Data Analysis"
+      case "codeBlock":
+        return content?.filename ? `Code Generation ${content.filename}` : "Architecting System Files"
       default:
         return type.charAt(0).toUpperCase() + type.slice(1)
     }
@@ -1950,6 +1965,8 @@ function AIMessageContent({
         return ScanSearch
       case "reviewedWork":
         return ClipboardCheck
+      case "codeBlock":
+        return Code2
       case "finalReasoning":
         return Brain
       case "finalResponsive":
@@ -1962,6 +1979,14 @@ function AIMessageContent({
         return Edit
       case "apiSearch":
         return Globe
+      case "verifyingSolution":
+        return ClipboardCheck
+      case "terminal":
+        return TerminalIcon
+      case "internetSearch":
+        return Globe
+      case "data":
+        return Database
       default:
         return FileText
     }
@@ -1987,6 +2012,10 @@ function AIMessageContent({
       case "finalReasoning":
       case "finalResponsive":
       case "workSummary":
+      case "terminal":
+      case "internetSearch":
+      case "verifyingSolution":
+      case "data":
         return (
           <div className="p-3">
             {type === "workSummary" ? (
@@ -1997,8 +2026,32 @@ function AIMessageContent({
                 onActivateVersion={onActivateVersion}
                 activeMessageId={activeMessageId}
               />
+            ) : type === "terminal" ? (
+              <div className="space-y-3">
+                <div className="text-xs text-black/50 dark:text-white/40 font-mono italic mb-1">Proposed Terminal Command:</div>
+                <Button
+                  size="sm"
+                  className="bg-black dark:bg-white/10 text-white rounded-lg flex items-center gap-2 px-4 shadow-md transition-all hover:scale-[1.02] border-none"
+                  onClick={() => {
+                    const cmd = typeof content === 'object' ? content.content : content;
+                    window.dispatchEvent(new CustomEvent('terminal-run-command', { detail: { command: cmd } }));
+                  }}
+                >
+                  <TerminalIcon className="w-4 h-4 text-blue-400" />
+                  <span className="font-semibold text-xs tracking-wide uppercase">Execute in Terminal</span>
+                  <div className="h-3 w-[1px] bg-white/20 mx-1" />
+                  <code className="text-[10px] text-gray-400 font-mono">
+                    {typeof content === 'object' ? content.content : content}
+                  </code>
+                </Button>
+                {typeof content === 'string' && content.length > 50 && (
+                  <div className="mt-2 text-[11px] text-black/40 dark:text-white/30 font-mono bg-black/5 dark:bg-white/5 p-2 rounded">
+                    {content}
+                  </div>
+                )}
+              </div>
             ) : (
-              <div className="text-sm text-black/70 leading-relaxed whitespace-pre-wrap">
+              <div className="text-sm text-black/70 dark:text-foreground/90 leading-relaxed whitespace-pre-wrap">
                 {renderToolContent(type, content)}
               </div>
             )}
@@ -2010,7 +2063,7 @@ function AIMessageContent({
                   size="sm"
                   onClick={() => onActivateVersion?.(message.id)}
                   className={cn(
-                    "h-8 px-3 gap-2 bg-white border hover:bg-gray-50 text-gray-900 text-xs",
+                    "h-8 px-3 gap-2 bg-white dark:bg-black dark:text-white/90 border hover:bg-gray-50 text-gray-900 text-xs",
                     activeMessageId === message.id ? "border-blue-500 shadow-sm" : ""
                   )}
                 >
@@ -2066,8 +2119,9 @@ function AIMessageContent({
       case "tasks":
         if (!Array.isArray(content)) return null
         return (
-          <div className="space-y-2 p rounded-md mb-4">
-            <div className="space-y-1.5 mt-2">
+          <div className="space-y-2 p rounded-md mb-4 p-3 dark:bg-[#2C2C30]">
+            <div className="space-y-1.5">
+              <h1 className="text-[16px]">Plan</h1>
               {content.map((task: { text: string; status: string }, idx: number) => (
                 <div key={idx} className="flex items-center gap-2 text-sm">
                   {task.status === "loading" && <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />}
@@ -2075,7 +2129,7 @@ function AIMessageContent({
                   {task.status === "pending" && <Circle className="w-3.5 h-3.5 text-gray-300" />}
                   <span className={cn(
                     "text-black/70",
-                    task.status === "success" && "line-through text-black/40"
+                    task.status === "success" && "dark:text-white"
                   )}>
                     {task.text}
                   </span>
@@ -2096,14 +2150,14 @@ function AIMessageContent({
       case "testing":
         return (
           <div className="mt-2 p-2">
-            <div className="w-64 h-64 bg-white border overflow-hidden">
+            <div className="w-64 h-64 bg-white dark:bg-[#1E1E21] border dark:border-white/10 overflow-hidden">
               <SandpackProvider
                 files={codeBlocks.reduce((acc: Record<string, string>, block) => {
                   acc[`/${block.filename}`] = block.code
                   return acc
                 }, {})}
                 template="react-ts"
-                theme="light"
+                theme={document.documentElement.classList.contains('dark') ? "dark" : "light"}
               >
                 <SandpackPreview style={{ height: "100%" }} />
               </SandpackProvider>
@@ -2125,13 +2179,13 @@ function AIMessageContent({
               </div>
             ) : (
               <>
-                <div className="text-[13px] text-black/70 leading-relaxed whitespace-pre-wrap italic">
+                <div className="text-[13px] text-black/70 dark:text-white/80 leading-relaxed whitespace-pre-wrap italic">
                   {info || "Found documentation and integration details for " + content.name}
                 </div>
 
                 {links.length > 0 && (
                   <div className="space-y-2">
-                    <div className="text-[10px] font-bold text-black/30 uppercase tracking-wider px-1">Sources & Links</div>
+                    <div className="text-[10px] font-bold text-black/30 dark:text-white/40 uppercase tracking-wider px-1">Sources & Links</div>
                     <div className="grid grid-cols-1 gap-1.5">
                       {links.map((link: string, i: number) => {
                         const match = link.match(/\[(.*?)\]\((.*?)\)/) || link.match(/(https?:\/\/[^\s]+)/);
@@ -2144,11 +2198,11 @@ function AIMessageContent({
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-2 p-2 bg-black/[0.03] hover:bg-black/[0.05] rounded-lg transition-all group/link"
+                            className="flex items-center gap-2 p-2 bg-black/[0.03] dark:bg-white/5 hover:bg-black/[0.05] dark:hover:bg-white/10 rounded-lg transition-all group/link"
                           >
-                            <Globe className="w-3 h-3 text-black/40 group-hover/link:text-blue-500" />
-                            <span className="text-xs text-black/60 truncate group-hover/link:text-black font-medium">{title}</span>
-                            <ChevronRight className="w-3 h-3 text-black/20 ml-auto group-hover/link:text-black/40" />
+                            <Globe className="w-3 h-3 text-black/40 dark:text-white/30 group-hover/link:text-blue-500" />
+                            <span className="text-xs text-black/60 dark:text-white/70 truncate group-hover/link:text-black dark:group-hover/link:text-white font-medium">{title}</span>
+                            <ChevronRight className="w-3 h-3 text-black/20 dark:text-white/10 ml-auto group-hover/link:text-black/40 dark:group-hover/link:text-white/30" />
                           </a>
                         );
                       })}
@@ -2158,7 +2212,7 @@ function AIMessageContent({
 
                 <Collapsible>
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" size="sm" className="w-full justify-between h-8 mt-1 bg-black/[0.02] hover:bg-black/[0.04] text-[11px] font-bold uppercase tracking-tight text-black/40">
+                    <Button variant="ghost" size="sm" className="w-full justify-between h-8 mt-1 bg-black/[0.02] dark:bg-white/5 hover:bg-black/[0.04] dark:hover:bg-white/10 text-[11px] font-bold uppercase tracking-tight text-black/40 dark:text-white/40 transition-colors">
                       <span>View Technical Details</span>
                       <ChevronDown className="w-3.5 h-3.5 opacity-50" />
                     </Button>
@@ -2190,7 +2244,7 @@ function AIMessageContent({
         const isScanProvider = content.name === "Scan Provider";
         const actionText = isGmail ? "Open in Gmail" : isScanProvider ? "Scan Provider" : "Run in Terminal";
         const Icon = isGmail ? Mail : isScanProvider ? Search : TerminalIcon;
-        const buttonColor = isGmail ? "bg-red-600 hover:bg-red-700" : isScanProvider ? "bg-blue-600 hover:bg-blue-700" : "bg-black hover:bg-black/90";
+        const buttonColor = isGmail ? "bg-red-600 hover:bg-red-700" : isScanProvider ? "bg-blue-600 hover:bg-blue-700" : "bg-black dark:bg-white/10 hover:bg-black/90 dark:hover:bg-white/20";
 
         return (
           <div className="mt-2 mb-4">
@@ -2226,78 +2280,32 @@ function AIMessageContent({
         )
       }
       case "codeBlock": {
-        // Show a file pill button — clicking opens code view.
-        // A ⋯ menu appears on hover, which opens a ui square (dropdown) with "View Changes".
-        // isOpen=true means Generating filename, isOpen=false means Wrote.
         return (
-          <div className="mt-2 mb-2 group/file">
-            <div className="flex items-center gap-2">
-              {/* File icon + filename button */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 gap-2 bg-white border BackgroundStyle hover:border-[#e7e5df] text-gray-700 font-medium"
-                onClick={() => onCodeSelect(content)}
+          <div className="p-2 rounded-lg">
+            <div className="rounded-md border border-black/10 dark:border-white/10 max-h-[200px] overflow-y-auto bg-white dark:bg-[#1E1E21] custom-scrollbar">
+              <SyntaxHighlighter
+                language={content.language || "typescript"}
+                style={document.documentElement.classList.contains('dark') ? oneDark : oneLight}
+                wrapLongLines={true}
+                customStyle={{
+                  margin: 0,
+                  padding: "12px",
+                  fontSize: "11px",
+                  lineHeight: "1.5",
+                  background: "transparent",
+                }}
+                codeTagProps={{
+                  style: {
+                    background: "transparent",
+                    backgroundColor: "transparent",
+                    whiteSpace: "pre-wrap",
+                    wordBreak: "break-word",
+                    boxShadow: "none",
+                  }
+                }}
               >
-                <File className="w-3.5 h-3.5 text-gray-700" />
-                <span className="text-xs font-mono">{content.filename}</span>
-              </Button>
-              <AnimatePresence mode="wait">
-                {content.isOpen ? (
-                  <motion.div
-                    key="creating"
-                    initial={{ opacity: 0, x: -5 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 5 }}
-                    className="flex items-center gap-1.5"
-                  >
-                    <TextShimmer className="text-xs text-gray-700 font-medium bg-[#e7e5df]">Generating {content.filename}</TextShimmer>
-                  </motion.div>
-                ) : (
-                  <motion.div
-                    key="wrote"
-                    initial={{ opacity: 0, x: -5 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="flex items-center gap-1.5"
-                  >
-                    <span className="text-xs text-gray-700 font-medium ">Wrote</span>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {/* Three-dot View Changes button — revealed on hover when file is done */}
-              {!content.isOpen && onViewChanges && (
-                <DropdownMenu>
-                  <TooltipProvider>
-                    <Tooltip>
-                      <DropdownMenuTrigger asChild>
-                        <TooltipTrigger asChild>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 opacity-0 cursor-pointer group-hover/file:opacity-100 hover:bg-[#e9ecef] text-[#6c757d] hover:text-[#333] transition-opacity duration-200"
-                            aria-label="File options"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </Button>
-                        </TooltipTrigger>
-                      </DropdownMenuTrigger>
-                      <TooltipContent side="top" className="text-xs">
-                        View More
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-
-                  <DropdownMenuContent align="end" className="w-[140px] p-1 bg-white border border-[#e9ecef] shadow-lg rounded-md">
-                    <DropdownMenuItem
-                      className="cursor-pointer text-xs flex items-center gap-2 hover:bg-gray-100 p-2 rounded-sm transition-colors font-medium text-gray-700"
-                      onClick={() => onViewChanges(content)}
-                    >
-                      <FileText className="w-3.5 h-3.5" />
-                      View Changes
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+                {content.code}
+              </SyntaxHighlighter>
             </div>
           </div>
         )
@@ -2429,14 +2437,48 @@ function AIMessageContent({
         </div>
       )}
 
+      {/* Clone Screenshot Preview — shown at top of AI response when clone mode was used */}
+      {(() => {
+        const screenshotMatch = message.content.match(/<clone-screenshot\s+src="([^"]+)"\s*\/>/)
+        if (!screenshotMatch) return null
+        const screenshotSrc = screenshotMatch[1]
+        // Extract the URL from surrounding markdown if present
+        const urlMatch = message.content.match(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/)
+        const capturedUrl = urlMatch?.[2] || ""
+        const capturedLabel = urlMatch?.[1] || capturedUrl
+        return (
+          <div className="mb-4 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm">
+            <div className="flex items-center gap-2 px-3 py-2 bg-black dark:bg-[#1E1E21] text-white text-xs font-medium border-b dark:border-white/5">
+              <svg className="w-3.5 h-3.5 text-white/60 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span className="opacity-60">Captured screenshot:</span>
+              {capturedUrl ? (
+                <a href={capturedUrl} target="_blank" rel="noopener noreferrer" className="truncate text-blue-300 hover:text-blue-200 transition-colors">
+                  {capturedLabel}
+                </a>
+              ) : (
+                <span className="truncate opacity-80">target site</span>
+              )}
+            </div>
+            <img
+              src={screenshotSrc}
+              alt="Captured website screenshot"
+              className="w-full block"
+              style={{ maxHeight: 400, objectFit: "cover", objectPosition: "top" }}
+            />
+          </div>
+        )
+      })()}
+
       {parts.map((p, idx) => (
         <div
           key={`${message.id}-part-${idx}`}
           className="w-full"
         >
           {(() => {
-            // Only text and previewButton and codeBlock render directly
-            const nonCollapsible = ["text", "previewButton", "codeBlock"];
+            // Only text and previewButton render directly
+            const nonCollapsible = ["text", "previewButton"];
             if (!isStreaming) {
               nonCollapsible.push("reviewedWork");
             }
@@ -2453,7 +2495,7 @@ function AIMessageContent({
               if (!cleanedText) return null
 
               return (
-                <div className="prose prose-sm max-w-none text-black/75">
+                <div className="prose prose-sm max-w-none text-black/75 dark:text-white/90">
                   {isStreaming && parts.filter((pt) => pt.type === "text").every((pt) => !pt.content) ? (
                     <div className="flex items-center gap-2 text-muted-foreground" aria-live="polite">
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -2473,7 +2515,7 @@ function AIMessageContent({
                 <div className="mt-4">
                   <Button
                     onClick={() => onOpenPreview?.(p.content.version, p.content.project, codeBlocks)}
-                    className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 hover:text-black bg-transparent hover:bg-transparent border-none p-0 h-auto group"
+                    className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 dark:text-white/80 hover:text-black dark:hover:text-white bg-transparent hover:bg-transparent border-none p-0 h-auto group transition-colors"
                   >
                     <div className="relative w-4 h-4">
                       <Globe className="absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-100 translate-y-0 group-hover:opacity-0 group-hover:-translate-y-1" />
@@ -2494,7 +2536,8 @@ function AIMessageContent({
               "thinking", "commentary", "userMessage", "planning", "search",
               "fileChecks", "importCard", "testing", "fileSearch", "customAction",
               "finalReasoning", "finalResponsive", "tasks", "apiSearch",
-              "discoverGmailTools", "testGmailTools", "compileGmailFindings"
+              "discoverGmailTools", "testGmailTools", "compileGmailFindings",
+              "codeBlock" // Added codeBlock here
             ];
 
             if (isStreaming) {
@@ -2507,7 +2550,9 @@ function AIMessageContent({
             const sectionKey = `section-${collapsibleIndex}`;
             const isLastPart = idx === parts.length - 1;
             const isActive = isStreaming && isLastPart;
-            const isOpen = expandedSections[sectionKey] ?? false;
+            // AUTO-OPEN: Automatically expand the section if it is currently streaming/active, 
+            // OR if it's an unfinished code block (content.isOpen was set in the parser)
+            const isOpen = (isActive && p.type === "codeBlock") || (p.type === "codeBlock" && p.content.isOpen) || (expandedSections[sectionKey] ?? false);
             const title = p.type === "customAction" ? p.content.name : getTitle(p.type, p.content);
             const Icon = getIcon(p.type);
 
@@ -2517,11 +2562,11 @@ function AIMessageContent({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 hover:text-black bg-transparent hover:bg-transparent border-none p-0 h-auto group"
+                    className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 dark:text-white/80 hover:text-black dark:hover:text-white bg-transparent hover:bg-transparent border-none p-0 h-auto group transition-colors"
                   >
                     <div className="relative w-4 h-4">
-                      <Icon className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-100 translate-y-0", isOpen && "opacity-0 -translate-y-1", "group-hover:opacity-0 group-hover:-translate-y-1")} />
-                      <ChevronDown className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-0 translate-y-1", isOpen && "opacity-100 translate-y-0 rotate-180", "group-hover:opacity-100 group-hover:translate-y-0")} />
+                      <Icon className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-100 translate-y-0 text-muted-foreground dark:text-white/60", isOpen && "opacity-0 -translate-y-1", "group-hover:opacity-0 group-hover:-translate-y-1")} />
+                      <ChevronDown className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-0 translate-y-1 dark:text-white/60", isOpen && "opacity-100 translate-y-0 rotate-180", "group-hover:opacity-100 group-hover:translate-y-0")} />
                     </div>
                     {isActive ? (
                       <TextShimmer duration={1.5} className="text-sm font-medium">{title}</TextShimmer>

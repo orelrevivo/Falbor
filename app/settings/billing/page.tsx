@@ -52,18 +52,18 @@ export default function BillingPage() {
                         Billing & Subscriptions
                     </h1>
                 </div>
-                <p className="text-zinc-500 text-md max-w-2xl leading-relaxed">
+                <p className="text-muted-foreground text-md max-w-2xl leading-relaxed">
                     Manage your subscription plans and view your payment history.
                 </p>
             </header>
 
             <div className="grid gap-6">
                 {/* Balance Section */}
-                <div className="py-4 px-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col gap-4">
+                <div className="py-4 px-6 border border-border rounded-sm bg-card shadow-xs flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-lg font-semibold text-zinc-900">Falbor Balance</h2>
-                            <p className="text-sm text-zinc-500">
+                            <h2 className="text-lg font-semibold text-foreground">Falbor Balance</h2>
+                            <p className="text-sm text-muted-foreground">
                                 Your current balance available for AI and API usage.
                             </p>
                         </div>
@@ -72,27 +72,27 @@ export default function BillingPage() {
                         </div>
                     </div>
 
-                    <div className="mt-2 p-4 bg-zinc-50 rounded-lg border border-zinc-100 flex items-center justify-between">
+                    <div className="mt-2 p-4 bg-muted/50 rounded-lg border border-border flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                            <div className="p-2 bg-white rounded-full border border-zinc-200">
-                                <Wallet className="w-4 h-4 text-zinc-500" />
+                            <div className="p-2 bg-card rounded-full border border-border">
+                                <Wallet className="w-4 h-4 text-muted-foreground" />
                             </div>
-                            <div className="text-sm text-zinc-600">
-                                Available Credit: <span className="font-bold text-zinc-900">${((subscription?.balance || 0) / 100).toFixed(2)}</span>
+                            <div className="text-sm text-muted-foreground">
+                                Available Credit: <span className="font-bold text-foreground">${((subscription?.balance || 0) / 100).toFixed(2)}</span>
                             </div>
                         </div>
-                        <Button variant="outline" className="h-8 text-xs font-bold border-zinc-200 bg-white hover:bg-zinc-50">
+                        <Button variant="outline" className="h-8 text-xs font-bold border-border bg-card hover:bg-muted">
                             Add Credits
                         </Button>
                     </div>
                 </div>
 
                 {/* Subscription Section */}
-                <div className="py-4 px-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col gap-4">
+                <div className="py-4 px-6 border border-border rounded-sm bg-card shadow-xs flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                         <div>
-                            <h2 className="text-lg font-semibold text-zinc-900">Current Subscription</h2>
-                            <p className="text-sm text-zinc-500">
+                            <h2 className="text-lg font-semibold text-foreground">Current Subscription</h2>
+                            <p className="text-sm text-muted-foreground">
                                 {isFree ? "You are currently on the free plan." : `You are currently on the ${subscription.subscriptionTier} plan.`}
                             </p>
                         </div>
@@ -106,7 +106,7 @@ export default function BillingPage() {
                         )}
                     </div>
 
-                    <div className="mt-2 p-4 bg-zinc-50 rounded-lg border border-zinc-100 italic text-zinc-600">
+                    <div className="mt-2 p-4 bg-muted/50 rounded-lg border border-border italic text-muted-foreground">
                         {isFree ? (
                             "No active subscriptions found. Upgrade to unlock premium features."
                         ) : (
@@ -116,43 +116,43 @@ export default function BillingPage() {
                 </div>
 
                 {/* Billing History Section */}
-                <div className="py-4 px-6 border border-zinc-200 rounded-sm bg-white shadow-xs flex flex-col gap-4">
+                <div className="py-4 px-6 border border-border rounded-sm bg-card shadow-xs flex flex-col gap-4">
                     <div className="flex items-center gap-2 mb-6">
-                        <History className="w-5 h-5 text-zinc-400" />
-                        <h2 className="text-lg font-semibold text-zinc-900">Billing History</h2>
+                        <History className="w-5 h-5 text-muted-foreground/50" />
+                        <h2 className="text-lg font-semibold text-foreground">Billing History</h2>
                     </div>
 
                     {isLoading ? (
-                        <div className="py-10 text-center text-zinc-500">Loading history...</div>
+                        <div className="py-10 text-center text-muted-foreground">Loading history...</div>
                     ) : history.length === 0 ? (
-                        <div className="py-10 text-center text-zinc-500 bg-zinc-50 rounded-lg border border-dashed border-zinc-200">
+                        <div className="py-10 text-center text-muted-foreground bg-muted/30 rounded-lg border border-dashed border-border">
                             No payment history found.
                         </div>
                     ) : (
                         <div className="overflow-x-auto">
                             <table className="w-full text-left">
                                 <thead>
-                                    <tr className="border-b border-zinc-100 text-sm text-zinc-400 font-medium">
+                                    <tr className="border-b border-border text-sm text-muted-foreground font-medium">
                                         <th className="pb-3 pr-4">Date</th>
                                         <th className="pb-3 px-4">Subscription</th>
                                         <th className="pb-3 px-4 text-right">Amount</th>
                                         <th className="pb-3 pl-4 text-right">Status</th>
                                     </tr>
                                 </thead>
-                                <tbody className="text-sm divide-y divide-zinc-50">
+                                <tbody className="text-sm divide-y divide-border/50">
                                     {history.map((item) => (
-                                        <tr key={item.id} className="group hover:bg-zinc-50 transition-colors">
-                                            <td className="py-4 pr-4 text-zinc-600">
+                                        <tr key={item.id} className="group hover:bg-muted/50 transition-colors border-b border-border/50 last:border-0">
+                                            <td className="py-4 pr-4 text-muted-foreground">
                                                 {new Date(item.createdAt).toLocaleDateString()}
                                             </td>
-                                            <td className="py-4 px-4 font-medium text-zinc-900 capitalize">
+                                            <td className="py-4 px-4 font-medium text-foreground capitalize">
                                                 {item.planName}
                                             </td>
-                                            <td className="py-4 px-4 text-right text-zinc-600">
+                                            <td className="py-4 px-4 text-right text-muted-foreground">
                                                 ${(item.amount / 100).toFixed(2)}
                                             </td>
                                             <td className="py-4 pl-4 text-right">
-                                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${item.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-zinc-100 text-zinc-500'}`}>
+                                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${item.status === 'completed' ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
                                                     {item.status}
                                                 </span>
                                             </td>

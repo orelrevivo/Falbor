@@ -5,6 +5,7 @@ import { projects, messages as messagesTable, files, artifacts, userCustomKnowle
 import { eq, asc, and } from "drizzle-orm"
 import { getSystemPrompt, FALMAX_PROMPTS } from "@/lib/common/prompts/prompt"
 import { DISCUSS_SYSTEM_PROMPT } from "@/lib/common/prompts/discuss-prompt"
+import { MOTIONSITES_DESIGN_PROMPT } from "@/lib/common/prompts/prompt-design"
 import { pusherServer } from "@/lib/pusher"
 import { SECURITY_SYSTEM_PROMPT } from "@/lib/common/prompts/security-prompt"
 import { discordActions, gmailActions, githubActions, linkedinActions, twitterActions, slackActions, spotifyActions } from "@/lib/mcp/actions"
@@ -53,13 +54,16 @@ const MODEL_FALLBACK_CHAIN: Record<string, string[]> = {
   "zai-pro": ["deepseek/deepseek-chat", "meta-llama/llama-3.1-405b-instruct"],
   "zai-mini": ["google/gemini-2.0-flash-lite-preview", "anthropic/claude-3-haiku"],
   "falmax": ["gemini", "google/gemini-2.0-flash-001"],
+  "gpt-5": ["gpt-4o", "gemini"],
+  "gpt-4o": ["gpt-4o-mini", "gemini"],
+  "o1": ["gpt-4o", "gemini"],
+  "o1-preview": ["gpt-4o", "gemini"],
+  "gpt-4o-mini": ["gemini"],
 };
 
 const OPENROUTER_MODELS = {
   "claude-sonnet-4.6": "anthropic/claude-sonnet-4.6",
-  "gpt-4o": "openai/gpt-4o",
-  "gpt-4o-mini": "openai/gpt-4o-mini",
-  "gpt-5": "openai/gpt-5-preview",
+  "claude-opus-4.6-fast": "anthropic/claude-opus-4.6-fast",
   "claude-opus-4.6": "anthropic/claude-opus-4.6",
   "claude-haiku-4.5": "anthropic/claude-haiku-4.5",
   "claude-opus-4.5": "anthropic/claude-opus-4.5",
@@ -73,7 +77,7 @@ const OPENROUTER_MODELS = {
   "grok-4": "x-ai/grok-4",
   "grok-3-mini": "x-ai/grok-3-mini",
   "gemini-2.0-flash": "google/gemini-2.0-flash-001",
-  "gemini-3.1-flash-lite": "google/gemini-3.1-flash-lite-preview",
+  "gemini-3-flash": "google/gemini-3-flash-preview",
   "nano-banana": "google/gemini-2.5-flash-image",
   "nano-banana-2": "google/gemini-3.1-flash-image-preview",
   "nano-banana-pro": "google/gemini-3-pro-image-preview",
@@ -89,12 +93,12 @@ const OPENROUTER_MODELS = {
 const OPENAI_MODELS = {
   "gpt-5.2": "gpt-5.2",
   "gpt-5.1-codex": "gpt-5.1-codex-max",
-  "gpt-5.4-pro": "gpt-5.4-pro",
+  "gpt-5.5": "gpt-5.5",
   "gpt-5.4": "gpt-5.4",
-  "gpt-oss-120b": "gpt-oss-120b",
   "gpt-5": "gpt-5",
   "gpt-4o": "gpt-4o",
   "gpt-4o-mini": "gpt-4o-mini",
+  "o1": "o1",
   "o1-preview": "o1-preview",
   "o1-mini": "o1-mini",
 }
@@ -197,9 +201,18 @@ async function dispatchMcpTool(name: string, args: any, userId: string, projectI
     // Internet Search (SerpApi)
     case "internet_search":
       try {
-        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
-        const response = await fetch(`${baseUrl}/api/serp?q=${encodeURIComponent(args.query)}`);
-        return await response.json();
+        const apiKey = process.env.SERPAPI_API_KEY;
+        if (!apiKey) return { error: "SerpApi key not configured" };
+        const url = `https://serpapi.com/search.json?q=${encodeURIComponent(args.query)}&api_key=${apiKey}`;
+        const response = await fetch(url);
+        const data = await response.json();
+        return {
+          results: data.organic_results?.slice(0, 5).map((r: any) => ({
+            title: r.title,
+            link: r.link,
+            snippet: r.snippet,
+          })) || []
+        };
       } catch (err) {
         console.error("internet_search error:", err);
         return { error: "Search service unavailable" };
@@ -282,7 +295,7 @@ export async function POST(request: Request) {
 
   let selectedModel = initialSelectedModel
   if (credits?.subscriptionTier === 'none') {
-    selectedModel = "gemini-3.1-flash-lite"
+    selectedModel = "gpt-5"
   }
 
   let projectId = incomingProjectId
@@ -303,14 +316,30 @@ export async function POST(request: Request) {
 
     // Save credentials if provided
     if (supabaseUrl && anonKey) {
-      await fetch(`${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/api/projects/${projectId}/supabase`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          supabaseUrl,
-          anonKey,
-        }),
+      await db.insert(projectSupabase).values({
+        projectId,
+        supabaseProjectRef: supabaseUrl.split("//")[1]?.split(".")[0] || "unknown",
+        supabaseUrl,
+        anonKey,
+        serviceRoleKey: "",
+        dbPassword: "",
+        isActive: true,
       })
+
+      // Also sync to projectSecrets
+      const secretUpdates = [
+        { name: "VITE_SUPABASE_URL", value: supabaseUrl },
+        { name: "VITE_SUPABASE_ANON_KEY", value: anonKey },
+      ]
+
+      for (const secret of secretUpdates) {
+        await db.insert(projectSecrets).values({
+          projectId,
+          userId,
+          name: secret.name,
+          value: secret.value,
+        })
+      }
     }
   }
 
@@ -467,101 +496,22 @@ function detectMessageType(message: string): "greeting" | "question" | "build" {
   return "build"
 }
 
-/**
- * Design Intelligence: Auto-detects the type of website being requested
- * and returns a design hint string to inject into the system prompt so
- * the AI selects the right palette, fonts, and design patterns.
- */
 function detectDesignContext(message: string): string {
   const lower = message.toLowerCase()
 
-  const SITE_TYPES: Array<{ keywords: string[]; type: string; palette: string; fonts: string }> = [
-    {
-      keywords: ["blog", "article", "editorial", "magazine", "journal", "writing", "posts"],
-      type: "Blog / Content Site",
-      palette: "Blog palette (deep navy #1a1a2e, coral accent #e94560, off-white #fafafa background)",
-      fonts: "Playfair Display for headings + Source Sans 3 for body text (editorial elegance)"
-    },
-    {
-      keywords: ["store", "shop", "ecommerce", "e-commerce", "product", "cart", "checkout", "marketplace"],
-      type: "E-Commerce / Store",
-      palette: "E-Commerce palette (slate #0f172a, amber #f59e0b for prices, emerald #059669 for CTAs)",
-      fonts: "Plus Jakarta Sans for both headings and body (clean, professional)"
-    },
-    {
-      keywords: ["portfolio", "personal site", "resume", "cv", "showcase", "my work", "about me"],
-      type: "Portfolio / Personal",
-      palette: "Portfolio palette (near-black #18181b, violet accent #a78bfa, warm white #fafaf9)",
-      fonts: "DM Sans for both headings and body (minimal, elegant)"
-    },
-    {
-      keywords: ["dashboard", "saas", "admin", "panel", "analytics", "crm", "management", "platform"],
-      type: "SaaS / Dashboard",
-      palette: "SaaS palette (indigo #6366f1, slate canvas #f1f5f9, white surfaces)",
-      fonts: "Inter for both headings and body (clean, data-focused)"
-    },
-    {
-      keywords: ["landing", "startup", "launch", "marketing", "waitlist", "coming soon", "hero"],
-      type: "Landing Page / Marketing",
-      palette: "Landing Page palette (sky blue #0ea5e9, dark headlines #0f172a, orange CTAs #f97316)",
-      fonts: "Sora for headings + DM Sans for body (modern startup feel)"
-    },
-    {
-      keywords: ["dark mode", "dark theme", "developer", "dev tool", "terminal", "code", "hacker"],
-      type: "Dark Mode / Tech",
-      palette: "Dark palette (zinc-950 #09090b background, violet #a78bfa accent, cyan #22d3ee highlights)",
-      fonts: "Space Grotesk for headings + Inter for body (tech-focused)"
-    },
-    {
-      keywords: ["restaurant", "food", "menu", "café", "cafe", "bakery", "recipe", "cooking"],
-      type: "Restaurant / Food",
-      palette: "Restaurant palette (amber-brown #92400e, red CTAs #dc2626, cream #fffbeb background)",
-      fonts: "Playfair Display for headings + Inter for body (warm, inviting)"
-    },
-    {
-      keywords: ["medical", "health", "doctor", "clinic", "hospital", "wellness", "fitness", "gym"],
-      type: "Medical / Health",
-      palette: "Health palette (teal #0891b2, mint-white #f0fdfa, deep cyan text #164e63)",
-      fonts: "Manrope for headings + Inter for body (trustworthy, clean)"
-    },
-    {
-      keywords: ["crazy", "unconventional", "3d", "experimental", "unique", "void", "elite"],
-      type: "Elite / Experimental / \"Crazy\" (S-Tier 3D)",
-      palette: "S-Tier: CLEAN LIGHT BASE (or stark dark if thematic). Use React Three Fiber (R3F) for real 3D scenes. Avoid flat images. Use pure white backgrounds with subtle glow.",
-      fonts: "Space Grotesk for headings + Geist Sans for body (ultra-premium)"
-    },
-    {
-      keywords: ["clone", "duplicate", "replicate", "copy", "mirror", "make it like", "similar to", "pixel-perfect"],
-      type: "S-Tier Replication & Mirroring",
-      palette: "S-Tier: MIRROR SOURCE THEME EXACTLY. Use identical HEX/HSL values. Accurate alignment mapping.",
-      fonts: "S-Tier: Match source typography with 100% precision. High Fidelity Google Fonts."
-    }
-  ]
-
-  // Default Baseline / Professional Light
-  const baseline = {
-    type: "Professional Clean Light",
-    palette: "Light palette (#F7F7F2 background, pure white cards, thin silver #E5E7EB borders). NO heavy shadows.",
-    fonts: "Inter for body + Cal Sans or Sora for headings (modern professional)"
+  let recommendedBenchmark = "Nexora (SaaS / Premium Dark)"
+  if (lower.includes("agency") || lower.includes("portfolio") || lower.includes("creative")) {
+    recommendedBenchmark = "Aethera (Agency / Creative Studio)"
+  } else if (lower.includes("investment") || lower.includes("venture") || lower.includes("corporate")) {
+    recommendedBenchmark = "VEX Ventures (High-End Corporate)"
+  } else if (lower.includes("crypto") || lower.includes("web3") || lower.includes("ai") || lower.includes("nft")) {
+    recommendedBenchmark = "Orbis NFT (Tech / Futuristic)"
   }
 
-  for (const siteType of SITE_TYPES) {
-    if (siteType.keywords.some(kw => lower.includes(kw))) {
-      return `\n\n### AUTO-DETECTED DESIGN CONTEXT ###
-Site type detected: **${siteType.type}**
-Recommended palette: ${siteType.palette}
-Recommended fonts: ${siteType.fonts}
-Apply this palette and font pair automatically. Define ALL colors as CSS variables in :root in src/index.css. Import the fonts via Google Fonts in index.html. Maintain 100% consistency across all components.
-### END DESIGN CONTEXT ###`
-    }
-  }
-
-  // Default: Landing Page style (most universal)
-  return `\n\n### AUTO-DETECTED DESIGN CONTEXT ###
-No specific site type detected. Use the **Landing Page / Marketing** palette as default:
-Palette: Sky blue #0ea5e9 primary, dark #0f172a headlines, orange #f97316 CTAs, white background, slate-50 #f8fafc surfaces.
-Fonts: Sora for headings + DM Sans for body. Import via Google Fonts.
-Define ALL colors as CSS variables in :root. Maintain 100% design consistency.
+  return `\n\n### MANDATORY DESIGN CONTEXT ###
+Project Intent: ${message}
+Recommended MotionSites Benchmark: **${recommendedBenchmark}**
+Protocol: You MUST use the DNA (palettes, fonts, layout architecture) from the ${recommendedBenchmark} benchmark in your context. DO NOT use generic AI palettes or basic Tailwind cards. Every component MUST feel professional and premium.
 ### END DESIGN CONTEXT ###`
 }
 
@@ -678,12 +628,25 @@ async function handleModelRequest(
     databaseUrl: neonConfig.databaseUrl
   } : undefined
 
+  // =========================================================
+  // EARLY CLONE DETECTION
+  // Must run BEFORE systemPrompt build so we can skip the
+  // MOTIONSITES_DESIGN_PROMPT and detectDesignContext entirely.
+  // =========================================================
+  const earlyCloneMatch = message.match(/Clone this website URL:\s*(https?:\/\/[^\s\n]+)/i)
+  const isCloneRequest = !!earlyCloneMatch
+  let cloneTargetUrl = earlyCloneMatch ? earlyCloneMatch[1].trim() : ""
+  let cloneScreenshotDataUrl: string | null = null // will be set after pipeline runs below
+
   let systemPrompt = securityMode
     ? SECURITY_SYSTEM_PROMPT
-    : (discussMode ? DISCUSS_SYSTEM_PROMPT : getSystemPrompt(supabaseContext, neonContext))
+    : (discussMode
+      ? DISCUSS_SYSTEM_PROMPT
+      // Skip MOTIONSITES_DESIGN_PROMPT in clone mode — the target site defines the design
+      : getSystemPrompt(supabaseContext, neonContext) + (isCloneRequest ? "" : "\n\n" + MOTIONSITES_DESIGN_PROMPT))
 
-  // Inject Design Intelligence — auto-detect site type and recommend palette/fonts
-  if (!discussMode && !securityMode && isCodeRequest) {
+  // Inject Design Intelligence — skip in clone mode (target site colors/fonts override this)
+  if (!discussMode && !securityMode && isCodeRequest && !isCloneRequest) {
     const designContext = detectDesignContext(message)
     systemPrompt += designContext
   }
@@ -849,13 +812,13 @@ When editing an email template, focus ONLY on the template content.
       if (projectFiles.length > 0) {
         let fileContext = `\n\n## Current Project Files\nTo maintain consistency, here is the current file structure. Use <FileSearch> if you need the full content of any file.\n`;
         fileContext += projectFiles.map(f => `- ${f.path}`).join("\n");
-        
+
         // Auto-inject content of files mentioned in the prompt to reduce 'silent' failures
         const mentionedFiles = projectFiles.filter(f => {
-           const fileName = f.path.split("/").pop() || f.path;
-           return message.includes(f.path) || message.includes(fileName);
+          const fileName = f.path.split("/").pop() || f.path;
+          return message.includes(f.path) || message.includes(fileName);
         });
-        
+
         if (mentionedFiles.length > 0) {
           fileContext += `\n\n### Relevant File Contents (for your reference):\n`;
           mentionedFiles.forEach(f => {
@@ -863,11 +826,176 @@ When editing an email template, focus ONLY on the template content.
             fileContext += `\n--- ${f.path} ---\n${safeContent}\n`;
           });
         }
-        
+
         effectiveMessage += fileContext;
       }
     } catch (err) {
       console.error("[Context] Failed to inject project files:", err);
+    }
+  }
+
+
+  // =========================================================
+  // CLONE WEBSITE PIPELINE
+  // Runs after systemPrompt is built (so we can prepend to it)
+  // =========================================================
+  if (isCloneRequest && cloneTargetUrl) {
+    console.log(`[CloneMode] Detected clone request for: ${cloneTargetUrl}`)
+    try {
+      const baseAppUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+      const cloneRes = await fetch(`${baseAppUrl}/api/clone-website`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-internal-user-id": userId,
+        },
+        body: JSON.stringify({ url: cloneTargetUrl }),
+        signal: AbortSignal.timeout(28000),
+      })
+
+      if (cloneRes.ok) {
+        const cloneData = await cloneRes.json()
+
+        // Store screenshot as data URL for stream emission to user AND AI vision
+        if (cloneData.screenshotBase64) {
+          imageData = {
+            data: cloneData.screenshotBase64,
+            mimeType: cloneData.screenshotMimeType || "image/jpeg",
+          }
+          cloneScreenshotDataUrl = `data:${cloneData.screenshotMimeType || "image/jpeg"};base64,${cloneData.screenshotBase64}`
+          console.log(`[CloneMode] Screenshot injected (${cloneData.screenshotBase64.length} chars base64)`)
+        } else {
+          console.warn("[CloneMode] No screenshot returned from clone API")
+        }
+
+        // ── Helper: absolute + decode HTML entities (&amp; → &) from Microlink ──
+        const toAbsolute = (href: string): string => {
+          if (!href) return ""
+          const clean = href
+            .replace(/&amp;/g, "&").replace(/&lt;/g, "<")
+            .replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+          if (clean.startsWith("http://") || clean.startsWith("https://")) return clean
+          try { return new URL(clean, cloneTargetUrl).href } catch { return clean }
+        }
+
+        // Design tokens
+        const colorList = cloneData.colors?.length > 0 ? cloneData.colors.slice(0, 25).join(", ") : "Analyze from screenshot"
+        const fontList = cloneData.fonts?.length > 0 ? cloneData.fonts.slice(0, 8).join(", ") : "Analyze from screenshot"
+        const sectionList = cloneData.sections?.length > 0 ? cloneData.sections.join(", ") : "Detect from screenshot"
+
+        // Clean all asset URLs (absolute + entity-decoded)
+        const a = cloneData.assets || {}
+        const logoUrl = toAbsolute(a.logoUrl || "")
+        const faviconUrl = toAbsolute(a.faviconUrl || "")
+        const ogImageUrl = toAbsolute(a.ogImageUrl || "")
+        const allImgs = (a.allImages || []).map(toAbsolute).filter(Boolean)
+        const bgImgs = (a.backgroundImages || []).map(toAbsolute).filter(Boolean)
+        const knownUrls = new Set([logoUrl, faviconUrl, ogImageUrl].filter(Boolean))
+        const contentImgs = allImgs.filter((u: string) => !knownUrls.has(u))
+
+        // Build TypeScript const block — AI pastes verbatim, no URL retyping
+        const imgConstsLines = [
+          "// Real images from the cloned site — paste at top of your component",
+          `const SITE_LOGO     = "${logoUrl}";`,
+          `const SITE_FAVICON  = "${faviconUrl}";`,
+          `const SITE_HERO_IMG = "${ogImageUrl}";`,
+          "",
+          "// Content images — use in sections in this exact order:",
+          ...contentImgs.slice(0, 20).map((u: string, i: number) => `const IMG_${i + 1} = "${u}";`),
+          ...(bgImgs.length > 0 ? [
+            "",
+            "// CSS background images:",
+            ...bgImgs.map((u: string, i: number) => `// backgroundImage: 'url("${u}")'  /* BG_${i + 1} */`),
+          ] : []),
+        ].join("\n")
+
+        // Build exact JSX snippet examples
+        const jsxSnippets = [
+          ...(logoUrl ? [`<img src="${logoUrl}" alt="logo" className="h-8 w-auto" />`] : []),
+          ...(faviconUrl ? [`<link rel="icon" href="${faviconUrl}" />`] : []),
+          ...(ogImageUrl ? [`<img src="${ogImageUrl}" alt="hero" className="w-full" />`] : []),
+          ...contentImgs.slice(0, 8).map((u: string, i: number) =>
+            `<img src="${u}" alt="section image ${i + 1}" className="w-full rounded-xl" />`
+          ),
+        ].join("\n")
+
+        effectiveMessage += `
+
+## 🎯 CLONE MODE — ${cloneTargetUrl}
+Title: ${cloneData.title || "see screenshot"} | Sections: ${sectionList}
+
+### 🎨 Design:
+Colors: ${colorList}
+Fonts: ${fontList}
+Button/Card styles: ${cloneData.buttonStyles || "analyze from screenshot"}
+
+### 🖼️ REAL IMAGE CONSTANTS — PASTE THIS BLOCK AT THE TOP OF YOUR MAIN COMPONENT FILE:
+\`\`\`typescript
+${imgConstsLines}
+\`\`\`
+
+### 📋 EXACT JSX TAGS — COPY-PASTE INTO YOUR SECTIONS:
+\`\`\`jsx
+${jsxSnippets || "// No images — use screenshot to recreate visually"}
+\`\`\`
+
+### ❌ THESE ARE BANNED — NEVER DO THIS:
+- src="/anything" (relative path — breaks on localhost, FORBIDDEN)
+- src="placeholder.jpg" or src="" (fake images, FORBIDDEN)
+- <img> tag without a real https:// URL from the list above (FORBIDDEN)
+
+### 📝 Page text:
+${(cloneData.pageText || "").substring(0, 2000) || "Reconstruct from screenshot"}
+
+---
+⚠️ Full-page screenshot attached. Study every section before writing any code.`
+
+        // System prompt — strict pixel-perfect clone override
+        const CLONE_SYSTEM_PROMPT = `## ⚡ WEBSITE CLONE MODE — PIXEL-PERFECT OUTPUT
+
+You are cloning a REAL website. A full-page screenshot is attached as your visual reference.
+The user message contains REAL image URLs as TypeScript constants (SITE_LOGO, SITE_HERO_IMG, IMG_1, etc.)
+scraped live from the actual page.
+
+### ‼️ ZERO-TOLERANCE RULES:
+1. NO Falbor internal templates (Stellar, Nexora, VEX, Aethera) — COMPLETELY IGNORED
+2. NO relative image paths (src="/img.png") — they BREAK on localhost
+3. NO placeholder images — every <img> uses a real https:// URL from the constants above
+4. NO skipped sections — every section in the screenshot must exist in your code
+5. NO invented colors — only from the extracted palette
+
+### 📸 ANALYSIS FIRST — inside <Thinking>:
+Navbar: logo, links, bg color, button shape
+Hero: headline, subline, CTA button border-radius + color, main image
+Each section top-to-bottom: layout grid, cards, images visible
+Footer: columns, copyright, social icons
+Global: exact bg color, text color, accent color, button radius, card radius
+
+### 🖼️ IMAGE IMPLEMENTATION — MANDATORY APPROACH:
+1. Copy the const block from the user message VERBATIM to the top of your component
+2. In the navbar: <img src={SITE_LOGO} alt="logo" />
+3. In the hero: <img src={SITE_HERO_IMG} alt="hero" /> or style={{backgroundImage: \`url(\${SITE_HERO_IMG})\`}}
+4. In each section with images: <img src={IMG_1} />, <img src={IMG_2} /> etc. in order
+5. In index.html head: <link rel="icon" href={SITE_FAVICON} />
+
+### 💻 CODE:
+Stack: Vite + React + TypeScript + Tailwind CSS
+CSS variables for every color: :root { --primary: #xxx; --bg: #xxx; }
+Google Fonts import for exact font names in index.html
+Responsive: mobile breakpoints on all layouts
+
+### ✅ PASS STANDARD:
+Every section from the screenshot must be visible and recognizable.
+Every image that appears in the screenshot must appear in the code as a real URL.`
+
+        systemPrompt = CLONE_SYSTEM_PROMPT + "\n\n" + systemPrompt
+        console.log(`[CloneMode] Injected ${contentImgs.length} content image constants + LOGO/HERO/FAVICON`)
+
+      } else {
+        console.warn(`[CloneMode] Clone API returned ${cloneRes.status} — proceeding text-only`)
+      }
+    } catch (err) {
+      console.error("[CloneMode] Clone pipeline error:", err)
     }
   }
 
@@ -938,7 +1066,7 @@ When editing an email template, focus ONLY on the template content.
 
     // Direct OpenAI Platform Integration (Paid Only)
     if (OPENAI_MODELS[model as keyof typeof OPENAI_MODELS]) {
-      if (!credits || credits.subscriptionTier === "none") {
+      if (model !== "gpt-5" && (!credits || credits.subscriptionTier === "none")) {
         return new Response(JSON.stringify({
           error: "This OpenAI GPT Model is a premium feature restricted to paid subscribers. Upgrade to a Pro or Teams plan to unlock direct platform access."
         }), { status: 403, headers: { "Content-Type": "application/json" } })
@@ -993,7 +1121,36 @@ When editing an email template, focus ONLY on the template content.
         }
       }
 
-      return response
+      // If it's a clone request with a screenshot, prepend a screenshot event to the stream
+      // so the user can see the captured image at the top of the AI response
+      let finalResponse: ReadableStream | Response = response
+      if (isCloneRequest && cloneScreenshotDataUrl && response instanceof ReadableStream) {
+        const encoder = new TextEncoder()
+        const screenshotEvent = encoder.encode(
+          `data: ${JSON.stringify({ cloneScreenshot: cloneScreenshotDataUrl, cloneUrl: cloneTargetUrl })}\n\n`
+        )
+        const originalStream = response
+        finalResponse = new ReadableStream({
+          async start(controller) {
+            // Emit screenshot event first
+            controller.enqueue(screenshotEvent)
+            // Then pipe the original model stream
+            const reader = originalStream.getReader()
+            try {
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                controller.enqueue(value)
+              }
+            } finally {
+              controller.close()
+            }
+          },
+        })
+      }
+
+      return finalResponse
+
     } catch (error: any) {
       console.error(`[Resilience] Fatal attempt error for ${modelsToTry[i]}:`, error)
       if (i < modelsToTry.length - 1) {
@@ -1697,11 +1854,46 @@ async function handleOpenRouterRequest(
       userPrompt = buildCodePrompt(message)
     }
 
-    const chatMessages = [
+    const userMessageContent: any = imageData?.data
+      ? [
+        { type: "text", text: userPrompt },
+        {
+          type: "image_url",
+          image_url: {
+            url: `data:${imageData.mimeType || "image/jpeg"};base64,${imageData.data}`,
+          },
+        },
+      ]
+      : userPrompt
+
+    const chatMessages: any[] = [
       { role: "system", content: systemPrompt },
       ...truncateHistory(conversationHistory, 15),
-      { role: "user", content: userPrompt },
+      { role: "user", content: userMessageContent },
     ]
+
+    const initialResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openRouterKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        "X-Title": "AI Website Builder",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: chatMessages,
+        stream: true,
+        ...(modelId.includes("gpt-5") || modelId.includes("-o1")
+          ? { max_completion_tokens: 32768 }
+          : { max_tokens: 32768 }),
+      }),
+    })
+
+    if (!initialResponse.ok) {
+      const errorText = await initialResponse.text()
+      throw new Error(`OpenRouter API error: ${initialResponse.status} ${errorText}`)
+    }
 
     return new ReadableStream({
       async start(controller) {
@@ -1724,31 +1916,35 @@ async function handleOpenRouterRequest(
           const maxContinuations = 30
           const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
 
-          do {
-            const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${openRouterKey}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-                "X-Title": "AI Website Builder",
-              },
-              body: JSON.stringify({
-                model: modelId,
-                messages: chatMessages,
-                stream: true,
-                ...(modelId.includes("gpt-5") || modelId.includes("-o1")
-                  ? { max_completion_tokens: 32768 }
-                  : { max_tokens: 32768 }),
-              }),
-            })
+          let currentResponse = initialResponse
 
-            if (!response.ok) {
-              const errorText = await response.text()
-              throw new Error(`OpenRouter API error: ${response.status} ${errorText}`)
+          do {
+            if (continuationCount > 0) {
+              currentResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${openRouterKey}`,
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+                  "X-Title": "AI Website Builder",
+                },
+                body: JSON.stringify({
+                  model: modelId,
+                  messages: chatMessages,
+                  stream: true,
+                  ...(modelId.includes("gpt-5") || modelId.includes("-o1")
+                    ? { max_completion_tokens: 32768 }
+                    : { max_tokens: 32768 }),
+                }),
+              })
+
+              if (!currentResponse.ok) {
+                const errorText = await currentResponse.text()
+                throw new Error(`OpenRouter API error: ${currentResponse.status} ${errorText}`)
+              }
             }
 
-            const reader = response.body?.getReader()
+            const reader = currentResponse.body?.getReader()
             if (!reader) {
               throw new Error("No response body reader")
             }
@@ -1919,7 +2115,8 @@ async function handleOpenRouterRequest(
     })
   } catch (e) {
     console.error("[OpenRouter] Handler error:", e)
-    return createErrorStream("Our upstream model provider returned an error. We are switching to a fallback model automatically.")
+    // Throw error to trigger the resilience fallback chain in the parent caller
+    throw e
   }
 }
 
@@ -2216,7 +2413,8 @@ async function handleOpenAIRequest(
     throw new Error("OpenAI configuration missing")
   }
 
-  const modelId = OPENAI_MODELS[selectedModel as keyof typeof OPENAI_MODELS] || selectedModel
+  const rawModelId = OPENAI_MODELS[selectedModel as keyof typeof OPENAI_MODELS] || selectedModel
+  const modelId = rawModelId.replace("openai/", "").replace("openrouter/", "")
 
   try {
     const conversationHistory = history.slice(0, -1).map((msg) => ({
@@ -2257,6 +2455,27 @@ async function handleOpenAIRequest(
       { role: "user", content: userContent as any },
     ]
 
+    const initialResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${openAIKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: modelId,
+        messages: chatMessages,
+        stream: true,
+        ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
+          ? { max_completion_tokens: 32768 }
+          : { max_tokens: 32768 }),
+      }),
+    })
+
+    if (!initialResponse.ok) {
+      const errorText = await initialResponse.text()
+      throw new Error(`OpenAI API error: ${initialResponse.status} ${errorText}`)
+    }
+
     return new ReadableStream({
       async start(controller) {
         try {
@@ -2277,29 +2496,33 @@ async function handleOpenAIRequest(
           const maxContinuations = 50
           const continueMessage = "You reached the token limit. Please CONTINUE generating the code EXACTLY from where you stopped. DO NOT repeat anything previous. Focus on completing the full professional full-stack task as requested. Stay detailed."
 
-          do {
-            const response = await fetch("https://api.openai.com/v1/chat/completions", {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${openAIKey}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({
-                model: modelId,
-                messages: chatMessages,
-                stream: true,
-                ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
-                  ? { max_completion_tokens: 32768 }
-                  : { max_tokens: 32768 }),
-              }),
-            })
+          let currentResponse = initialResponse
 
-            if (!response.ok) {
-              const errorText = await response.text()
-              throw new Error(`OpenAI API error: ${response.status} ${errorText}`)
+          do {
+            if (continuationCount > 0) {
+              currentResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${openAIKey}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  model: modelId,
+                  messages: chatMessages,
+                  stream: true,
+                  ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
+                    ? { max_completion_tokens: 32768 }
+                    : { max_tokens: 32768 }),
+                }),
+              })
+
+              if (!currentResponse.ok) {
+                const errorText = await currentResponse.text()
+                throw new Error(`OpenAI API error: ${currentResponse.status} ${errorText}`)
+              }
             }
 
-            const reader = response.body?.getReader()
+            const reader = currentResponse.body?.getReader()
             if (!reader) throw new Error("No OpenAI response reader")
 
             const decoder = new TextDecoder()
@@ -2408,7 +2631,8 @@ async function handleOpenAIRequest(
     })
   } catch (e) {
     console.error("[OpenAI] Handler error:", e)
-    return createErrorStream("We were unable to connect to the OpenAI platform. Switching to optimized fallback...")
+    // Throw error to trigger the resilience fallback chain in the parent caller
+    throw e
   }
 }
 
@@ -2990,12 +3214,12 @@ function extractCodeBlocks(content: string) {
 
 function truncateHistory(history: any[], limit: number = 10) {
   if (history.length <= limit) return history;
-  
+
   // Always keep the first message (initial request)
   const first = history[0];
   // Keep the last N messages
   const lastN = history.slice(-(limit - 1));
-  
+
   // Clean up older assistant messages by removing massive code blocks to save context space
   const cleanedLastN = lastN.map((msg, idx) => {
     if (msg.role === "assistant" && idx < lastN.length - 1) {
@@ -3148,7 +3372,7 @@ async function runFalMax(
             "X-Title": "Falbor",
           },
           body: JSON.stringify({
-            model: "openai/gpt-5.1",
+            model: "openai/gpt-5-preview",
             messages: [
               { role: "system", content: systemPrompt + "\n\n" + FALMAX_PROMPTS.ARCHITECT },
               { role: "user", content: message }
@@ -3223,7 +3447,7 @@ async function runFalMax(
         }
 
         const agents = [
-          runAgent("BUILDER", FALMAX_PROMPTS.BUILDER + "\n\nCRITICAL: Ensure package.json is VALID JSON with no trailing commas and double-quoted keys.", "openai/gpt-5.1", (text) => {
+          runAgent("BUILDER", FALMAX_PROMPTS.BUILDER + "\n\nCRITICAL: Ensure package.json is VALID JSON with no trailing commas and double-quoted keys.", "openai/gpt-5.4", (text) => {
             sendEvent({ type: "code", text })
             builderCode += text
             if (text.includes('{"type": "agent"')) {

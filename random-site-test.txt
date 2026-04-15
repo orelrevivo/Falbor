@@ -1,0 +1,53 @@
+URL tested: https://cal.com/
+Time taken: 11403ms  (automated, no manual intervention)
+Title: Cal.com | Open Scheduling Infrastructure
+Screenshot: 250KB
+Colors found: 0
+Fonts found: Cal Sans, Manrope, Public Sans, Fragment Mono, Roboto Mono, Matter Regular, Cal Sans UI Variable Light, Matter SemiBold, Matter Medium, Paper Mono Regular
+Sections detected: faq, cta, nav, features, feature, pricing, team, about, blog, hero, header, product, testimonials, footer, services
+
+=== IMAGE URLS EXTRACTED BY THE API ===
+Logo: https://framerusercontent.com/images/yBP2bxRn6dRgikoDZjkgAk2v0.png
+OG Image: https://framerusercontent.com/images/wR3hWD1bOPJdosDiPSZLtYpHR3k.png
+Total images: 40
+
+1. https://framerusercontent.com/images/VBtxxarwLxy4F9dx1Vb8BqA5c.png?width=200&height=260&scale-down-to=40
+2. https://framerusercontent.com/images/VBtxxarwLxy4F9dx1Vb8BqA5c.png?width=200&amp;height=260&amp;scale-down-to=40
+3. https://framerusercontent.com/images/Z3p4UVP4P9YlO5E3zcuqgcm2eI.svg?width=16&amp;height=16
+4. https://framerusercontent.com/images/yPGnqYboSnvCWBTbI34z6O2FY.svg?width=24&amp;height=24
+5. https://framerusercontent.com/images/AUafj9wkmgBuXBrhusy3dfwSXK4.png?width=400&amp;height=400
+6. https://framerusercontent.com/images/yNOr346oZ3AwtMp7pwd8MHbUeb0.png?width=512&amp;height=477
+7. https://framerusercontent.com/images/7rFCqyElXGwPLAPymO0KdGsetVw.svg?width=17&amp;height=16
+8. https://framerusercontent.com/images/Y1enkjNA4iUX0ho613UaOqspkDQ.png?width=320&amp;height=320
+9. https://framerusercontent.com/images/2uFL5TmA8WQRvj0Ebn4lQiVnC6w.svg?width=32&amp;height=32
+10. https://framerusercontent.com/images/bETpr23FcycPpDEVRNWUBZp0cY.svg?width=32&amp;height=32
+11. https://framerusercontent.com/images/KdSgRUeowWQPPaGZY0WatpAGvPs.svg?width=32&amp;height=32
+12. https://framerusercontent.com/images/qsV5rO9Z0v9AJ5BPcJjI9yPmU.svg?width=32&amp;height=32
+13. https://framerusercontent.com/images/CvwDyvj84ZrX3hA9nbgUSJoVk.svg?width=32&amp;height=32
+14. https://framerusercontent.com/images/amoj8RpnfR7ZH3Nk8tdZjI2KC98.svg?width=32&amp;height=32
+15. https://framerusercontent.com/images/F1l3sikirtoXGzwYTxdJTgX8.svg?width=32&amp;height=32
+16. https://framerusercontent.com/images/iR8Ynox0KvbXu9AK470dulAO8.svg?width=32&amp;height=32
+17. https://framerusercontent.com/images/sYUBjougHccp72elUF4Yg63Vw.svg?width=17&amp;height=16
+18. https://framerusercontent.com/images/nvWtgbT6qL0jMPgV8XT3qW53Kxg.png?width=460&amp;height=460
+19. https://framerusercontent.com/images/H1nRvSAv2H8JOWnvWasdY8GfJk.png?width=400&amp;height=400
+20. https://framerusercontent.com/images/5KklQVfPBoD0Xf3cuy1WcGxCw.webp?width=800&amp;height=800
+21. https://framerusercontent.com/images/IyzG5rqwPLXV8NNtFwgckXyntTA.png?width=321&amp;height=321
+22. https://framerusercontent.com/images/3gwUUSoHutYvSzmTskTjdDcOuM.jpeg?width=500&amp;height=500
+23. https://framerusercontent.com/images/eQS8Ay6dIW0XZMSZBZAk52ZKL0w.png?width=2000&amp;height=2000
+24. https://framerusercontent.com/images/o9fxLt86V7GSDIugwAM8M5fcl4.svg?width=24&amp;height=24
+25. https://framerusercontent.com/images/rVyoqYwsqTt0lNojTnaVYsvWcA.png
+26. https://framerusercontent.com/images/de4psYuZknaXIa4YiJwyr7fv470.png
+27. https://framerusercontent.com/images/Wq8zyxwPoQX51DopFnMCySmtUqQ.png
+28. https://framerusercontent.com/images/UkJhzndcddC1c7UDVV9I1sIcUg.png
+29. https://framerusercontent.com/images/OikqqlgRItsYhUOB8MhaKVDTJIw.png
+30. https://framerusercontent.com/images/JbrX5rIBjajsFA4HBn9ObuQpY0.webp
+31. https://framerusercontent.com/images/0iAsSREuwQNIHS3aRfScLdNZqc.webp
+32. https://framerusercontent.com/images/cBjjC9hz9CHDXpLRsVGqE6foxiM.png?width=2160&amp;height=736
+33. https://framerusercontent.com/images/IEmmDa5bGzcAJaHMdko76VRYY.svg?width=34&amp;height=35
+34. https://cal.openstatus.dev/badge/v2
+35. https://framerusercontent.com/images/rDvHviRgf75KRsnhf7GukFY.svg?width=20&amp;height=20
+36. https://framerusercontent.com/images/fDjwgN51X2kCLLDKuUWCxwc6nII.svg?width=20&amp;height=20
+37. https://framerusercontent.com/images/zYqPkDnkdalTdsHE8JQCytD438.svg?width=19&amp;height=20
+38. https://framerusercontent.com/images/b9HG87r2s9nECz9tHl6RcjTxXE.svg?width=250&amp;height=249
+39. https://framerusercontent.com/images/hfSnSBMT7vWxLcKWzCVizBzs5c.svg?width=20&amp;height=20
+40. https://framerusercontent.com/images/d5qOnA0SH3sQEvpFDheBgSKJDkc.svg?width=20&amp;height=20

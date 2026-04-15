@@ -28,28 +28,25 @@ export function MainHeader({
         <TabsList className="w-full justify-start bg-transparent p-0 m-0 h-auto">
           <TabsTrigger
             value="preview"
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]"
-            style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black dark:text-white/80 hover:text-black/80 dark:hover:text-white BackgroundStyle border border-[#d6d4ce] dark:border-white/10 rounded-[0.25rem] data-[state=active]:bg-[#d6d4ce] dark:data-[state=active]:bg-white/10"
           >
-            <Globe className="w-4 h-4 text-black" />
+            <Globe className="w-4 h-4 text-black dark:text-white/80" />
             Preview
           </TabsTrigger>
 
           <TabsTrigger
             value="code"
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]"
-            style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black dark:text-white/80 hover:text-black/80 dark:hover:text-white BackgroundStyle border border-[#d6d4ce] dark:border-white/10 rounded-[0.25rem] data-[state=active]:bg-[#d6d4ce] dark:data-[state=active]:bg-white/10"
           >
-            <Code2 className="w-4 h-4 text-black" />
+            <Code2 className="w-4 h-4 text-black dark:text-white/80" />
             Code
           </TabsTrigger>
 
           <TabsTrigger
             value="settings"
-            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]"
-            style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
+            className="flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black dark:text-white/80 hover:text-black/80 dark:hover:text-white BackgroundStyle border border-[#d6d4ce] dark:border-white/10 rounded-[0.25rem] data-[state=active]:bg-[#d6d4ce] dark:data-[state=active]:bg-white/10"
           >
-            <Settings className="w-4 h-4 text-black" />
+            <Settings className="w-4 h-4 text-black dark:text-white/80" />
             Settings
           </TabsTrigger>
 
@@ -60,12 +57,11 @@ export function MainHeader({
                   value="database"
                   disabled={!DATABASE_ENABLED}
                   className={cn(
-                    "flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black hover:text-black/80 BackgroundStyle data-[state=active]:bg-[#d6d4ce]",
+                    "flex items-center gap-1.5 text-sm px-3 py-1.5 transition-colors cursor-pointer text-black dark:text-white/80 hover:text-black/80 dark:hover:text-white BackgroundStyle border border-[#d6d4ce] dark:border-white/10 rounded-[0.25rem] data-[state=active]:bg-[#d6d4ce] dark:data-[state=active]:bg-white/10",
                     !DATABASE_ENABLED && "pointer-events-none opacity-50"
                   )}
-                  style={{ border: "1px solid #d6d4ce", borderRadius: "0.25rem" }}
                 >
-                  <Database className="w-4 h-4 text-black" />
+                  <Database className="w-4 h-4 text-black dark:text-white/80" />
                   Database
                 </TabsTrigger>
               </TooltipTrigger>

@@ -228,28 +228,29 @@ Ensure premium aesthetics and modern logic.
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-hidden flex flex-col p-0 z-[10000]">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-hidden flex flex-col p-0 z-[10000] dark:bg-[#0F0F0F] dark:border-white/10">
         <DialogHeader className="px-4 pt-4 pb-0">
-          <DialogTitle className="flex items-center gap-2 text-lg bg-zinc-900 bg-clip-text text-transparent font-bold">
-            <img src="/icons/business-report.png" className="w-5 h-5 shrink-0" alt="" />
+          <DialogTitle className="flex items-center gap-2 dark:text-white text-lg bg-zinc-900 dark:from-white dark:to-white/70 bg-clip-text text-transparent font-bold">
+            <img src="/icons/business-report-dark.png" className="w-5 h-5 shrink-0 hidden dark:block" alt="" />
+            <img src="/icons/business-report.png" className="w-5 h-5 shrink-0 dark:hidden" alt="" />
             Find Business
           </DialogTitle>
-          <p className="text-[11px] text-zinc-500 leading-none mt-1">
+          <p className="text-[11px] text-zinc-500 dark:text-white/50 leading-none mt-1">
             Select a location to discover prospects.
           </p>
         </DialogHeader>
 
         <div className="px-3 mb-3 mt-3">
-          <div className="flex-1 overflow-y-auto px-4 pb-3 pt-3 space-y-3 border rounded-md chat-messages-scroll">
+          <div className="flex-1 overflow-y-auto px-4 pb-3 pt-3 space-y-3 border dark:border-white/10 rounded-md chat-messages-scroll dark:bg-[#1E1E21]">
             {view === 'selection' ? (
               <>
                 {/* Country Selection */}
                 <div className="space-y-1.5 relative">
-                  <label className="text-[12px] text-gray-900">1. Country</label>
+                  <label className="text-[12px] text-gray-900 dark:text-white/80">1. Country</label>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <button
-                        className="w-full h-9 flex items-center justify-between px-3 rounded-sm cursor-pointer border bg-white hover:border-[#0099ff]"
+                        className="w-full h-9 flex items-center justify-between px-3 rounded-sm cursor-pointer border dark:border-white/10 bg-white dark:bg-black/20 hover:border-[#0099ff] dark:hover:border-[#0099ff] transition-all"
                       >
                         <div className="flex items-center">
                           <img
@@ -257,25 +258,25 @@ Ensure premium aesthetics and modern logic.
                             alt={selectedCountry.name}
                             className="w-4 h-2.5 object-cover rounded-[1px] shadow-sm"
                           />
-                          <span className="ml-2 text-[13px] text-zinc-700">{selectedCountry.name}</span>
+                          <span className="ml-2 text-[13px] text-zinc-700 dark:text-white/90">{selectedCountry.name}</span>
                         </div>
-                        <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+                        <ChevronDown className="w-3.5 h-3.5 text-zinc-400 dark:text-white/30" />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
                       className="w-[var(--radix-dropdown-menu-trigger-width)] z-[10001] max-h-[300px] 
                   overflow-hidden flex flex-col
-                  w-48 max-h-[400px] overflow-y-auto bg-white border border-gray-200 shadow-md border border-[#cfcfd1]">
-                      <div className="p-2 border-b bg-zinc-50/50">
+                  w-48 max-h-[400px] overflow-y-auto bg-white dark:bg-[#1E1E21] border border-gray-200 dark:border-white/10 shadow-md">
+                      <div className="p-2 border-b dark:border-white/5 bg-zinc-50/50 dark:bg-black/20">
                         <div className="relative">
-                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+                          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 dark:text-white/30" />
                           <input
                             placeholder="Search country..."
                             value={countryFilter}
                             onChange={(e) => setCountryFilter(e.target.value)}
                             className={cn(
-                              "file:text-foreground bg-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 h-9 w-full min-w-0 bg-transparent px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                              "pl-7 h-8 bg-white border-zinc-200 rounded-lg text-xs focus:outline-none"
+                              "file:text-foreground bg-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:placeholder:text-white/20 h-9 w-full min-w-0 bg-transparent px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+                              "pl-7 h-8 bg-white dark:bg-black/40 border-zinc-200 dark:border-white/10 rounded-lg text-xs focus:outline-none dark:text-white"
                             )}
                             autoFocus
                             onClick={(e) => e.stopPropagation()}
@@ -288,8 +289,8 @@ Ensure premium aesthetics and modern logic.
                             key={country.code}
                             onClick={() => handleCountrySelect(country)}
                             className={cn(
-                              "flex items-center px-3 py-1.5 text-gray-900 transition-colors cursor-pointer text-xs hover:bg-[#e7e7e7]",
-                              selectedCountry.code === country.code && "bg-[#e7e7e7] text-gray-900"
+                              "flex items-center px-3 py-1.5 text-gray-900 dark:text-white/80 transition-colors cursor-pointer text-xs hover:bg-[#e7e7e7] dark:hover:bg-[#2C2C30]",
+                              selectedCountry.code === country.code && "bg-[#e7e7e7] dark:bg-[#2C2C30] text-gray-900 dark:text-white"
                             )}
                           >
                             <img
@@ -308,17 +309,17 @@ Ensure premium aesthetics and modern logic.
 
                 {/* City Selection */}
                 <div className="space-y-1.5">
-                  <label className="text-[12px] text-gray-900">2. City</label>
+                  <label className="text-[12px] text-gray-900 dark:text-white/80">2. City</label>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedCountry.cities?.map((city) => (
                       <Badge
                         key={city}
                         onClick={() => setSelectedCity(city)}
                         className={cn(
-                          "text-[11px] font-normal cursor-pointer",
+                          "text-[11px] font-normal cursor-pointer transition-all",
                           selectedCity === city
-                            ? "bg-[#0099ff]/20 text-[#0099ff] border-[#0099ff]/5"
-                            : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300"
+                            ? "bg-[#0099ff]/20 text-[#0099ff] border-[#0099ff]/10 dark:bg-[#0099ff]/30 dark:text-[#0099ff] dark:border-white/10"
+                            : "bg-white dark:bg-black/20 border-zinc-200 dark:border-white/10 text-zinc-500 dark:text-white/50 hover:border-zinc-300 dark:hover:border-white/20"
                         )}
                       >
                         {city}
@@ -330,9 +331,9 @@ Ensure premium aesthetics and modern logic.
                         value={selectedCity}
                         onChange={(e) => setSelectedCity(e.target.value)}
                         className={cn(
-                          "file:text-foreground bg-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 h-9 w-full min-w-0 bg-transparent px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                          " h-8 bg-white border-zinc-200 rounded-lg text-xs focus:outline-none",
-                          "border border-gray-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
+                          "file:text-foreground bg-none placeholder:text-muted-foreground dark:placeholder:text-white/20 selection:bg-primary selection:text-primary-foreground dark:text-white h-9 w-full min-w-0 bg-transparent px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm shadow-sm",
+                          "h-8 bg-white dark:bg-black/30 border-zinc-200 dark:border-white/10 rounded-lg text-xs focus:outline-none",
+                          "border border-gray-200 dark:border-white/10 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
                         )} />
                     </div>
                   </div>
@@ -340,17 +341,17 @@ Ensure premium aesthetics and modern logic.
 
                 {/* Search Query */}
                 <div className="space-y-1.5">
-                  <label className="text-[12px] text-gray-900">3. Niche</label>
+                  <label className="text-[12px] text-gray-900 dark:text-white/80">3. Niche</label>
                   <div className="relative">
-                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400" />
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-zinc-400 dark:text-white/30" />
                     <input
                       placeholder="e.g. Italian Restaurant..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className={cn(
-                        "file:text-foreground bg-none placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 h-9 w-full min-w-0 bg-transparent px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-                        "pl-7 h-8 bg-white border-zinc-200 rounded-lg text-xs focus:outline-none",
-                        "border border-gray-200 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
+                        "file:text-foreground bg-none placeholder:text-muted-foreground dark:placeholder:text-white/20 selection:bg-primary selection:text-primary-foreground dark:text-white h-9 w-full min-w-0 bg-transparent px-3 py-1 text-base transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm shadow-sm",
+                        "pl-7 h-8 bg-white dark:bg-black/30 border-zinc-200 dark:border-white/10 rounded-lg text-xs focus:outline-none",
+                        "border border-gray-200 dark:border-white/10 rounded-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500",
                       )}
                     />
                   </div>
@@ -380,20 +381,20 @@ Ensure premium aesthetics and modern logic.
                 {/* Results View */}
                 <div className="flex items-center justify-between mb-1">
                   <div className="flex items-center px-1">
-                    <label className="text-[13px] text-gray-900">Potential Leads</label>
+                    <label className="text-[13px] text-gray-900 dark:text-white/80">Potential Leads</label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge className="text-[9px]">
+                    <Badge className="text-[9px] dark:bg-white/10 dark:text-white">
                       {results.length} Found
                     </Badge>
                     {(results.length > 0 || nextPageToken) && (
                       <button
                         onClick={() => handleScan(true)}
                         disabled={isLoading}
-                        className="p-1 hover:bg-zinc-100 rounded-full transition-colors"
+                        className="p-1 hover:bg-zinc-100 dark:hover:bg-[#2C2C30] rounded-full transition-colors"
                         title="Refresh Results"
                       >
-                        <RotateCcw className={cn("w-3.5 h-3.5 text-zinc-500", isLoading && "animate-spin")} />
+                        <RotateCcw className={cn("w-3.5 h-3.5 text-zinc-500 dark:text-white/50", isLoading && "animate-spin")} />
                       </button>
                     )}
                   </div>
@@ -404,27 +405,27 @@ Ensure premium aesthetics and modern logic.
                     <div
                       key={business.id}
                       onClick={() => handleSelectBusiness(business)}
-                      className="group relative flex gap-3 p-3 rounded-xl border border-zinc-100 bg-white hover:border-[#0099ff] hover:shadow-md transition-all duration-300 cursor-pointer"
+                      className="group relative flex gap-3 p-3 rounded-xl border border-zinc-100 dark:border-white/10 bg-white dark:bg-black/20 hover:border-[#0099ff] dark:hover:border-[#0099ff] hover:shadow-md transition-all duration-300 cursor-pointer"
                     >
-                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-zinc-50 flex-shrink-0 border border-zinc-100">
+                      <div className="w-14 h-14 rounded-lg overflow-hidden bg-zinc-50 dark:bg-black/40 flex-shrink-0 border border-zinc-100 dark:border-white/5">
                         {business.photoUrl ? (
                           <img src={business.photoUrl} alt={business.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
-                            <MapPin className="w-5 h-5 text-zinc-300" />
+                            <MapPin className="w-5 h-5 text-zinc-300 dark:text-white/20" />
                           </div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-xs truncate group-hover:text-[#0099ff] transition-colors uppercase tracking-tight text-zinc-800">{business.name}</h3>
-                        <p className="text-[10px] text-zinc-500 line-clamp-1 mt-0.5 leading-tight">{business.address}</p>
+                        <h3 className="font-bold text-xs truncate group-hover:text-[#0099ff] transition-colors uppercase tracking-tight text-zinc-800 dark:text-white/90">{business.name}</h3>
+                        <p className="text-[10px] text-zinc-500 dark:text-white/50 line-clamp-1 mt-0.5 leading-tight">{business.address}</p>
                         <div className="flex items-center gap-2 mt-1">
                           <div className="flex items-center gap-0.5 text-amber-500">
                             <Star className="w-3 h-3 fill-current" />
                             <span className="text-[10px] font-bold">{business.rating || "N/A"}</span>
                           </div>
-                          <span className="text-[10px] text-zinc-300">•</span>
-                          <span className="text-[10px] font-medium text-zinc-400 tracking-tight">{business.user_ratings_total || 0} reviews</span>
+                          <span className="text-[10px] text-zinc-300 dark:text-white/10">•</span>
+                          <span className="text-[10px] font-medium text-zinc-400 dark:text-white/40 tracking-tight">{business.user_ratings_total || 0} reviews</span>
                         </div>
                       </div>
                       <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0 bg-[#0099ff] text-white p-1.5 rounded-full shadow-lg">
@@ -456,8 +457,8 @@ Ensure premium aesthetics and modern logic.
         </div>
 
         {results.length > 0 && view === 'results' && (
-          <div className="p-2 border-t bg-zinc-50 text-center">
-            <p className="text-[11px] text-gray-900">Powered by Google Cloud Vision</p>
+          <div className="p-2 border-t dark:border-white/10 bg-zinc-50 dark:bg-black/40 text-center">
+            <p className="text-[11px] text-gray-900 dark:text-white/60">Powered by Google Cloud Vision</p>
           </div>
         )}
       </DialogContent>

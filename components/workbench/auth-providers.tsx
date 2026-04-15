@@ -153,7 +153,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                         }
                     }}
                     className={cn(
-                        "flex items-center justify-between p-4 w-full hover:bg-gray-50 transition-colors text-left cursor-pointer outline-none focus-visible:bg-gray-50",
+                        "flex items-center justify-between p-4 w-full hover:bg-gray-50 dark:hover:bg-white/5 transition-colors text-left cursor-pointer outline-none focus-visible:bg-gray-50 dark:focus-visible:bg-white/5",
                         id === "email" && !isExpanded && "rounded-t-md",
                         id === "facebook" && !isExpanded && "rounded-b-md"
                     )}
@@ -164,7 +164,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                         </div>
 
                         <div>
-                            <h4 className="text-sm text-gray-900">{buttonTitle}</h4>
+                            <h4 className="text-sm text-gray-900 dark:text-white">{buttonTitle}</h4>
                         </div>
                     </div>
 
@@ -195,7 +195,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                             <div className="p-6 pt-2 space-y-6">
 
                                 <div className="">
-                                    <h5 className="text-sm text-gray-900">
+                                    <h5 className="text-sm text-gray-900 dark:text-white">
                                         {panelTitle}
                                     </h5>
 
@@ -238,7 +238,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                                                         }
                                                     }))
                                                 }
-                                                className="bg-white border-gray-200 focus:ring-primary/20"
+                                                className="bg-white dark:bg-white/5 border-gray-200 dark:border-white/10 dark:text-white focus:ring-primary/20"
                                             />
                                         </div>
 
@@ -261,7 +261,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                                                         }
                                                     }))
                                                 }
-                                                className="bg-white border-gray-200 focus:ring-primary/20"
+                                                className="bg-white dark:bg-white/5 border-gray-200 dark:border-white/10 dark:text-white focus:ring-primary/20"
                                             />
                                         </div>
 
@@ -314,7 +314,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                                 )}
 
                                 {id === "email" && (
-                                    <div className="flex items-center gap-2 p-3 rounded-sm bg-[#e7e5df]/60 text-gray-700 text-xs">
+                                    <div className="flex items-center gap-2 p-3 rounded-sm bg-[#e7e5df]/60 dark:bg-white/5 text-gray-700 dark:text-gray-400 text-xs">
                                         <ShieldCheck className="w-4 h-4" />
                                         Email/Password authentication is handled securely via Argon2 hashing.
                                     </div>
@@ -342,7 +342,7 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                                     <Button
                                         size="sm"
                                         variant="outline"
-                                        className="h-7 rounded-sm gap-2 bg-white border text-gray-900 hover:bg-white"
+                                        className="h-7 rounded-sm gap-2 bg-white dark:bg-white/5 border dark:border-white/10 text-gray-900 dark:text-white hover:bg-white dark:hover:bg-white/10"
                                         onClick={() => handleAdd(id)}
                                     >
                                         <Plus className="w-3 h-3" />
@@ -400,13 +400,13 @@ export function AuthProviders({ projectId, onSendMessage }: AuthProvidersProps) 
                     )}
                 </div>
 
-                <div className="p-4 rounded-sm bg-[#e7e5df]/60 flex gap-3 mt-4">
-                    <ShieldCheck className="w-5 h-5 text-gray-700 shrink-0 mt-2" />
+                <div className="p-4 rounded-sm bg-[#e7e5df]/60 dark:bg-white/5 flex gap-3 mt-4">
+                    <ShieldCheck className="w-5 h-5 text-gray-700 dark:text-gray-400 shrink-0 mt-2" />
 
                     <div>
-                        <p className="text-[12px] text-gray-700">Security Note</p>
+                        <p className="text-[12px] text-gray-700 dark:text-white">Security Note</p>
 
-                        <p className="text-[11px] text-gray-700">
+                        <p className="text-[11px] text-gray-700 dark:text-gray-400">
                             Your Client Secrets are encrypted at rest. We recommend using a different set of credentials for staging and production environments.
                         </p>
                     </div>

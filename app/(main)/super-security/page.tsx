@@ -37,10 +37,10 @@ export default function SecurityLandingPage() {
 
   return (
     <div
-      className="flex flex-col items-center min-h-full p-8 bg-[#FAF9F6] relative"
+      className="flex flex-col items-center min-h-full p-8 relative"
       style={{
-        backgroundImage:
-          "linear-gradient(rgba(255,255,255,0.75), rgba(255,255,255,0.75)), url('/bg/ChatIDstylebg.png')",
+        // backgroundImage:
+        //   "linear-gradient(rgba(255,255,255,0.75), rgba(255,255,255,0.75)), url('/bg/ChatIDstylebg.png')",
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}
@@ -67,7 +67,7 @@ export default function SecurityLandingPage() {
 
             {/* LEFT — SQUARE */}
             {lastSession ? (
-              <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white relative">
+              <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white dark:bg-[#2C2C30] dark:border-none relative">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-black/5 rounded-xl flex items-center justify-center">
                     <MessageSquare className="w-5 h-5 text-black/60" />
@@ -115,7 +115,7 @@ export default function SecurityLandingPage() {
                 </Button>
               </Card>
             ) : (
-              <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white relative">
+              <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white dark:bg-[#2C2C30] dark:border-none relative">
                 <Shield className="w-12 h-12 mb-4 opacity-20" />
                 <p className="text-sm font-medium">
                   No active security session found
@@ -124,7 +124,7 @@ export default function SecurityLandingPage() {
             )}
 
             {/* RIGHT — TABLE */}
-            <Card className="w-[420px] h-[420px] flex-shrink-0 flex flex-col p-8 border-[#E8E9E0] shadow-xs rounded-md bg-white relative">
+            <Card className="w-[720px] h-[420px] flex-shrink-0 flex flex-col p-2 border-[#E8E9E0] shadow-xs rounded-md bg-white dark:bg-[#2C2C30] dark:border-none relative">
 
               <div className="px-8 pt-6 pb-4 flex items-center justify-between">
                 <div className="text-[11px] font-bold uppercase tracking-wider text-[#A1A19A]">
@@ -142,9 +142,9 @@ export default function SecurityLandingPage() {
 
               <div className="flex-1 overflow-y-auto">
                 <Table>
-                  <TableHeader className="bg-zinc-50/50 sticky top-0 z-10">
-                    <TableRow className="hover:bg-transparent border-b-[#E8E9E0]">
-                      <TableHead className="font-bold py-4 px-8 text-xs uppercase tracking-wider text-[#A1A19A]">
+                  <TableHeader className="bg-zinc-50/50 dark:bg-[#3a3a41] sticky top-0 z-10">
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="font-bold py-4 px-8 text-xs uppercase tracking-wider text-[#A1A19A]  dark:text-white">
                         Project Name
                       </TableHead>
                       <TableHead className="font-bold py-4 text-xs uppercase tracking-wider text-[#A1A19A]">
@@ -162,22 +162,22 @@ export default function SecurityLandingPage() {
                       sessions.map((s) => (
                         <TableRow
                           key={s.id}
-                          className="cursor-pointer hover:bg-zinc-50 border-b-[#E8E9E0]"
+                          className="cursor-pointer hover:bg-zinc-50 border-b-[#E8E9E0] dark:hover:bg-[#3a3a41] dark:border-[#0099ff]/10"
                           onClick={() =>
                             router.push(`/super-security/${s.id}`)
                           }
                         >
                           <TableCell className="py-4 px-8">
-                            <div className="font-bold text-black text-sm">
+                            <div className="text-black text-sm dark:text-white">
                               {s.projectTitle || s.title}
                             </div>
-                            <div className="text-[10px] text-gray-400 font-medium">
+                            <div className="text-[10px] text-gray-400 dark:text-white font-medium">
                               ID: {s.id.slice(0, 8)}
                             </div>
                           </TableCell>
 
                           <TableCell className="py-4">
-                            <span className="px-2.5 py-1 bg-[#E8F5E9] text-[#2E7D32] text-[10px] font-bold rounded-lg uppercase tracking-tight">
+                            <span className="px-2.5 py-1 bg-[#E8F5E9] dark:bg-[#3a3a41] text-[#2E7D32] dark:text-white text-[10px] rounded-lg uppercase tracking-tight">
                               Active
                             </span>
                           </TableCell>

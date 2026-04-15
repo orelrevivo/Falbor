@@ -256,26 +256,23 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
     if (!isOpen) return null
 
     return (
-        <div className="absolute top-full shadow-xs right-0 mt-[-10px] w-96 bg-white border rounded-lg z-50">
+        <div className="w-full bg-white dark:bg-[#1E1E21] rounded-lg overflow-hidden">
 
             {/* Header – completely unchanged */}
-            <div className="flex items-center justify-between p-4 border-b">
+            <div className="flex items-center justify-between p-4 border-b dark:border-white/10">
                 {view !== "main" && (
                     <button
                         onClick={() => setView("main")}
-                        className="p-1 BackgroundStyle rounded mr-2"
+                        className="p-1 BackgroundStyle dark:hover:bg-[#2C2C30] rounded mr-2 transition-colors"
                     >
-                        <ArrowLeft className="w-4 h-4" />
+                        <ArrowLeft className="w-4 h-4 dark:text-white" />
                     </button>
                 )}
-                <h3 className="font-semibold text-base flex-1">
+                <h3 className="font-semibold text-base flex-1 dark:text-white">
                     {view === "main" && "Invite Users"}
                     {view === "collaborators" && "People with Access"}
                     {view === "create-link" && "Create Invite Link"}
                 </h3>
-                {/* <button onClick={onClose} className="p-1 BackgroundStyle rounded">
-                    <X className="w-4 h-4" />
-                </button> */}
             </div>
 
             {/* Animated content wrapper – this is the only part changed */}
@@ -292,8 +289,8 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                         {/* Public Toggle */}
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="font-medium text-sm">Make Public</p>
-                                <p className="text-xs text-gray-500">
+                                <p className="font-medium text-sm dark:text-white">Make Public</p>
+                                <p className="text-xs text-gray-500 dark:text-white/50">
                                     Allow anyone with link to view
                                 </p>
                             </div>
@@ -307,7 +304,7 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                         <Button
                             onClick={() => setView("create-link")}
                             variant="outline"
-                            className="w-full justify-center gap-2 BackgroundStyleButton text-black"
+                            className="w-full justify-center gap-2 BackgroundStyleButton text-black dark:text-white dark:border-white/10 dark:hover:bg-[#2C2C30] transition-colors"
                         >
                             <Plus className="w-4 h-4" />
                             Create Invite Link
@@ -324,19 +321,19 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                                             <div
                                                 key={link.id}
                                                 className={cn(
-                                                    "flex items-center justify-between p-3 rounded-sm border",
+                                                    "flex items-center justify-between p-3 rounded-sm border dark:border-white/10",
                                                     !link.is_active && "opacity-50"
                                                 )}
                                             >
                                                 <div className="flex items-center gap-2 flex-1 min-w-0">
                                                     <div className={cn("p-1.5")}>
-                                                        <RoleIcon className={cn("w-3.5 h-3.5")} />
+                                                        <RoleIcon className={cn("w-3.5 h-3.5 dark:text-white/70")} />
                                                     </div>
                                                     <div className="min-w-0">
-                                                        <p className="text-sm font-medium truncate">
+                                                        <p className="text-sm font-medium truncate dark:text-white">
                                                             {link.label || config.label}
                                                         </p>
-                                                        <p className="text-xs text-gray-500">
+                                                        <p className="text-xs text-gray-500 dark:text-white/50">
                                                             {link.usage_count} uses
                                                         </p>
                                                     </div>
@@ -344,20 +341,20 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                                                 <div className="flex items-center gap-1">
                                                     <button
                                                         onClick={() => copyLink(link.share_token, link.id)}
-                                                        className="p-1.5 BackgroundStyle rounded"
+                                                        className="p-1.5 BackgroundStyle dark:hover:bg-[#2C2C30] rounded transition-colors"
                                                         title="Copy link"
                                                     >
                                                         {copiedId === link.id ? (
                                                             <Check className="w-4 h-4 text-green-600" />
                                                         ) : (
-                                                            <Copy className="w-4 h-4 text-gray-500" />
+                                                            <Copy className="w-4 h-4 text-gray-500 dark:text-white/70" />
                                                         )}
                                                     </button>
                                                     <button
                                                         onClick={() => toggleLinkActive(link.id, !link.is_active)}
                                                         className={cn(
-                                                            "p-1.5 BackgroundStyle rounded text-xs",
-                                                            link.is_active ? "text-gray-500" : "text-blue-600"
+                                                            "p-1.5 BackgroundStyle dark:hover:bg-[#2C2C30] rounded text-xs transition-colors",
+                                                            link.is_active ? "text-gray-500 dark:text-white/70" : "text-blue-600 dark:text-blue-400"
                                                         )}
                                                         title={link.is_active ? "Disable" : "Enable"}
                                                     >
@@ -381,11 +378,11 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                         {collaborators.length > 0 && (
                             <button
                                 onClick={() => setView("collaborators")}
-                                className="w-full flex items-center cursor-pointer justify-between BackgroundStyleButton p-3 rounded-sm transition-colors"
+                                className="w-full flex items-center cursor-pointer justify-between BackgroundStyleButton p-3 rounded-sm transition-colors dark:hover:bg-[#2C2C30] dark:border-white/10"
                             >
                                 <div className="flex items-center gap-2">
-                                    <Users className="w-4 h-4 text-gray-500" />
-                                    <span className="text-sm font-medium">People with Access</span>
+                                    <Users className="w-4 h-4 text-gray-500 dark:text-white/70" />
+                                    <span className="text-sm font-medium dark:text-white">People with Access</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <div className="flex -space-x-2">
@@ -394,12 +391,12 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                                                 key={c.id}
                                                 src={c.image_url || "/placeholder.svg"}
                                                 alt={c.display_name || "User"}
-                                                className="w-6 h-6 rounded-full border-2 border-white"
+                                                className="w-6 h-6 rounded-full border-2 border-white dark:border-[#1E1E21]"
                                             />
                                         ))}
                                     </div>
                                     {collaborators.length > 3 && (
-                                        <span className="text-xs text-gray-500">
+                                        <span className="text-xs text-gray-500 dark:text-white/50">
                                             +{collaborators.length - 3}
                                         </span>
                                     )}
@@ -421,10 +418,10 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                         <div className="space-y-2">
                             <label className="text-sm font-medium ml-1">Access Level</label>
                             <div />
-                            <div className="relative">
+                             <div className="relative">
                                 <button
                                     onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                                    className="w-full flex items-center justify-between p-3 border rounded-lg BackgroundStyle cursor-pointer hover:border-white"
+                                    className="w-full flex items-center justify-between p-3 border rounded-lg BackgroundStyle cursor-pointer hover:border-white dark:border-white/10 dark:hover:bg-[#2C2C30] transition-colors"
                                 >
                                     <div className="flex items-center gap-2">
                                         {(() => {
@@ -433,11 +430,11 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                                             return (
                                                 <>
                                                     <div className={cn("p-1.5 rounded")}>
-                                                        <RoleIcon className={cn("w-4 h-4")} />
+                                                        <RoleIcon className={cn("w-4 h-4 dark:text-white/70")} />
                                                     </div>
                                                     <div className="text-left">
-                                                        <p className="text-sm font-medium">{config.label}</p>
-                                                        <p className="text-xs text-gray-500">
+                                                        <p className="text-sm font-medium dark:text-white">{config.label}</p>
+                                                        <p className="text-xs text-gray-500 dark:text-white/50">
                                                             {config.description}
                                                         </p>
                                                     </div>
@@ -445,11 +442,11 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                                             )
                                         })()}
                                     </div>
-                                    <ChevronDown className="w-4 h-4 text-gray-400" />
+                                    <ChevronDown className="w-4 h-4 text-gray-400 dark:text-white/50" />
                                 </button>
 
                                 {showRoleDropdown && (
-                                    <div className="absolute top-0 left-0 right-0 bg-white border rounded-lg z-10 p-1 space-y-1">
+                                    <div className="absolute top-0 left-0 right-0 bg-white dark:bg-[#1E1E21] border dark:border-white/10 rounded-lg z-10 p-1 space-y-1 shadow-xl">
                                         {(Object.keys(roleConfig) as ShareRole[]).map((role) => {
                                             const config = roleConfig[role]
                                             const RoleIcon = config.icon
@@ -461,16 +458,16 @@ export function ShareDialog({ projectId, isOpen, onClose }: ShareDialogProps) {
                                                         setShowRoleDropdown(false)
                                                     }}
                                                     className={cn(
-                                                        "w-full flex items-center gap-2 p-3 BackgroundStyle text-left rounded-md cursor-pointer",
-                                                        role === newLinkRole && "BackgroundStyleButton"
+                                                        "w-full flex items-center gap-2 p-3 BackgroundStyle text-left rounded-md cursor-pointer dark:hover:bg-[#2C2C30] transition-colors",
+                                                        role === newLinkRole && "BackgroundStyleButton dark:bg-[#2C2C30]"
                                                     )}
                                                 >
                                                     <div className={cn("p-1.5 rounded")}>
-                                                        <RoleIcon className={cn("w-4 h-4 text-black")} />
+                                                        <RoleIcon className={cn("w-4 h-4 text-black dark:text-white")} />
                                                     </div>
                                                     <div>
-                                                        <p className="text-sm font-medium">{config.label}</p>
-                                                        <p className="text-xs text-gray-500">
+                                                        <p className="text-sm font-medium dark:text-white">{config.label}</p>
+                                                        <p className="text-xs text-gray-500 dark:text-white/50">
                                                             {config.description}
                                                         </p>
                                                     </div>
@@ -552,18 +549,18 @@ function CollaboratorRow({
     const RoleIcon = config.icon
 
     return (
-        <div className="flex items-center justify-between p-3 rounded-lg border">
+        <div className="flex items-center justify-between p-3 rounded-lg border dark:border-white/10 dark:hover:bg-[#2C2C30]/50 transition-colors">
             <div className="flex items-center gap-3">
                 <img
                     src={collaborator.image_url || "/placeholder.svg"}
                     alt={collaborator.display_name || "User"}
-                    className="w-8 h-8 rounded-full"
+                    className="w-8 h-8 rounded-full border dark:border-white/10"
                 />
                 <div>
-                    <p className="text-sm font-medium">
+                    <p className="text-sm font-medium dark:text-white">
                         {collaborator.display_name || "Unknown User"}
                     </p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-gray-500 dark:text-white/50">
                         Joined {collaborator.joined_at ? new Date(collaborator.joined_at).toLocaleDateString() : "Recently"}
                     </p>
                 </div>
@@ -574,9 +571,10 @@ function CollaboratorRow({
                     <button
                         onClick={() => setShowRoleDropdown(!showRoleDropdown)}
                         className={cn(
-                            "flex items-center gap-1 px-2 py-1 rounded text-xs font-medium",
+                            "flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors",
                             config.bgColor,
-                            config.color
+                            config.color,
+                            "dark:bg-white/10 dark:text-white"
                         )}
                     >
                         <RoleIcon className="w-3 h-3" />
@@ -585,7 +583,7 @@ function CollaboratorRow({
                     </button>
 
                     {showRoleDropdown && (
-                        <div className="absolute top-full right-0 mt-1 bg-white border rounded-lg shadow-lg z-10 min-w-32">
+                        <div className="absolute top-full right-0 mt-1 bg-white dark:bg-[#1E1E21] border dark:border-white/10 rounded-lg shadow-xl z-10 min-w-32 p-1">
                             {(Object.keys(roleConfig) as ShareRole[]).map((role) => {
                                 const roleConf = roleConfig[role]
                                 const Icon = roleConf.icon
@@ -597,11 +595,12 @@ function CollaboratorRow({
                                             setShowRoleDropdown(false)
                                         }}
                                         className={cn(
-                                            "w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 text-left text-sm",
-                                            role === collaborator.role && "bg-gray-50"
+                                            "w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-[#2C2C30] text-left text-sm rounded transition-colors",
+                                            role === collaborator.role && "bg-gray-50 dark:bg-[#2C2C30] dark:text-white",
+                                            "dark:text-white/80"
                                         )}
                                     >
-                                        <Icon className={cn("w-4 h-4", roleConf.color)} />
+                                        <Icon className={cn("w-4 h-4", roleConf.color, "dark:text-white/70")} />
                                         {roleConf.label}
                                     </button>
                                 )
@@ -612,7 +611,7 @@ function CollaboratorRow({
 
                 <button
                     onClick={onRemove}
-                    className="p-1.5 hover:bg-red-50 rounded text-red-500"
+                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/20 rounded text-red-500 transition-colors"
                     title="Remove access"
                 >
                     <Trash2 className="w-4 h-4" />

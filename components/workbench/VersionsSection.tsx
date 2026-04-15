@@ -33,17 +33,17 @@ export function VersionsSection({ projectId, messages, activeMessageId, onActiva
     <div className="p-2 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold">Versions</h2>
-          <p className="text-sm text-gray-500">Restore your project to a previous state.</p>
+          <h2 className="text-xl font-semibold dark:text-white">Versions</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Restore your project to a previous state.</p>
         </div>
       </div>
 
       <div className="space-y-2">
         {versions.length === 0 ? (
-          <div className="text-center py-12 border-2 border-dashed rounded-lg bg-gray-50/50">
-            <History className="w-8 h-8 text-gray-300 mx-auto mb-3" />
-            <p className="text-sm text-gray-500 font-medium">No versions found yet.</p>
-            <p className="text-xs text-gray-400 mt-1">Ask the AI to build something to create versions.</p>
+          <div className="text-center py-12 border-2 border-dashed rounded-lg bg-gray-50/50 dark:bg-white/5 dark:border-white/10">
+            <History className="w-8 h-8 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+            <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">No versions found yet.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Ask the AI to build something to create versions.</p>
           </div>
         ) : (
           versions.map((version, index) => {
@@ -62,15 +62,15 @@ export function VersionsSection({ projectId, messages, activeMessageId, onActiva
                   className={cn(
                     "group relative overflow-hidden border rounded-xl p-4 transition-all duration-200",
                     isActive
-                      ? "bg-white border-[#0099ff] shadow-xs"
-                      : "bg-white hover:border-gray-300 hover:shadow-xs"
+                      ? "bg-white dark:bg-white/10 border-[#0099ff] dark:border-[#0099ff] shadow-xs"
+                      : "bg-white dark:bg-[#1E1E21] border-border dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20 hover:shadow-xs"
                   )}
                 >
                   {/* MAIN CONTENT */}
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-semibold text-gray-900 truncate">
+                        <span className="font-semibold text-gray-900 dark:text-white truncate">
                           {version.versionName || `Update ${versions.length - index}`}
                         </span>
 
@@ -95,7 +95,7 @@ export function VersionsSection({ projectId, messages, activeMessageId, onActiva
                         "h-7 px-3 rounded-sm transition-all z-10",
                         isActive
                           ? "bg-[#0099ff]/20 text-[#0099ff] hover:bg-[#0099ff]/90 pointer-events-none"
-                          : "border bg-white text-black hover:bg-gray-50"
+                          : "border dark:border-white/10 bg-white dark:bg-white/5 text-black dark:text-white hover:bg-gray-50 dark:hover:bg-white/10"
                       )}
                     >
                       {isActive ? (
@@ -114,25 +114,25 @@ export function VersionsSection({ projectId, messages, activeMessageId, onActiva
 
                   {/* ✅ OVERLAY PREVIEW (TOP → DOWN ANIMATION) */}
                   <div className="absolute inset-0 pointer-events-none">
-                    <div
-                      className="
-                        absolute top-0 left-0 w-full rounded-[16px]
-                        bg-white/95 backdrop-blur-sm
-                        px-4 pt-4 pb-3
-                        opacity-0 scale-y-0
-                        origin-top
-                        group-hover:opacity-100 group-hover:scale-y-100
-                        transition-all duration-300 ease-out
-                      "
-                    >
-                      <p className="text-[12px] text-gray-900">
-                        {version.content
-                          .substring(0, 100)
-                          .replace(/<[^>]*>/g, "")
-                          .trim()}
-                        ...
-                      </p>
-                    </div>
+                      <div
+                        className="
+                          absolute top-0 left-0 w-full rounded-[16px]
+                          bg-white/95 dark:bg-black/90 backdrop-blur-sm
+                          px-4 pt-4 pb-3
+                          opacity-0 scale-y-0
+                          origin-top
+                          group-hover:opacity-100 group-hover:scale-y-100
+                          transition-all duration-300 ease-out
+                        "
+                      >
+                        <p className="text-[12px] text-gray-900 dark:text-white">
+                          {version.content
+                            .substring(0, 100)
+                            .replace(/<[^>]*>/g, "")
+                            .trim()}
+                          ...
+                        </p>
+                      </div>
                   </div>
 
                 </div>

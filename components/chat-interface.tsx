@@ -37,26 +37,32 @@ function extractFilesFromStreamingContent(content: string): { files: Array<{ pat
   let activeFile: string | null = null
 
   // Match completed code blocks with file attributes
-  const completedBlockRegex = /```(\w+)?\s*file="([^"]+)"\s*\n([\s\S]*?)```/g
+  const completedBlockRegex = /```(\w+)?\s*(?:file=["']?([^"'>\n]+)["']?)?\s*\r?\n([\s\S]*?)```/g
   let match
   while ((match = completedBlockRegex.exec(content)) !== null) {
-    files.push({
-      language: match[1] || "typescript",
-      path: match[2],
-      content: match[3].trim(),
-    })
+    if (match[2]) {
+      files.push({
+        language: match[1] || "typescript",
+        path: match[2].trim(),
+        content: match[3].trim(),
+      })
+    }
   }
   // Also detect the currently-streaming (unclosed) code block
-  const unfinishedMatch = content.match(/```(\w+)?\s*file="([^"]+)"\s*\n([\s\S]*)$/)
-  if (unfinishedMatch) {
-    const path = unfinishedMatch[2]
-    activeFile = path
-    if (!files.some(f => f.path === path)) {
-      files.push({
-        language: unfinishedMatch[1] || "typescript",
-        path,
-        content: unfinishedMatch[3],
-      })
+  const lastTickIndex = content.lastIndexOf("```")
+  if (lastTickIndex !== -1) {
+    const textAfterLastTick = content.slice(lastTickIndex)
+    const unfinishedMatch = textAfterLastTick.match(/^```(\w+)?\s*(?:file=["']?([^"'>\n]+)["']?)?\s*\r?\n([\s\S]*)$/)
+    if (unfinishedMatch && unfinishedMatch[2]) {
+      const path = unfinishedMatch[2].trim()
+      activeFile = path
+      if (!files.some(f => f.path === path)) {
+        files.push({
+          language: unfinishedMatch[1] || "typescript",
+          path,
+          content: unfinishedMatch[3],
+        })
+      }
     }
   }
   return { files, activeFile }
@@ -158,19 +164,22 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   }, [messages, extractedFiles.length, activeMessageId])
 
   // ─── Check project files on mount (once) ─────────────────────────────────
+  const hasFetchedInitialRef = useRef(false)
   useEffect(() => {
-    if (!project.id) return
+    if (!project.id || hasFetchedInitialRef.current) return
+
+    hasFetchedInitialRef.current = true
       ; (async () => {
         try {
           const res = await fetch(`/api/projects/${project.id}/files`)
-          if (res.ok) {
-            const data = await res.json()
-            const hasFiles = data.files && data.files.length > 0
-            setHasProjectFiles(hasFiles)
-            setIsPreviewOpen(true)
+          const data = await res.json()
+          if (data.files) {
+            setExtractedFiles(data.files)
+            setHasProjectFiles(data.files.length > 0)
+            if (!isPreviewOpen && data.files.length > 0) setIsPreviewOpen(true)
           }
         } catch (err) {
-          console.error("[ChatInterface] Failed to check project files:", err)
+          console.error("[ChatInterface] Mount fetch error:", err)
         }
       })()
   }, [project.id])
@@ -335,7 +344,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
             if (data.text || data.type === "code" || data.type === "chat") {
               setMessages((prev) =>
-                prev.map((m) => (m.id === tempId ? { ...m, content: chatAccumulated } : m))
+                prev.map((m) => (m.id === tempId ? { ...m, content: chatAccumulated + (codeAccumulated ? "\n\n" + codeAccumulated : "") } : m))
               )
 
               // Broadcast AI chunk for live collaboration (Skip for FalMax to avoid Pusher spam/errors)
@@ -629,52 +638,52 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
 
 
 
+  const workspaceRef = useRef<HTMLDivElement>(null)
+  const lastWidthRef = useRef(leftWidth)
+
   // ─── Smooth mouse/touch drag for resizer ──────────────────────────────────
   const handlePointerMove = useCallback((clientX: number) => {
     if (!isResizing.current) return
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    rafRef.current = requestAnimationFrame(() => {
-      const newWidth = startWidth.current + (clientX - startX.current)
-      const clamped = Math.max(280, Math.min(newWidth, window.innerWidth - 280))
-      setLeftWidth(clamped)
-      rafRef.current = null
-    })
+
+    const delta = clientX - startX.current
+    const newWidth = startWidth.current + delta
+
+    // Strict limits to protect buttons and maintain professionalism
+    const minChat = 400
+    const minWorkbench = 450
+    const clamped = Math.max(minChat, Math.min(newWidth, window.innerWidth - minWorkbench))
+
+    // Real-time DOM update (bypass React)
+    if (workspaceRef.current) {
+      workspaceRef.current.style.setProperty('--chat-panel-width', `${clamped}px`)
+    }
+    lastWidthRef.current = clamped
   }, [])
 
   const handlePointerEnd = useCallback(() => {
     if (!isResizing.current) return
     isResizing.current = false
-    if (rafRef.current !== null) {
-      cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
+
+    // Sync React state ONCE resizing is finished
+    setLeftWidth(lastWidthRef.current)
+
     setIsResizingState(false)
+    document.body.classList.remove("is-resizing")
     document.body.style.userSelect = ""
     document.body.style.cursor = ""
-    document.removeEventListener("mousemove", handleMouseMoveRef.current)
-    document.removeEventListener("mouseup", handleMouseUpRef.current)
-    document.removeEventListener("touchmove", handleTouchMoveRef.current)
-    document.removeEventListener("touchend", handleTouchEndRef.current)
-    document.removeEventListener("touchcancel", handleTouchEndRef.current)
+
+    window.removeEventListener("mousemove", handleMouseMoveRef.current)
+    window.removeEventListener("mouseup", handleMouseUpRef.current)
+    window.removeEventListener("touchmove", handleTouchMoveRef.current)
+    window.removeEventListener("touchend", handleTouchEndRef.current)
   }, [])
 
-  // Stable refs so event listeners always reference the latest callbacks
   const handleMouseMoveRef = useRef((e: MouseEvent) => handlePointerMove(e.clientX))
   const handleMouseUpRef = useRef(() => handlePointerEnd())
   const handleTouchMoveRef = useRef((e: TouchEvent) => {
     if (e.touches.length > 0) handlePointerMove(e.touches[0].clientX)
   })
   const handleTouchEndRef = useRef(() => handlePointerEnd())
-
-  // Keep refs up to date
-  useEffect(() => {
-    handleMouseMoveRef.current = (e: MouseEvent) => handlePointerMove(e.clientX)
-    handleMouseUpRef.current = () => handlePointerEnd()
-    handleTouchMoveRef.current = (e: TouchEvent) => {
-      if (e.touches.length > 0) handlePointerMove(e.touches[0].clientX)
-    }
-    handleTouchEndRef.current = () => handlePointerEnd()
-  }, [handlePointerMove, handlePointerEnd])
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -683,27 +692,42 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       setIsResizingState(true)
       startX.current = e.clientX
       startWidth.current = leftWidth
+
+      // Global state for absolute performance
+      document.body.classList.add("is-resizing")
       document.body.style.userSelect = "none"
       document.body.style.cursor = "col-resize"
-      document.addEventListener("mousemove", handleMouseMoveRef.current)
-      document.addEventListener("mouseup", handleMouseUpRef.current)
+
+      handleMouseMoveRef.current = (ev: MouseEvent) => handlePointerMove(ev.clientX)
+      handleMouseUpRef.current = () => handlePointerEnd()
+
+      window.addEventListener("mousemove", handleMouseMoveRef.current)
+      window.addEventListener("mouseup", handleMouseUpRef.current)
     },
-    [leftWidth]
+    [leftWidth, handlePointerMove, handlePointerEnd]
   )
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent) => {
-      if (e.touches.length !== 1) return
+      if (e.touches.length === 0) return
       isResizing.current = true
       setIsResizingState(true)
       startX.current = e.touches[0].clientX
       startWidth.current = leftWidth
+
+      document.body.classList.add("is-resizing")
       document.body.style.userSelect = "none"
-      document.addEventListener("touchmove", handleTouchMoveRef.current, { passive: true })
-      document.addEventListener("touchend", handleTouchEndRef.current)
-      document.addEventListener("touchcancel", handleTouchEndRef.current)
+
+      handleTouchMoveRef.current = (ev: TouchEvent) => {
+        if (ev.touches.length > 0) handlePointerMove(ev.touches[0].clientX)
+      }
+      handleTouchEndRef.current = () => handlePointerEnd()
+
+      window.addEventListener("touchmove", handleTouchMoveRef.current, { passive: false })
+      window.addEventListener("touchend", handleTouchEndRef.current)
+      window.addEventListener("touchcancel", handleTouchEndRef.current)
     },
-    [leftWidth]
+    [leftWidth, handlePointerMove, handlePointerEnd]
   )
 
   const isNarrow = isPreviewOpen && leftWidth < windowWidth * 0.4
@@ -893,38 +917,69 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   }, [handleAutoGenerate])
 
   // ─── Regenerate AI response handler ───────────────────────────────────────
-  const handleRegenerateMessage = useCallback((messageId: string) => {
+  const handleRegenerateMessage = useCallback(async (messageId: string) => {
     hasAutoTriggered.current = true
-    setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.id === messageId)
-      if (idx === -1) return prev
-      // Find the user message that preceded this AI message
-      let userMsgIdx = idx - 1
-      while (userMsgIdx >= 0 && prev[userMsgIdx].role !== "user") {
-        userMsgIdx--
-      }
-      if (userMsgIdx < 0) return prev
-      // Remove the AI message and any after it
-      const updated = prev.slice(0, idx)
+
+    // Find the current state before updating
+    const prev = lastMessagesRef.current || [];
+    const idx = prev.findIndex((m) => m.id === messageId)
+    if (idx === -1) return
+
+    // Find the user message that preceded this AI message
+    let userMsgIdx = idx - 1
+    while (userMsgIdx >= 0 && prev[userMsgIdx].role !== "user") {
+      userMsgIdx--
+    }
+    if (userMsgIdx < 0) return
+
+    const userMsg = prev[userMsgIdx];
+
+    // Persist truncation to database
+    try {
+      await truncateChatHistory(userMsg.id, userMsg.content)
+    } catch (err) {
+      console.error("[Regenerate] Failed to truncate history:", err)
+    }
+
+    // Update local state
+    setMessages((prevMsgs) => {
+      const currentIdx = prevMsgs.findIndex((m) => m.id === messageId)
+      if (currentIdx === -1) return prevMsgs
+
+      const updated = prevMsgs.slice(0, currentIdx)
+
       // Re-generate
-      setTimeout(() => handleAutoGenerate(prev[userMsgIdx].content, prev[userMsgIdx].metadata), 0)
+      setTimeout(() => handleAutoGenerate(userMsg.content, userMsg.metadata), 0)
       return updated
     })
-  }, [handleAutoGenerate])
+  }, [handleAutoGenerate, lastMessagesRef])
 
   const role = project.role || "admin";
-  const mainRef = useRef<HTMLDivElement>(null);
-  const lastWidthRef = useRef(leftWidth);
+
   return (
-    <div className="h-full flex flex-col overflow-hidden relative">
+    <>
       <PresenceLayer
         projectId={project.id}
         onMessageReceived={handleRealtimeMessage}
       />
-      {searchParams.get("plugin") && <PluginLoader pluginId={searchParams.get("plugin")!} />}
+      <div ref={workspaceRef} className="flex flex-col h-full overflow-hidden bg-card">
+        {searchParams.get("plugin") && <PluginLoader pluginId={searchParams.get("plugin")!} />}
 
-      {typeof document !== 'undefined' && document.getElementById('header-right-portal') ? (
-        createPortal(
+        {typeof document !== 'undefined' && document.getElementById('header-right-portal') ? (
+          createPortal(
+            <Navbar
+              projectId={project.id}
+              role={role}
+              handleDownload={handleDownload}
+              isTerminalOpen={isTerminalOpen}
+              onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+              isSplitScreen={isSplitScreen}
+              onEnterSplit={() => setIsSplitScreen(true)}
+              projectName={project.title}
+            />,
+            document.getElementById('header-right-portal')!
+          )
+        ) : (
           <Navbar
             projectId={project.id}
             role={role}
@@ -934,205 +989,206 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
             isSplitScreen={isSplitScreen}
             onEnterSplit={() => setIsSplitScreen(true)}
             projectName={project.title}
-          />,
-          document.getElementById('header-right-portal')!
-        )
-      ) : (
-        <Navbar
-          projectId={project.id}
-          role={role}
-          handleDownload={handleDownload}
-          isTerminalOpen={isTerminalOpen}
-          onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
-          isSplitScreen={isSplitScreen}
-          onEnterSplit={() => setIsSplitScreen(true)}
-          projectName={project.title}
-        />
-      )}
-
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Full-screen overlay during resize — prevents iframes from stealing events */}
-        {isResizingState && (
-          <div
-            className="fixed inset-0 z-[9999]"
-            style={{ cursor: 'col-resize' }}
           />
         )}
 
+        {/* Main Content Area with padding for alignment */}
         <div
-          className={cn(
-            "flex flex-col h-full bg-background border-r",
-            !isResizingState && "transition-[width] duration-200 ease-out",
-            (isPreviewOpen || isSplitScreen || workbenchTab === "database" || workbenchTab === "settings") ? "" : "flex-1",
-            isSplitScreen && "hidden",
-            isNarrow && "min-w-[280px]"
-          )}
-          style={{
-            width: (isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && !isSplitScreen ? leftWidth : "100%",
-            willChange: isResizingState ? 'width' : 'auto',
-          }}
+          className="flex-1 flex overflow-hidden relative p-3 gap-3"
+          style={{ '--chat-panel-width': `${leftWidth}px` } as any}
         >
+          {/* Full-screen overlay during resize */}
+          {isResizingState && (
+            <div
+              className="fixed inset-0 z-[1000]"
+              style={{ cursor: 'col-resize' }}
+              onMouseMove={(e) => handlePointerMove(e.clientX)}
+              onMouseUp={handlePointerEnd}
+            />
+          )}
+
+          {/* Chat Panel - Minimal (No island background/border) */}
           <div
-            ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-4"
+            className={cn(
+              "flex flex-col h-full overflow-hidden",
+              isResizingState ? "transition-none select-none pointer-events-none" : "transition-[width] duration-300 ease-out",
+              (isPreviewOpen || isSplitScreen || workbenchTab === "database" || workbenchTab === "settings") ? "" : "flex-1",
+              isSplitScreen && "hidden",
+              isNarrow && "min-w-[280px]"
+            )}
+            style={{
+              width: (isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && !isSplitScreen ? 'var(--chat-panel-width)' : "100%",
+            }}
           >
             <div
+              ref={messagesContainerRef}
+              className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 no-scrollbar"
+            >
+              <div
+                className={cn(
+                  "w-full",
+                  !isPreviewOpen && "max-w-3xl mx-auto"
+                )}
+              >
+                <MessageList
+                  messages={formattedMessages}
+                  projectId={project.id}
+                  activeMessageId={activeMessageId}
+                  onActivateVersion={handleActivateVersion}
+                  onRegenerate={handleRegenerateMessage}
+                  onEdit={(id, content) => setEditingMessage({ id, content })}
+                />
+                <div ref={messagesEndRef} className="h-4" />
+              </div>
+            </div>
+
+            {/* Chat Input Area - Restored 'Square' design from screenshot */}
+            <div
               className={cn(
-                "w-full",
-                !isPreviewOpen && "max-w-3xl mx-auto"
+                "sticky bottom-0 z-20 transition-all duration-300",
+                isPreviewOpen ? "bg-transparent" : "bg-[#FAF9F5]"
               )}
             >
-              <MessageList
-                messages={formattedMessages}
-                projectId={project.id}
-                activeMessageId={activeMessageId}
-                onActivateVersion={handleActivateVersion}
-                onRegenerate={handleRegenerateMessage}
-                onEdit={(id, content) => setEditingMessage({ id, content })}
-              />
-              <div ref={messagesEndRef} className="h-4" />
+              <div
+                className={cn(
+                  "w-full",
+                  !isPreviewOpen && "max-w-3xl mx-auto"
+                )}
+              >
+                <ChatInput
+                  isAuthenticated={true}
+                  projectId={project.id}
+                  role={role}
+                  initialModel={project.selectedModel || "gemini"}
+                  onNewMessage={handleNewMessage}
+                  onDismissError={() => setPreviewError(null)}
+                  previewError={previewError}
+                  onOpenDatabase={() => {
+                    setIsPreviewOpen(true)
+                    setWorkbenchTab("database")
+                  }}
+                  externalIsLoading={isStreaming}
+                  onStop={handleStopAutoGenerate}
+                  messages={messages}
+                  editingMessage={editingMessage}
+                  onCancelEdit={() => setEditingMessage(null)}
+                  onSaveEdit={handleEditMessage}
+                  sessionId="main"
+                />
+              </div>
             </div>
           </div>
 
-          <div
-            className={cn(
-              "p-4 border-t bg-background/50 backdrop-blur-md sticky bottom-0",
-              !isPreviewOpen && "max-w-3xl mx-auto w-full border-x rounded-t-xl"
-            )}
-          >
-            <ChatInput
-              isAuthenticated={true}
-              projectId={project.id}
-              role={role}
-              initialModel={project.selectedModel || "gemini"}
-              onNewMessage={handleNewMessage}
-              onDismissError={() => setPreviewError(null)}
-              previewError={previewError}
-              onOpenDatabase={() => {
-                setIsPreviewOpen(true)
-                setWorkbenchTab("database")
-              }}
-              externalIsLoading={isStreaming}
-              onStop={handleStopAutoGenerate}
-              messages={messages}
-              editingMessage={editingMessage}
-              onCancelEdit={() => setEditingMessage(null)}
-              onSaveEdit={handleEditMessage}
-              sessionId="main"
-            />
-          </div>
-        </div>
+          {/* Resize handle — minimal and centered in the gap */}
+          {isPreviewOpen && !isSplitScreen && (
+            <div
+              className="group relative z-[60] flex items-center justify-center -mx-1"
+              style={{ width: 12, cursor: 'col-resize' }}
+              onMouseDown={handleMouseDown}
+              onTouchStart={handleTouchStart}
+            >
+              <div className="absolute inset-y-0 -left-2 -right-2" />
+              <div
+                className={cn(
+                  "w-[2px] h-10 rounded-full transition-all duration-300",
+                  isResizingState
+                    ? "bg-[#0099ff] h-24 scale-x-[2] shadow-[0_0_10px_rgba(0,153,255,0.3)]"
+                    : "bg-gray-300 group-hover:bg-[#0099ff]/50"
+                )}
+              />
+            </div>
+          )}
 
-        {/* Resize handle — smooth, professional, with touch support */}
-        {isPreviewOpen && !isSplitScreen && (
-          <div
-            className="group relative z-[60] flex items-center justify-center"
-            style={{ width: isResizingState ? 5 : 4, cursor: 'col-resize' }}
-            onMouseDown={handleMouseDown}
-            onTouchStart={handleTouchStart}
-          >
-            {/* Invisible wider hit area for easier grabbing */}
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5" />
-            {/* Visible bar */}
+          {/* Workbench Panel "Island" */}
+          {(isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && (
             <div
               className={cn(
-                "w-[3px] h-full rounded-full transition-all duration-150",
-                isResizingState
-                  ? "bg-primary/70 shadow-[0_0_8px_rgba(var(--primary-rgb,99,102,241),0.4)]"
-                  : "bg-border/40 group-hover:bg-primary/50"
+                "flex-1 overflow-hidden bg-white dark:bg-[#111114] border border-[#dddcd8] dark:border-white/10 rounded-sm shadow-xs",
+                isSplitScreen ? "p-0" : "",
+                isResizingState ? "transition-none select-none pointer-events-none" : "transition-[width] duration-300 ease-out"
               )}
-            />
-          </div>
-        )}
-
-        {(isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && (
-          <div
-            className={cn(
-              "flex-1 overflow-hidden",
-              isSplitScreen ? "p-0" : "",
-              !isResizingState && "transition-[width] duration-200 ease-out"
-            )}
-            style={{ willChange: isResizingState ? 'width' : 'auto' }}
-          >
-            <CodePreview
-              projectId={project.id}
-              role={role}
-              onError={(error) => setPreviewError(error)}
-              isOpen={isPreviewOpen}
-              onClose={() => { if (!hasProjectFiles) setIsPreviewOpen(false) }}
-              initialTab={workbenchTab}
-              onTabChange={(tab) => setWorkbenchTab(tab as any)}
-              filesOverride={extractedFiles.length > 0 ? extractedFiles : undefined}
-              selectedFilePath={selectedFilePath}
-              isSplitScreen={isSplitScreen}
-              onEnterSplit={() => setIsSplitScreen(true)}
-              onExitSplit={() => setIsSplitScreen(false)}
-              isTerminalOpen={isTerminalOpen}
-              onSendMessage={handleSendMessage}
-              isCodeGenerating={isCodeGenerating || isStreaming}
-              isHistoryView={activeMessageId !== null && messages.some(m => m.hasArtifact) && activeMessageId !== [...messages].reverse().find(m => m.hasArtifact)?.id}
-              messages={messages}
-              activeMessageId={activeMessageId}
-              onActivateVersion={handleActivateVersion}
-            />
-          </div>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {editingMessage && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] cursor-pointer flex items-center justify-center p-4"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setEditingMessage(null)
-            }}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-2xl bg-card border shadow-2xl rounded-xl overflow-hidden pointer-events-auto"
             >
-              {/* Reuse Edit UI from previous turn if available, or simplified here */}
-              <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
-                <h3 className="font-semibold text-lg">Edit Message</h3>
-              </div>
-              <div className="p-6">
-                <textarea
-                  className="w-full h-64 p-4 bg-muted/30 border rounded-lg focus:ring-2 focus:ring-primary outline-none transition-all resize-none font-mono text-sm"
-                  defaultValue={editingMessage.content}
-                  id="edit-message-textarea"
-                />
-                <div className="flex justify-end gap-3 mt-6">
-                  <button
-                    className="px-4 py-2 rounded-lg border hover:bg-muted transition-colors"
-                    onClick={() => setEditingMessage(null)}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-                    onClick={() => {
-                      const val = (document.getElementById("edit-message-textarea") as HTMLTextAreaElement).value
-                      handleEditMessage(editingMessage.id, val)
-                    }}
-                  >
-                    Save & Regenerate
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <CodePreview
+                projectId={project.id}
+                role={role}
+                onError={(error) => setPreviewError(error)}
+                isOpen={isPreviewOpen}
+                onClose={() => { if (!hasProjectFiles) setIsPreviewOpen(false) }}
+                initialTab={workbenchTab}
+                onTabChange={(tab) => setWorkbenchTab(tab as any)}
+                filesOverride={extractedFiles.length > 0 ? extractedFiles : undefined}
+                selectedFilePath={selectedFilePath}
+                isSplitScreen={isSplitScreen}
+                onEnterSplit={() => setIsSplitScreen(true)}
+                onExitSplit={() => setIsSplitScreen(false)}
+                isTerminalOpen={isTerminalOpen}
+                onSendMessage={handleSendMessage}
+                isCodeGenerating={isCodeGenerating || isStreaming}
+                isHistoryView={activeMessageId !== null && messages.some(m => m.hasArtifact) && activeMessageId !== [...messages].reverse().find(m => m.hasArtifact)?.id}
+                messages={messages}
+                activeMessageId={activeMessageId}
+                onActivateVersion={handleActivateVersion}
+                onToggleTerminal={() => setIsTerminalOpen(!isTerminalOpen)}
+              />
+            </div>
+          )}
+        </div>
 
-      <TaskModal projectId={project.id} />
-      <ActivePluginContainer />
-    </div>
+        <AnimatePresence>
+          {editingMessage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] cursor-pointer flex items-center justify-center p-4"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setEditingMessage(null)
+              }}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-2xl bg-card border shadow-2xl rounded-xl overflow-hidden pointer-events-auto"
+              >
+                {/* Reuse Edit UI from previous turn if available, or simplified here */}
+                <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
+                  <h3 className="font-semibold text-lg">Edit Message</h3>
+                </div>
+                <div className="p-6">
+                  <textarea
+                    className="w-full h-64 p-4 bg-muted/30 border rounded-lg focus:ring-2 focus:ring-primary outline-none transition-all resize-none font-mono text-sm"
+                    defaultValue={editingMessage.content}
+                    id="edit-message-textarea"
+                  />
+                  <div className="flex justify-end gap-3 mt-6">
+                    <button
+                      className="px-4 py-2 rounded-lg border hover:bg-muted transition-colors"
+                      onClick={() => setEditingMessage(null)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                      onClick={() => {
+                        const val = (document.getElementById("edit-message-textarea") as HTMLTextAreaElement).value
+                        handleEditMessage(editingMessage.id, val)
+                      }}
+                    >
+                      Save & Regenerate
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <TaskModal projectId={project.id} />
+        <ActivePluginContainer />
+      </div>
+    </>
   )
 }
 

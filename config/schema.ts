@@ -437,7 +437,7 @@ export const templates = pgTable("templates", {
   projectId: uuid("project_id")
     .notNull()
     .unique()
-    .references(() => projects.id),
+    .references(() => projects.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description").notNull(),
   tags: jsonb("tags").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
