@@ -2316,7 +2316,10 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
     // --- PRE-FLIGHT CONNECTIVITY CHECK ---
     // If we can't reach Ollama, we throw here so the resilience chain can fallback to cloud models
     try {
-      const pingRes = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { signal: AbortSignal.timeout(1500) }).catch(() => null)
+      const pingRes = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { 
+        headers: { "ngrok-skip-browser-warning": "true" },
+        signal: AbortSignal.timeout(1500) 
+      }).catch(() => null)
       if (!pingRes || !pingRes.ok) {
         console.warn(`[Ollama/${ollamaModelId}] Connectivity check failed. Triggering fallback chain...`)
         throw new Error("Ollama unreachable")
@@ -2348,7 +2351,10 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
           // ──────────────────────────────────────────────────
           const ollamaRequestPromise = fetch(`${OLLAMA_BASE_URL}/api/chat`, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: { 
+              "Content-Type": "application/json",
+              "ngrok-skip-browser-warning": "true"
+            },
             body: JSON.stringify({
               model: ollamaModelId,
               messages: chatMessages,
@@ -2545,7 +2551,10 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
                 // Fire continuation request
                 const contResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json" },
+                  headers: { 
+                    "Content-Type": "application/json",
+                    "ngrok-skip-browser-warning": "true"
+                  },
                   body: JSON.stringify({
                     model: ollamaModelId,
                     messages: contMessages,

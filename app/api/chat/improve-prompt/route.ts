@@ -93,7 +93,10 @@ Return **only** the improved prompt – nothing else.
   try {
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true" // Mandatory to bypass Ngrok's manual warning page
+      },
       body: JSON.stringify({
         model: "glm-4.7-flash:latest", 
         messages: [
