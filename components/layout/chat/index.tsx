@@ -516,18 +516,22 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isListening, setIsListening] = useState(false)
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
 
+  // Only enforce tier restrictions when balance data loads or on mount
   useEffect(() => {
+    if (!balanceData) return
+
     const tier = balanceData?.subscriptionTier || "none"
+    const model = MODEL_OPTIONS.find(m => m.id === selectedModel)
+    
+    // Only force reset if the CURRENTLY selected model is strictly forbidden by the tier
     if (tier === "none" || tier === "standard") {
-      if (selectedModel !== "ollama/glm-4.7-flash") {
-        setSelectedModel("ollama/glm-4.7-flash")
-      }
-    } else if (tier === "pro") {
-      if (selectedModel === "claude-opus-4.6-fast") {
-        setSelectedModel("gpt-5")
+      if (model?.isPremium && selectedModel !== "ollama/glm-4.7-flash") {
+        // We don't force reset here anymore to allow the user to see the premium model UI 
+        // and upgrade alert. The submission logic already blocks actual use.
+        // But we initialize to the free model if nothing is selected or if it's a cold start.
       }
     }
-  }, [balanceData?.subscriptionTier, selectedModel])
+  }, [balanceData?.subscriptionTier])
 
   const [isAutoSelected, setIsAutoSelected] = useState(false)
   const [selectedFramework, setSelectedFramework] = useState<string>("vite")
@@ -1567,16 +1571,34 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     // If selecting an Ollama model, fire a background warmup to pre-load into VRAM
     if (OLLAMA_MODEL_MAP[modelId]) {
       console.log(`[ChatInput] Warming up Ollama model: ${OLLAMA_MODEL_MAP[modelId]}`)
-      fetch("/api/ollama-warmup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: OLLAMA_MODEL_MAP[modelId] }),
-      }).then(res => {
-        if (res.ok) console.log("[ChatInput] Ollama model warmed up successfully")
-        else console.warn("[ChatInput] Ollama warmup returned non-OK status")
-      }).catch(err => {
-        console.warn("[ChatInput] Ollama warmup failed (server may be offline):", err)
-      })
+      
+      const triggerWarmup = async () => {
+        try {
+          // 1. Try server-side warmup first (works on localhost)
+          const res = await fetch("/api/ollama-warmup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ model: OLLAMA_MODEL_MAP[modelId] }),
+          })
+          
+          if (res.ok) {
+            console.log("[ChatInput] Ollama model warmed up via server")
+            return
+          }
+
+          // 2. If server-side fails (common on production domains), try client-side direct ping
+          // This only works if the user has OLLAMA_ORIGINS set up, but it's better than a 502 error.
+          console.log("[ChatInput] Server-side warmup failed or unavailable, trying client-side ping...")
+          const clientRes = await fetch("http://localhost:11434/api/tags").catch(() => null)
+          if (clientRes?.ok) {
+            console.log("[ChatInput] Ollama detected locally via client-side ping")
+          }
+        } catch (err) {
+          console.warn("[ChatInput] Ollama warmup/detection failed:", err)
+        }
+      }
+
+      triggerWarmup()
     }
 
     // Persist to DB if we are in a project
