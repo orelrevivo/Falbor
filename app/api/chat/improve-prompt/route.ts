@@ -86,87 +86,90 @@ Return **only** the improved prompt – nothing else.
     }
   }
 
-  // Fallback to local Ollama (for local dev environments)
+  // Fallback to local Ollama (for local dev environments or custom tunnels)
   const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
-  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "qwen2.5:3b",
-      messages: [
-        { role: "system", content: systemInstruction },
-        { role: "user", content: `Original prompt:\n"${prompt}"` },
-      ],
-      stream: true,
-    }),
-  })
+  console.log(`[ImprovePrompt] Attempting fallback to Ollama at: ${OLLAMA_BASE_URL}`)
+  
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "glm-4.7-flash:latest", 
+        messages: [
+          { role: "system", content: systemInstruction },
+          { role: "user", content: `Original prompt:\n"${prompt}"` },
+        ],
+        stream: true,
+      }),
+    })
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    console.error("[ImprovePrompt] Ollama API error:", response.status, errorText)
-    return new Response(JSON.stringify({ error: `AI Service Unavailable` }), { status: 503 })
-  }
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("[ImprovePrompt] Ollama API error:", response.status, errorText)
+      return new Response(JSON.stringify({ 
+        error: `Ollama error: ${response.status}`,
+        details: errorText 
+      }), { status: 503 })
+    }
 
-  const encoder = new TextEncoder()
-  let accumulated = ""
+    const encoder = new TextEncoder()
+    let accumulated = ""
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      const reader = response.body?.getReader()
-      if (!reader) {
-        controller.close()
-        return
-      }
-
-      const decoder = new TextDecoder()
-      let buffer = ""
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          buffer += decoder.decode(value, { stream: true })
-          const lines = buffer.split("\n")
-          buffer = lines.pop() || ""
-
-          for (const line of lines) {
-            if (!line.trim()) continue
-
-            try {
-              const parsed = JSON.parse(line)
-              const text = parsed.message?.content
-              if (text) {
-                accumulated += text
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
-              }
-            } catch (e) {
-              console.error("[ImprovePrompt] Parse error:", e, "Line:", line)
-            }
-          }
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = response.body?.getReader()
+        if (!reader) {
+          controller.close()
+          return
         }
 
-        // Final event with the complete clean prompt
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ done: true, improvedPrompt: accumulated.trim() })}\n\n`
-          )
-        )
-        controller.close()
-      } catch (err) {
-        console.error("[ImprovePrompt] Stream error:", err)
-        controller.error(err)
-      }
-    },
-  })
+        const decoder = new TextDecoder()
+        let buffer = ""
 
-  return new Response(stream, {
-    headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    },
-  })
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+
+            buffer += decoder.decode(value, { stream: true })
+            const lines = buffer.split("\n")
+            buffer = lines.pop() || ""
+
+            for (const line of lines) {
+              if (!line.trim()) continue
+              try {
+                const parsed = JSON.parse(line)
+                const text = parsed.message?.content
+                if (text) {
+                  accumulated += text
+                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
+                }
+              } catch (e) { /* skip parse errors */ }
+            }
+          }
+
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, improvedPrompt: accumulated.trim() })}\n\n`))
+          controller.close()
+        } catch (err) {
+          console.error("[ImprovePrompt] Stream error:", err)
+          controller.error(err)
+        }
+      },
+    })
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    })
+  } catch (err) {
+    console.error("[ImprovePrompt] Connection failed:", err)
+    return new Response(JSON.stringify({ 
+      error: "Failed to connect to local Ollama server. Make sure Ollama is running (ollama serve) and the model is pulled.",
+      details: err instanceof Error ? err.message : String(err)
+    }), { status: 503 })
+  }
 }
