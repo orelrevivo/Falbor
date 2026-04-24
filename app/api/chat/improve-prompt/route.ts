@@ -40,7 +40,55 @@ Take the user's original prompt and rewrite it to be:
 Return **only** the improved prompt – nothing else.
 `.trim()
 
-  const response = await fetch("http://localhost:11434/api/chat", {
+  const googleKey = process.env.GOOGLE_API_KEY
+  if (googleKey) {
+    try {
+      const { GoogleGenerativeAI } = await import("@google/generative-ai")
+      const genAI = new GoogleGenerativeAI(googleKey)
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+
+      const result = await model.generateContentStream({
+        contents: [
+          { role: "user", parts: [{ text: `${systemInstruction}\n\nOriginal prompt:\n"${prompt}"` }] }
+        ],
+      })
+
+      const encoder = new TextEncoder()
+      let accumulated = ""
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const chunk of result.stream) {
+              const text = chunk.text()
+              if (text) {
+                accumulated += text
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
+              }
+            }
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, improvedPrompt: accumulated.trim() })}\n\n`))
+            controller.close()
+          } catch (err) {
+            controller.error(err)
+          }
+        }
+      })
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      })
+    } catch (err) {
+      console.error("[ImprovePrompt] Gemini error:", err)
+    }
+  }
+
+  // Fallback to local Ollama (for local dev environments)
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+  const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -58,7 +106,7 @@ Return **only** the improved prompt – nothing else.
   if (!response.ok) {
     const errorText = await response.text()
     console.error("[ImprovePrompt] Ollama API error:", response.status, errorText)
-    return new Response(JSON.stringify({ error: `Ollama API error: ${response.status}` }), { status: 500 })
+    return new Response(JSON.stringify({ error: `AI Service Unavailable` }), { status: 503 })
   }
 
   const encoder = new TextEncoder()

@@ -79,6 +79,8 @@ const MODEL_FALLBACK_CHAIN: Record<string, string[]> = {
   "o1": ["gpt-4o", "gemini"],
   "o1-preview": ["gpt-4o", "gemini"],
   "gpt-4o-mini": ["gemini"],
+  "ollama/glm-4.7-flash": ["gemini"],
+  "ollama/gemma4-31b": ["gemini"],
 };
 
 const OPENROUTER_MODELS = {
@@ -1947,7 +1949,7 @@ async function handleOpenRouterRequest(
               stream: true,
               ...(modelId.includes("gpt-5") || modelId.includes("-o1")
                 ? { max_completion_tokens: 32768 }
-                : { max_tokens: 32768 }),
+                : { max_tokens: 8192 }),
             }),
           })
 
@@ -1990,7 +1992,7 @@ async function handleOpenRouterRequest(
                   stream: true,
                   ...(modelId.includes("gpt-5") || modelId.includes("-o1")
                     ? { max_completion_tokens: 32768 }
-                    : { max_tokens: 32768 }),
+                    : { max_tokens: 8192 }),
                 }),
               })
 
@@ -2160,9 +2162,12 @@ async function handleOpenRouterRequest(
               userId
             )
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error(`[OpenRouter/${modelId}] Stream error:`, error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "The AI service is experiencing high latency. Your progress has been saved; please refresh and continue." })}\n\n`))
+          const errorMessage = error?.message?.includes("404") || error?.message?.includes("model_not_found")
+            ? `The selected model (${modelId}) was not found on OpenRouter. Please try a different model.`
+            : "The AI service is experiencing high latency. Your progress has been saved; please refresh and continue.";
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
@@ -2308,9 +2313,17 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
       { role: "user" as const, content: userPrompt },
     ]
 
-    // Log prompt size for debugging
-    const totalPromptChars = chatMessages.reduce((sum, m) => sum + m.content.length, 0)
-    console.log(`[Ollama/${ollamaModelId}] Prompt size: ${totalPromptChars} chars (${Math.ceil(totalPromptChars / 4)} est. tokens), ${chatMessages.length} messages`)
+    // --- PRE-FLIGHT CONNECTIVITY CHECK ---
+    // If we can't reach Ollama, we throw here so the resilience chain can fallback to cloud models
+    try {
+      const pingRes = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { signal: AbortSignal.timeout(1500) }).catch(() => null)
+      if (!pingRes || !pingRes.ok) {
+        console.warn(`[Ollama/${ollamaModelId}] Connectivity check failed. Triggering fallback chain...`)
+        throw new Error("Ollama unreachable")
+      }
+    } catch (e) {
+      throw new Error("Local Ollama model is not responding. If you are on the live domain, the system will now automatically attempt to fallback to a cloud model.")
+    }
 
     return new ReadableStream({
       async start(controller) {
@@ -2666,9 +2679,13 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
               userId
             )
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error(`[Ollama/${ollamaModelId}] Stream error:`, error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Local Ollama model is not responding. Make sure Ollama is running on your machine (ollama serve)." })}\n\n`))
+          const isDomain = typeof window !== 'undefined' ? !window.location.hostname.includes('localhost') : true;
+          const errorMessage = isDomain 
+            ? "Ollama (Local AI) is unreachable from the Falbor domain. The system attempted to connect but failed. For local AI support, please run the app on your local machine or use a secure tunnel with OLLAMA_ORIGINS set."
+            : "Local Ollama model is not responding. Make sure Ollama is running on your machine (ollama serve).";
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`))
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
         } finally {
           controller.close()
