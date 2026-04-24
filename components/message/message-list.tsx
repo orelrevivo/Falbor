@@ -1,6 +1,6 @@
 "use client"
 
-import type React from "react"
+import React from "react"
 import { TaskChatGroup } from "./task-chat-group"
 import { oneLight } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/utils"
@@ -12,6 +12,7 @@ import {
   FileText,
   CheckCircle2,
   XCircle,
+  Compass,
   List,
   AlertCircle,
   Bug,
@@ -55,9 +56,18 @@ import { SandpackProvider, SandpackPreview } from "@codesandbox/sandpack-react"
 import { useUser } from "@clerk/nextjs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { motion, AnimatePresence } from "framer-motion"
+import { TextEffect } from "@/components/ui/text-effect"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Smartphone, MoreVertical } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { text } from "stream/consumers";
 
 function formatTimeAgo(date: string | Date | undefined): string {
   if (!date) return ""
@@ -125,6 +135,11 @@ interface FilePart {
   content: { name: string; fileContent: string; fileType: string }
 }
 
+interface ClonePart {
+  type: "clone"
+  content: { url: string }
+}
+
 interface PastedPart {
   type: "pasted"
   content: string
@@ -135,7 +150,7 @@ interface DatabasePart {
   content: { supabaseUrl: string; anonKey: string }
 }
 
-type UserPart = TextPart | DesignPart | FilePart | PastedPart | DatabasePart
+type UserPart = TextPart | DesignPart | FilePart | PastedPart | DatabasePart | ClonePart
 
 function parseAIResponse(content: string) {
   const tagRegexes: Record<string, RegExp> = {
@@ -175,6 +190,8 @@ function parseAIResponse(content: string) {
     terminal: /<Terminal>([\s\S]*?)<\/Terminal>/gi,
     internetSearch: /<InternetSearch>([\s\S]*?)<\/InternetSearch>/gi,
     data: /<Data>([\s\S]*?)<\/Data>/gi,
+    generatedCode: /<GeneratedCode>([\s\S]*?)<\/GeneratedCode>/gi,
+    hiddenCode: /<HiddenCode>([\s\S]*?)<\/HiddenCode>/gi,
   }
 
   // Tags that should NEVER bleed into the visible text content
@@ -187,7 +204,8 @@ function parseAIResponse(content: string) {
     "DiscoverDiscordTools", "TestDiscordTools", "CompileDiscordFindings",
     "DiscoverMessengerTools", "TestMessengerTools", "CompileMessengerFindings",
     "Scan", "WorkSummary", "CheckPackages", "APISearch",
-    "Terminal", "InternetSearch", "VerifyingSolution", "Data"
+    "Terminal", "InternetSearch", "VerifyingSolution", "Data",
+    "GeneratedCode", "HiddenCode"
   ]
 
   let processedContent = content
@@ -438,6 +456,18 @@ function parseUserContent(content: string): { parts: UserPart[]; mainText: strin
     })
   }
 
+  // Parse clone URL: [CLONE_URL:...]
+  const cloneRegex = /\[CLONE_URL:([^\]]+)\]/g
+  let cloneMatch: RegExpExecArray | null = null
+  const cloneMatches: Array<{ index: number; length: number; url: string }> = []
+  while ((cloneMatch = cloneRegex.exec(content)) !== null) {
+    cloneMatches.push({
+      index: cloneMatch.index,
+      length: cloneMatch[0].length,
+      url: cloneMatch[1].trim(),
+    })
+  }
+
   // Parse pasted text: ## Pasted Text\n```text\ncontent\n```
   const pastedRegex = /## Pasted Text\n```text\n([\s\S]*?)```/g
   let pastedMatch: RegExpExecArray | null = null
@@ -489,6 +519,7 @@ function parseUserContent(content: string): { parts: UserPart[]; mainText: strin
   const allMatches: Array<{ index: number; length: number }> = [
     ...fileMatches,
     ...pastedMatches,
+    ...cloneMatches.map(m => ({ index: m.index, length: m.length, type: "clone" as const, content: { url: m.url } })),
     ...(databaseInfo ? [databaseInfo] : []),
     ...(designInfo ? [designInfo] : []),
   ].sort((a, b) => a.index - b.index)
@@ -510,6 +541,11 @@ function parseUserContent(content: string): { parts: UserPart[]; mainText: strin
       type: "file",
       content: { name: file.name, fileContent: file.content, fileType: file.type },
     })
+  }
+
+  // Add clone parts
+  for (const clone of cloneMatches) {
+    parts.push({ type: "clone", content: { url: clone.url } })
   }
 
   // Add pasted parts
@@ -1178,8 +1214,8 @@ export function MessageList({
       messages[index - 1].content.startsWith("[TERMINAL_ERROR_FIX]")
 
     const messageWrapperClass = cn(
-      "relative w-full rounded-lg px-1 py-1",
-      message.role === "user" ? "bg-[#e7e5df] dark:bg-[#2C2C30] text-[13px] text-foreground" : "text-[13px] text-foreground/90",
+      "relative w-full rounded-lg",
+      message.role === "user" ? "bg-[#e7e5df] dark:bg-[#2C2C30] text-[13px] px-2 py-2 text-foreground" : "px-1 py-1 text-[13px] text-foreground/90",
     )
 
     const renderedMessage = (
@@ -1189,37 +1225,45 @@ export function MessageList({
         aria-label={`${message.role} message`}
       >
         {message.role === "user" ? (
-          <div className={cn("w-full transition-all", message.isAutomated && "")}>
-            <div className="flex items-center justify-between mb-2 px-3 absolute top-3 right-0">
-              {message.isAutomated && (
-                <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500 text-white shadow-lg shadow-red-500/20 rounded-full text-[10px] font-bold mr-4 animate-pulse">
-                  <Zap className="w-2.5 h-2.5" />
-                  SPARK FIX TRIGGERED
-                </div>
-              )}
-              <div className="flex items-center gap-1 text-[10px] mr-3 text-muted-foreground/50">
-                <Clock className="w-3 h-3" />
-                <span>{formatTimeAgo(message.createdAt)}</span>
-              </div>
+          <div className={cn("w-full transition-all group/message", message.isAutomated && "")}>
+            <div className="flex items-center justify-between px-3 absolute top-0 bottom-0 right-0 py-2">
               <div className="flex items-center gap-2">
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={() => {
-                    const { mainText } = parseUserContent(message.content)
-                    onEdit?.(message.id, mainText || message.content)
-                  }}
-                  className="p-0 h-auto text-foreground/70 flex items-center gap-1 cursor-pointer"
-                  aria-label="User message options"
-                >
-                  <Edit className="w-3.5 h-3.5" />
-                </Button>
+                {message.isAutomated && (
+                  <div className="flex items-center gap-1.5 px-2 py-0.5 bg-red-500 text-white shadow-lg shadow-red-500/20 rounded-full text-[9px] font-bold mr-2 animate-pulse flex-shrink-0">
+                    <Zap className="w-2.5 h-2.5" />
+                    SPARK FIX
+                  </div>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-foreground/40 hover:text-foreground/70 opacity-0 group-hover/message:opacity-100 transition-opacity"
+                    >
+                      <MoreVertical className="w-4 h-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-40 bg-white dark:bg-[#1E1E21] border-gray-200 dark:border-white/10">
+                    <DropdownMenuItem
+                      onClick={() => {
+                        const { mainText } = parseUserContent(message.content)
+                        onEdit?.(message.id, mainText || message.content)
+                      }}
+                      className="text-xs flex items-center gap-2 cursor-pointer"
+                    >
+                      <Edit className="w-3.5 h-3.5" />
+                      Edit Message
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+
                 {message.content.length > 200 && (
                   <Button
                     variant="link"
                     size="sm"
                     onClick={() => toggleMessageExpand(message.id)}
-                    className="p-0 h-auto text-foreground/70 flex items-center gap-1 cursor-pointer"
+                    className="p-0 h-auto text-foreground/70 flex items-center gap-1 cursor-pointer opacity-0 group-hover/message:opacity-100 transition-opacity"
                   >
                     {expandedMessages[message.id] ? (
                       <ChevronUp className="w-4 h-4" />
@@ -1277,7 +1321,7 @@ export function MessageList({
               {(() => {
                 const { parts, mainText } = parseUserContent(message.content)
                 const contextParts = parts.filter(
-                  (p) => p.type === "file" || p.type === "pasted" || p.type === "database" || p.type === "design"
+                  (p) => p.type === "file" || p.type === "pasted" || p.type === "database" || p.type === "design" || p.type === "clone"
                 )
                 const hasContext = contextParts.length > 0
 
@@ -1405,12 +1449,35 @@ export function MessageList({
                               </TooltipProvider>
                             )
                           }
+                          if (part.type === "clone") {
+                            return (
+                              <TooltipProvider key={`clone-${partIdx}`}>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <div
+                                      className="gap-2 bg-[#e7e5df] dark:bg-[#2C2C30] text-gray-700 py-1 px-2 pr-1"
+                                    >
+                                      <img
+                                        src={`https://www.google.com/s2/favicons?domain=${part.content.url.replace(/https?:\/\//, "")}&sz=32`}
+                                        className="w-3 h-3 rounded-sm"
+                                        alt=""
+                                      />
+                                      <span className="truncate max-w-[150px]">{part.content.url}</span>
+                                    </div>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom">
+                                    <p>Website being cloned</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
+                            )
+                          }
                           return null
                         })}
                       </div>
                     )}
 
-                    {mainText && (
+                    <div className="relative pr-8 overflow-hidden">
                       <div
                         className={cn(
                           mainText.length > 200 &&
@@ -1461,7 +1528,7 @@ export function MessageList({
                         >
                           {mainText}
                         </ReactMarkdown>
-                        {message.content.includes("Terminal Error Detected") && (
+                        {message.isAutomated && message.content.includes("Terminal Error Detected") && (
                           <div className="mt-4 pt-2 border-t border-text-white/70 flex items-center justify-between">
                             <div className="text-[9px] text-black dark:text-white/70">Falbor AI Autopilot Active</div>
                             <div className="flex gap-1">
@@ -1471,7 +1538,11 @@ export function MessageList({
                           </div>
                         )}
                       </div>
-                    )}
+                      <div className="mt-[3px] flex items-center gap-1 text-[9px] text-muted-foreground/40 font-mono">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>{formatTimeAgo(message.createdAt)}</span>
+                      </div>
+                    </div>
                   </div>
                 )
               })()}
@@ -1765,11 +1836,19 @@ function AIMessageContent({
 
   const markdownComponents = {
     strong: ({ children }: { children?: React.ReactNode }) => (
-      <strong className="font-bold text-black dark:text-white/90 bg-[#e4e4e4] dark:bg-white/10 px-1.5 py-1 rounded text-sm">{children}</strong>
+      <strong className="font-bold text-black dark:text-white/90 bg-[#e4e4e4] dark:bg-white/10 px-1.5 py-1 rounded text-sm">
+        {children}
+      </strong>
     ),
-    em: ({ children }: { children?: React.ReactNode }) => <em className="italic text-black/80 dark:text-white/70">{children}</em>,
+    em: ({ children }: { children?: React.ReactNode }) => (
+      <em className="italic text-black/80 dark:text-white/70">
+        {children}
+      </em>
+    ),
     p: ({ children }: { children?: React.ReactNode }) => (
-      <div className="text-sm leading-relaxed whitespace-pre-wrap mb-1 last:mb-0 dark:text-white/80">{children}</div>
+      <div className="text-sm leading-relaxed whitespace-pre-wrap mb-1 last:mb-0 dark:text-white/90">
+        {children}
+      </div>
     ),
     ul: ({ children }: { children?: React.ReactNode }) => (
       <ul className="list-disc pl-5 space-y-1 mb-1 last:mb-0">{children}</ul>
@@ -1777,7 +1856,11 @@ function AIMessageContent({
     ol: ({ children }: { children?: React.ReactNode }) => (
       <ol className="list-decimal pl-5 space-y-1 mb-1 last:mb-0">{children}</ol>
     ),
-    li: ({ children }: { children?: React.ReactNode }) => <li className="text-sm leading-relaxed">{children}</li>,
+    li: ({ children }: { children?: React.ReactNode }) => (
+      <li className="text-sm leading-relaxed">
+        {children}
+      </li>
+    ),
     pre: ({ children }: { children?: React.ReactNode }) => (
       <div className="relative group/code my-4 rounded-md overflow-hidden">
         <pre className="m-0 p-0 whitespace-pre-wrap break-words">
@@ -2437,40 +2520,6 @@ function AIMessageContent({
         </div>
       )}
 
-      {/* Clone Screenshot Preview — shown at top of AI response when clone mode was used */}
-      {(() => {
-        const screenshotMatch = message.content.match(/<clone-screenshot\s+src="([^"]+)"\s*\/>/)
-        if (!screenshotMatch) return null
-        const screenshotSrc = screenshotMatch[1]
-        // Extract the URL from surrounding markdown if present
-        const urlMatch = message.content.match(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/)
-        const capturedUrl = urlMatch?.[2] || ""
-        const capturedLabel = urlMatch?.[1] || capturedUrl
-        return (
-          <div className="mb-4 rounded-xl overflow-hidden border border-black/10 dark:border-white/10 shadow-sm">
-            <div className="flex items-center gap-2 px-3 py-2 bg-black dark:bg-[#1E1E21] text-white text-xs font-medium border-b dark:border-white/5">
-              <svg className="w-3.5 h-3.5 text-white/60 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-              </svg>
-              <span className="opacity-60">Captured screenshot:</span>
-              {capturedUrl ? (
-                <a href={capturedUrl} target="_blank" rel="noopener noreferrer" className="truncate text-blue-300 hover:text-blue-200 transition-colors">
-                  {capturedLabel}
-                </a>
-              ) : (
-                <span className="truncate opacity-80">target site</span>
-              )}
-            </div>
-            <img
-              src={screenshotSrc}
-              alt="Captured website screenshot"
-              className="w-full block"
-              style={{ maxHeight: 400, objectFit: "cover", objectPosition: "top" }}
-            />
-          </div>
-        )
-      })()}
-
       {parts.map((p, idx) => (
         <div
           key={`${message.id}-part-${idx}`}
@@ -2486,7 +2535,9 @@ function AIMessageContent({
             if (p.type === "text") {
               // Strip any raw XML tags and agent status JSON that leaked through
               const cleanedText = p.content
-                .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck|GeneratedCode|HiddenCode)[^>]*>/gi, "")
+                .replace(/<GeneratedCode>[\s\S]*?<\/GeneratedCode>/gi, "")
+                .replace(/<HiddenCode>[\s\S]*?<\/HiddenCode>/gi, "")
+                .replace(/<\/?(?:Thinking|Commentary|UserMessage|Planning|Search|FileChecks|Files|Testing|FileSearch|ReviewedWork|FinalReasoning|FinalResponsive|MobileReview|DeepConclusion|InternalThought|CustomAction|Tasks|PreviewButton|ImportCard|AIOnly|InternalFinishCheck)[^>]*>/gi, "")
                 .replace(/\{"type":\s*"agent",\s*"agent":\s*"[^"]*",\s*"status":\s*"[^"]*"\}\s*/g, "")
                 .replace(/([_\-*=~`#]){3,}\s*$/gm, "")
                 .replace(/\n{3,}/g, "\n\n")
@@ -2550,9 +2601,9 @@ function AIMessageContent({
             const sectionKey = `section-${collapsibleIndex}`;
             const isLastPart = idx === parts.length - 1;
             const isActive = isStreaming && isLastPart;
-            // AUTO-OPEN: Automatically expand the section if it is currently streaming/active, 
-            // OR if it's an unfinished code block (content.isOpen was set in the parser)
-            const isOpen = (isActive && p.type === "codeBlock") || (p.type === "codeBlock" && p.content.isOpen) || (expandedSections[sectionKey] ?? false);
+            // MANUAL-OPEN: Sections remain closed by default unless explicitly clicked by the user 
+            // or if it's an actively streaming code block 
+            const isOpen = (p.type === "codeBlock" && p.content.isOpen) || (expandedSections[sectionKey] ?? false);
             const title = p.type === "customAction" ? p.content.name : getTitle(p.type, p.content);
             const Icon = getIcon(p.type);
 
@@ -2575,7 +2626,7 @@ function AIMessageContent({
                     )}
                   </Button>
                 </CollapsibleTrigger>
-                <CollapsibleContent className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                <CollapsibleContent className="mt-2 text-black/75 dark:text-white/80">
                   {renderPartContent(p.type, p.content)}
                 </CollapsibleContent>
               </Collapsible>
@@ -2583,8 +2634,150 @@ function AIMessageContent({
           })()}
         </div>
       ))}
-      {isStreaming && parts.some((p) => p.type === "text" && p.content) && (
-        <span className="inline-block w-2 h-4 bg-primary animate-pulse ml-1 align-middle" />
+      {/* Captured URL / Clone Analysis — Research Section (Unified Style) */}
+      {message.role === 'assistant' && (message.metadata?.cloneData || message.content.includes('<clone-screenshot')) && (() => {
+        const cloneData = message.metadata?.cloneData
+        const screenshotMatch = message.content.match(/<clone-screenshot\s+src="([^"]+)"\s*\/>/)
+        const screenshotSrc = screenshotMatch ? screenshotMatch[1] : (cloneData?.screenshotBase64 ? `data:${cloneData.screenshotMimeType || 'image/jpeg'};base64,${cloneData.screenshotBase64}` : null)
+        if (!screenshotSrc && !cloneData) return null
+
+        const sectionKey = `section-clone-research`;
+        const isOpen = expandedSections[sectionKey] ?? false; // Default closed as requested
+        const title = `Captured url`;
+        const site = cloneData?.url || 'site';
+        return (
+          <div className="w-full mt-2">
+            <Collapsible open={isOpen} onOpenChange={() => onToggleSection(sectionKey)} id={`section-${sectionKey}-${message.id}`}>
+              <CollapsibleTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="relative cursor-pointer flex items-center gap-2 justify-start w-full text-left text-sm font-medium text-black/75 dark:text-white/80 hover:text-black dark:hover:text-white bg-transparent hover:bg-transparent border-none p-0 h-auto group transition-colors"
+                >
+                  <div className="relative w-4 h-4">
+                    <CheckCircle2 className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-100 translate-y-0 text-gray-600", isOpen && "opacity-0 -translate-y-1", "group-hover:opacity-0 group-hover:-translate-y-1")} />
+                    <ChevronDown className={cn("absolute inset-0 w-4 h-4 transition-all duration-200 ease-in-out opacity-0 translate-y-1 text-gray-600", isOpen && "opacity-100 translate-y-0 rotate-180", "group-hover:opacity-100 group-hover:translate-y-0")} />
+                  </div>
+                  <span className="text-sm font-medium">
+                    {title}
+                    <span className="text-[11px] bg-black/10 px-1.5 py-0.5 rounded-sm ml-1 text-black/60 dark:text-white/50">{site}</span></span>
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2 ml-6 space-y-4">
+                <p className="text-xs text-black/60 dark:text-white/50 leading-relaxed max-w-2xl">
+                  {cloneData?.description || "I have analyzed the landing page to identify its design elements, colors, and layout, ensuring a high-fidelity reconstruction."}
+                </p>
+
+                <div className="flex flex-wrap gap-2">
+                  {screenshotSrc && (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-full flex items-center justify-start cursor-pointer 
+        h-7 rounded-sm border border-black/5
+        bg-black/[0.05] dark:bg-white/5 hover:bg-black/10 
+        dark:hover:bg-white/10
+        px-2 gap-1.5 
+        text-[10px] font-medium"
+                        >
+                          <Compass className="w-3 h-3" />
+                          Captured URL
+                        </Button>
+                      </DialogTrigger>
+
+                      <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black border-none rounded-2xl">
+                        <DialogTitle className="sr-only">Full Page Capture</DialogTitle>
+                        <DialogDescription className="sr-only">
+                          High resolution screenshot of the cloned website.
+                        </DialogDescription>
+
+                        <img
+                          src={screenshotSrc}
+                          alt="Full Page Capture"
+                          className="w-full h-auto max-h-[85vh] object-contain"
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  )}
+
+                  {cloneData?.sectionScreenshots?.map((base64: string, i: number) => (
+                    <Dialog key={`slice-${i}`}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-full flex items-center justify-start cursor-pointer 
+        h-7 rounded-sm border border-black/5
+        bg-black/[0.05] dark:bg-white/5 hover:bg-black/10 
+        dark:hover:bg-white/10
+        px-2 gap-1.5 
+        text-[10px] font-medium"
+                        >
+                          <Compass className="w-3 h-3" />
+                          Visual Section {i + 1}
+                        </Button>
+                      </DialogTrigger>
+
+                      <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black border-none rounded-2xl">
+                        <DialogTitle className="sr-only">
+                          Visual Section {i + 1}
+                        </DialogTitle>
+                        <DialogDescription className="sr-only">
+                          High resolution capture of section {i + 1} for design analysis.
+                        </DialogDescription>
+
+                        <img
+                          src={`data:image/jpeg;base64,${base64}`}
+                          alt={`Visual Section ${i + 1}`}
+                          className="w-full h-auto max-h-[85vh] object-contain"
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  ))}
+
+                  {cloneData?.assets?.allImages?.slice(0, 8).map((img: string, i: number) => (
+                    <Dialog key={i}>
+                      <DialogTrigger asChild>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="w-full flex items-center justify-start cursor-pointer 
+        h-7 rounded-sm border border-black/5
+        bg-black/[0.05] dark:bg-white/5 hover:bg-black/10 
+        dark:hover:bg-white/10
+        px-2 gap-1.5 
+        text-[10px] font-medium"
+                        >
+                          <Compass className="w-3 h-3" />
+                          Section {i + 1}
+                        </Button>
+                      </DialogTrigger>
+
+                      <DialogContent className="max-w-3xl p-0 overflow-hidden bg-black border-none rounded-xl">
+                        <DialogTitle className="sr-only">Section {i + 1}</DialogTitle>
+                        <DialogDescription className="sr-only">
+                          Visual capture of section {i + 1} from the target site.
+                        </DialogDescription>
+
+                        <img
+                          src={img}
+                          alt={`Section ${i + 1}`}
+                          className="w-full h-auto max-h-[80vh] object-contain"
+                        />
+                      </DialogContent>
+                    </Dialog>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        );
+      })()}
+
+      {isStreaming && parts[parts.length - 1]?.type === "text" && (
+        <span className="inline-block w-[1.5px] h-4 bg-black/40 dark:bg-white/40 ml-0.5 align-middle animate-[pulse_1s_infinite]" />
       )}
     </div>
   )

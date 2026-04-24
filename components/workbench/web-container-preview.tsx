@@ -192,19 +192,19 @@ export function WebContainerPreview({
             if (hasError) {
                 // Strip ANSI codes for the AI
                 const cleanData = data.replace(/\x1b\[[0-9;]*m/g, '').trim()
-                
+
                 if (cleanData === lastErrorRef.current) return
                 lastErrorRef.current = cleanData
 
                 if (errorDebounceRef.current) clearTimeout(errorDebounceRef.current)
-                
+
                 errorDebounceRef.current = setTimeout(() => {
-                   terminal.writeln("\r\n\x1b[35m[AI Autopilot] Error detected. Triggering automatic fix...\x1b[0m")
-                   setIsAutoFixing(true)
-                   sendPrompt(`AUTOMATIC ERROR FIX: I detected the following error in the terminal while running the project. Please fix it immediately:\n\n${cleanData}`, true)
-                   
-                   // Reset auto-fixing state after a delay or when code starts generating again
-                   setTimeout(() => setIsAutoFixing(false), 10000)
+                    terminal.writeln("\r\n\x1b[35m[AI Autopilot] Error detected. Triggering automatic fix...\x1b[0m")
+                    setIsAutoFixing(true)
+                    sendPrompt(`AUTOMATIC ERROR FIX: I detected the following error in the terminal while running the project. Please fix it immediately:\n\n${cleanData}`, true)
+
+                    // Reset auto-fixing state after a delay or when code starts generating again
+                    setTimeout(() => setIsAutoFixing(false), 10000)
                 }, 1000)
             }
         }
@@ -345,7 +345,7 @@ export function WebContainerPreview({
                     // Smart Dependency Detection: Scan user files for additional imports
                     const detectedDeps: Record<string, string> = {};
                     const importRegex = /(?:from|import\(?)\s*['"]([^'"].*?)['"]/g;
-                    
+
                     files.forEach(f => {
                         if (!f?.content) return;
                         let match;
@@ -585,17 +585,17 @@ export default {
 
                 const startProcess = await instance.spawn("npm", ["run", "dev"])
                 startProcess.output.pipeTo(new WritableStream({
-                    write(data) { 
+                    write(data) {
                         terminal?.write(data)
-                        
+
                         // Error Monitoring via Buffer
                         if (autoFixEnabled && !isAutoFixing && !isAiStreaming) {
                             outputBuffer.current = (outputBuffer.current + data).slice(-1500)
                             const cleanOutput = outputBuffer.current.replace(/\x1b\[[0-9;]*m/g, '').trim()
-                            
+
                             // Check for common crash patterns in the current buffer
-                            const hasCrash = 
-                                cleanOutput.includes("ReferenceError") || 
+                            const hasCrash =
+                                cleanOutput.includes("ReferenceError") ||
                                 cleanOutput.includes("SyntaxError") ||
                                 cleanOutput.includes("Failed to compile") ||
                                 cleanOutput.includes("Module not found") ||
@@ -607,21 +607,21 @@ export default {
                                 errorDebounceRef.current = setTimeout(() => {
                                     // Check once more if the error is still present and valid
                                     const finalClean = outputBuffer.current.replace(/\x1b\[[0-9;]*m/g, '').trim()
-                                    
+
                                     terminal?.writeln("\r\n\x1b[31;1m[SPARK FIX]\x1b[0m AI is analyzing the crash and applying a patch...")
                                     setIsAutoFixing(true)
-                                    
+
                                     // Construct the strict fixing prompt
                                     const autoFixPrompt = `⚠️ **Terminal Error Detected**\n\n\`\`\`bash\n${finalClean.slice(-1000)}\n\`\`\`\n\n[SYSTEM]: Your dev server crashed. I need a fix immediately. Update the project files so this error is resolved.`;
-                                    
+
                                     if (onSendMessage) {
                                         onSendMessage(autoFixPrompt, true)
                                     } else {
                                         sendPrompt(autoFixPrompt, true)
                                     }
-                                    
+
                                     outputBuffer.current = "" // Clear buffer after sending
-                                    
+
                                     // Re-enable autopilot after 25s (allows for build cycle + AI response)
                                     setTimeout(() => setIsAutoFixing(false), 25000)
                                 }, 3000)
@@ -671,7 +671,7 @@ export default {
                 // Check if package.json needs updating due to new imports
                 const importRegex = /(?:from|import\(?)\s*['"]([^'"].*?)['"]/g;
                 const newlyDetectedPackages: string[] = [];
-                
+
                 for (const file of files) {
                     const pathParts = file.path.split("/").filter(Boolean)
                     if (pathParts.length > 1) {
@@ -713,7 +713,7 @@ export default {
                             await webcontainerInstance.fs.writeFile(pkgJsonPath, JSON.stringify(pkgJson, null, 2));
                             const terminal = xtermRef.current;
                             terminal?.writeln("\r\n\x1b[34m[Autopilot] New imports detected. Updating environment...\x1b[0m");
-                            
+
                             const installProc = await webcontainerInstance.spawn("npm", ["install"]);
                             installProc.output.pipeTo(new WritableStream({ write(data) { terminal?.write(data) } }));
                             await installProc.exit;
@@ -801,9 +801,9 @@ export default {
 
                 // 3. Inject Environment Variables from Secrets (REQUIRED for build)
                 terminal?.writeln('\x1b[34m[Deploy] Injecting environment variables...\x1b[0m');
-                
+
                 let envContent = '';
-                
+
                 // Fetch secrets
                 const secretsRes = await fetch(`/api/projects/${projectId}/secrets`, {
                     headers: { Authorization: `Bearer ${token}` }
@@ -842,7 +842,7 @@ export default {
                 if (envContent) {
                     await webcontainerInstance.fs.writeFile('.env', envContent);
                     terminal?.writeln('\x1b[32m[Deploy] .env file created with ' + envContent.split('\n').filter(Boolean).length + ' variables\x1b[0m');
-                    
+
                     // Verify .env was written
                     const envVerify = await webcontainerInstance.fs.readFile('.env', 'utf-8').catch(() => null);
                     if (!envVerify) {

@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server"
-import { GoogleGenerativeAI } from "@google/generative-ai"
+
 import { db } from "@/config/db"
 import { projects, messages as messagesTable, files, artifacts, userCustomKnowledge, projectSupabase, projectNeon, userCredits, projectSecrets, userMcpConnections, userApiUsage, projectCollaborators } from "@/config/schema"
 import { eq, asc, and } from "drizzle-orm"
@@ -37,13 +37,33 @@ const CODE_KEYWORDS = [
   "npm",
   "package",
   "dependency",
+  "add",
+  "update",
+  "change",
+  "fix",
+  "modify",
+  "edit",
+  "style",
+  "remove",
+  "button",
+  "navbar",
+  "header",
+  "footer",
+  "section",
+  "layout",
+  "design",
+  "feature",
 ]
 
 const ZAI_MODELS = {
-  "glm-4.7-flash": "glm-4.7-flash",
   "glm-4.6v": "glm-4.6v",
   "glm-5-turbo": "glm-5-turbo",
   "glm-4.5-flash": "glm-4.5-flash",
+}
+
+const OLLAMA_MODELS: Record<string, string> = {
+  "ollama/glm-4.7-flash": "glm-4.7-flash:latest",
+  "ollama/gemma4-31b": "gemma4:31b",
 }
 
 // Define Model Fallback Chains for "No-429" Architecture
@@ -78,6 +98,7 @@ const OPENROUTER_MODELS = {
   "grok-3-mini": "x-ai/grok-3-mini",
   "gemini-2.0-flash": "google/gemini-2.0-flash-001",
   "gemini-3-flash": "google/gemini-3-flash-preview",
+  "gemini": "google/gemini-2.0-flash-001",
   "nano-banana": "google/gemini-2.5-flash-image",
   "nano-banana-2": "google/gemini-3.1-flash-image-preview",
   "nano-banana-pro": "google/gemini-3-pro-image-preview",
@@ -294,8 +315,8 @@ export async function POST(request: Request) {
   }
 
   let selectedModel = initialSelectedModel
-  if (credits?.subscriptionTier === 'none') {
-    selectedModel = "gpt-5"
+  if (credits?.subscriptionTier === 'none' || credits?.subscriptionTier === 'standard') {
+    selectedModel = "ollama/glm-4.7-flash"
   }
 
   let projectId = incomingProjectId
@@ -536,6 +557,8 @@ async function handleModelRequest(
   body?: any,
   incomingProjectId?: string | null,
 ) {
+  const urlObj = request ? new URL(request.url) : null
+  const baseAppUrl = urlObj ? `${urlObj.protocol}//${urlObj.host}` : (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000")
 
   const messageType = detectMessageType(message)
   const isCodeRequest =
@@ -547,10 +570,13 @@ async function handleModelRequest(
 
   let effectiveMessage = message
 
-  // Parallelize database and context fetching to minimize latency
-  const [supabaseResult, neonResult, secretsResult, customKnowledgePrompt, userSkills] = await Promise.all([
-    // Supabase Credentials
-    (async () => {
+  // Skip heavy context fetching for local Ollama models (the handler strips all this context anyway)
+  const isOllamaModel = selectedModel.startsWith("ollama/")
+
+  // Parallelize all required data fetching to minimize latency
+  const [supabaseResult, neonResult, secretsResult, customKnowledgePrompt, userSkills, creditsResult] = await Promise.all([
+    // Supabase Credentials (Skip if greeting OR Ollama model)
+    (messageType === "greeting" || isOllamaModel) ? Promise.resolve(null) : (async () => {
       try {
         const contextId = targetProjectId || projectId
         const [fetched] = await db.select().from(projectSupabase).where(eq(projectSupabase.projectId, contextId))
@@ -560,8 +586,8 @@ async function handleModelRequest(
         return null
       }
     })(),
-    // Neon Credentials
-    (async () => {
+    // Neon Credentials (Skip if greeting OR Ollama model)
+    (messageType === "greeting" || isOllamaModel) ? Promise.resolve(null) : (async () => {
       try {
         const contextId = targetProjectId || projectId
         const [fetched] = await db.select().from(projectNeon).where(eq(projectNeon.projectId, contextId))
@@ -571,8 +597,8 @@ async function handleModelRequest(
         return null
       }
     })(),
-    // Project Secrets
-    (async () => {
+    // Project Secrets (Skip if greeting OR Ollama model)
+    (messageType === "greeting" || isOllamaModel) ? Promise.resolve([]) : (async () => {
       try {
         const contextId = targetProjectId || projectId
         return await db.select().from(projectSecrets).where(eq(projectSecrets.projectId, contextId))
@@ -581,15 +607,35 @@ async function handleModelRequest(
         return []
       }
     })(),
-    // Custom Knowledge
-    getCustomKnowledge(userId),
-    // Enabled Skills
-    getUserSkillsForAIContext(userId)
+    // Custom Knowledge (Skip for Ollama — stripped anyway)
+    isOllamaModel ? Promise.resolve("") : getCustomKnowledge(userId),
+    // Enabled Skills (Skip if greeting OR Ollama model)
+    (messageType === "greeting" || isOllamaModel) ? Promise.resolve("") : getUserSkillsForAIContext(userId),
+    // User Credits (Essential for all requests — needed for subscription tier check)
+    (async () => {
+      try {
+        let res = await db.select().from(userCredits).where(eq(userCredits.userId, userId)).then(r => r[0])
+        if (!res) {
+          const [newCredits] = await db.insert(userCredits).values({
+            userId,
+            subscriptionTier: 'none',
+            balance: 150,
+            lastRegenTime: new Date(),
+          }).returning()
+          res = newCredits
+        }
+        return res
+      } catch (err) {
+        console.error("Failed to fetch user credits:", err)
+        return null
+      }
+    })()
   ])
 
   let supabaseConfig: any = supabaseResult
   let neonConfig: any = neonResult
   let fetchedSecrets: any[] = secretsResult
+  let credits: any = creditsResult
 
   if (supabaseConfig && supabaseConfig.anonKey && supabaseConfig.anonKey !== "pending") {
     const { supabaseUrl: url, anonKey: key, serviceRoleKey: role } = supabaseConfig
@@ -633,9 +679,14 @@ async function handleModelRequest(
   // Must run BEFORE systemPrompt build so we can skip the
   // MOTIONSITES_DESIGN_PROMPT and detectDesignContext entirely.
   // =========================================================
-  const earlyCloneMatch = message.match(/Clone this website URL:\s*(https?:\/\/[^\s\n]+)/i)
+  const earlyCloneMatch = message.match(/(?:Clone this website URL:|Build a site like this one:|Clone:)\s*(https?:\/\/[^\s\n]+)/i)
   const isCloneRequest = !!earlyCloneMatch
   let cloneTargetUrl = earlyCloneMatch ? earlyCloneMatch[1].trim() : ""
+
+  if (isCloneRequest || message.includes("Build a site like this one")) {
+    console.log(`[PIPELINE] Clone Detection: isCloneRequest=${isCloneRequest}, target=${cloneTargetUrl}, messageSnippet="${message.substring(0, 70).replace(/\n/g, "\\n")}"`);
+  }
+
   let cloneScreenshotDataUrl: string | null = null // will be set after pipeline runs below
 
   let systemPrompt = securityMode
@@ -840,9 +891,8 @@ When editing an email template, focus ONLY on the template content.
   // Runs after systemPrompt is built (so we can prepend to it)
   // =========================================================
   if (isCloneRequest && cloneTargetUrl) {
-    console.log(`[CloneMode] Detected clone request for: ${cloneTargetUrl}`)
+    console.log(`[CloneMode] Calling clone-website API for: ${cloneTargetUrl} (baseAppUrl: ${baseAppUrl})`)
     try {
-      const baseAppUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
       const cloneRes = await fetch(`${baseAppUrl}/api/clone-website`, {
         method: "POST",
         headers: {
@@ -850,20 +900,24 @@ When editing an email template, focus ONLY on the template content.
           "x-internal-user-id": userId,
         },
         body: JSON.stringify({ url: cloneTargetUrl }),
-        signal: AbortSignal.timeout(28000),
+        signal: AbortSignal.timeout(60000), // Increased to 60s for consistency
       })
 
       if (cloneRes.ok) {
         const cloneData = await cloneRes.json()
+
+        // Save to body/shared context so it can be added to metadata later
+        if (body) body.cloneData = cloneData;
 
         // Store screenshot as data URL for stream emission to user AND AI vision
         if (cloneData.screenshotBase64) {
           imageData = {
             data: cloneData.screenshotBase64,
             mimeType: cloneData.screenshotMimeType || "image/jpeg",
+            sections: cloneData.sectionScreenshots || [],
           }
           cloneScreenshotDataUrl = `data:${cloneData.screenshotMimeType || "image/jpeg"};base64,${cloneData.screenshotBase64}`
-          console.log(`[CloneMode] Screenshot injected (${cloneData.screenshotBase64.length} chars base64)`)
+          console.log(`[CloneMode] Screenshot injected (${cloneData.screenshotBase64.length} chars base64) + ${cloneData.sectionScreenshots?.length || 0} sections`)
         } else {
           console.warn("[CloneMode] No screenshot returned from clone API")
         }
@@ -999,23 +1053,6 @@ Every image that appears in the screenshot must appear in the code as a real URL
     }
   }
 
-  // Inject Falbor AI API Key Context (Hidden from User)
-  let credits: any = null
-  try {
-    credits = await db.select().from(userCredits).where(eq(userCredits.userId, userId)).then(r => r[0])
-    if (!credits) {
-      const [newCredits] = await db.insert(userCredits).values({
-        userId,
-        subscriptionTier: 'none',
-        balance: 150,
-        lastRegenTime: new Date(),
-      }).returning()
-      credits = newCredits
-    }
-  } catch (err) {
-    console.error("Failed to fetch user credits:", err)
-  }
-
   // --- RESILIENCE WRAPPER (FALLBACKS & RETRIES) ---
   const attemptRequest = async (model: string): Promise<ReadableStream | Response> => {
     if (model === "falmax") {
@@ -1028,21 +1065,23 @@ Every image that appears in the screenshot must appear in the code as a real URL
       return runFalMax(request!, body!, userId, credits, incomingProjectId || (body?.project?.id), systemPrompt)
     }
 
-    if (model === "gemini") {
-      return handleGeminiRequest(
-        history, effectiveMessage, imageData, projectId, userId, discussMode,
-        isAutomated, isCodeRequest, messageType as any, systemPrompt,
-        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId, sessionId
-      )
-    }
+    // All models now flow through specialized providers (OpenRouter/OpenAI/Z.ai)
 
     if (model.startsWith("openrouter/")) {
       return handleOpenRouterRequest(
         history, effectiveMessage, imageData, projectId, userId, discussMode,
         isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId, sessionId
+        userMessageId, sessionId, baseAppUrl, body?.cloneData
+      )
+    }
+
+    if (OLLAMA_MODELS[model]) {
+      return handleOllamaRequest(
+        history, effectiveMessage, projectId, userId, discussMode, isAutomated,
+        isCodeRequest, model, messageType as any, systemPrompt,
+        (text: string) => executeActionTags(text, userId, projectId, userMessageId),
+        userMessageId, sessionId, body?.cloneData
       )
     }
 
@@ -1051,7 +1090,7 @@ Every image that appears in the screenshot must appear in the code as a real URL
         history, effectiveMessage, projectId, userId, discussMode, isAutomated,
         isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId, sessionId
+        userMessageId, sessionId, body?.cloneData
       )
     }
 
@@ -1060,7 +1099,7 @@ Every image that appears in the screenshot must appear in the code as a real URL
         history, effectiveMessage, imageData, projectId, userId, discussMode,
         isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId, sessionId
+        userMessageId, sessionId, body?.cloneData
       )
     }
 
@@ -1075,7 +1114,7 @@ Every image that appears in the screenshot must appear in the code as a real URL
         history, effectiveMessage, imageData, projectId, userId, discussMode,
         isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId, sessionId
+        userMessageId, sessionId, body?.cloneData
       )
     }
 
@@ -1090,7 +1129,7 @@ Every image that appears in the screenshot must appear in the code as a real URL
         history, effectiveMessage, projectId, userId, discussMode, isAutomated,
         isCodeRequest, model, messageType as any, systemPrompt,
         (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-        userMessageId
+        userMessageId, sessionId, body?.cloneData
       )
     }
 
@@ -1099,7 +1138,7 @@ Every image that appears in the screenshot must appear in the code as a real URL
       history, effectiveMessage, imageData, projectId, userId, discussMode,
       isAutomated, isCodeRequest, model, messageType as any, systemPrompt,
       (text: string) => executeActionTags(text, userId, projectId, userMessageId),
-      userMessageId, sessionId
+      userMessageId, sessionId, baseAppUrl, body?.cloneData
     )
   }
 
@@ -1179,6 +1218,7 @@ async function handleGeminiRequest(
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId?: string,
   sessionId = "main",
+  cloneData?: any,
 ) {
   const googleKey = process.env.GOOGLE_API_KEY
 
@@ -1619,19 +1659,25 @@ async function handleGeminiRequest(
 
           const userParts: any[] = [{ text: userPrompt }]
           if (imageData?.data && imageData?.mimeType) {
-            console.log("[Gemini] Attaching vision context (image)")
+            console.log(`[Gemini] Attaching vision context (main + ${imageData.sections?.length || 0} sections)`)
+            // Add full page
             userParts.push({
-              inlineData: {
-                data: imageData.data,
-                mimeType: imageData.mimeType,
-              },
+              inlineData: { data: imageData.data, mimeType: imageData.mimeType },
             })
+            // Add high-res sections
+            if (Array.isArray(imageData.sections)) {
+              for (const sectionBase64 of imageData.sections) {
+                userParts.push({
+                  inlineData: { data: sectionBase64, mimeType: imageData.mimeType },
+                })
+              }
+            }
           }
 
           const contents = [...mapHistoryToGemini(truncateHistory(conversationHistory, 15)), { role: "user", parts: userParts }]
 
           // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: cloneData ? { cloneData } : null })}\n\n`))
 
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
@@ -1640,6 +1686,7 @@ async function handleGeminiRequest(
             role: "assistant",
             content: "",
             isAutomated,
+            metadata: cloneData ? { cloneData } : null,
           }).returning({ id: messagesTable.id })
 
           let assistantMsgId = assistantMsg.id
@@ -1819,6 +1866,8 @@ async function handleOpenRouterRequest(
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId: string | undefined,
   sessionId = "main",
+  baseAppUrl?: string,
+  cloneData?: any,
 ) {
   const openRouterKey = process.env.OPENROUTER_API_KEY
 
@@ -1837,14 +1886,7 @@ async function handleOpenRouterRequest(
       content: msg.content,
     }))
 
-    const encoder = new TextEncoder()
-    let fullResponse = ""
-    let fullResponseRaw = ""
-    let accumulatedBuffer = ""
-    let inCodeBlock = false
-
     let userPrompt = message
-
     if (messageType === "greeting") {
       userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
     } else if (messageType === "question") {
@@ -1854,52 +1896,65 @@ async function handleOpenRouterRequest(
       userPrompt = buildCodePrompt(message)
     }
 
-    const userMessageContent: any = imageData?.data
-      ? [
-        { type: "text", text: userPrompt },
-        {
-          type: "image_url",
-          image_url: {
-            url: `data:${imageData.mimeType || "image/jpeg"};base64,${imageData.data}`,
-          },
-        },
-      ]
-      : userPrompt
+    const userMessageContent: any[] = [{ type: "text", text: userPrompt }]
+    if (imageData?.data) {
+      console.log(`[OpenRouter] Attaching vision context (main + ${imageData.sections?.length || 0} sections)`)
+      // Add main full-page
+      userMessageContent.push({
+        type: "image_url",
+        image_url: { url: `data:${imageData.mimeType || "image/jpeg"};base64,${imageData.data}` },
+      })
+      // Add high-res sections
+      if (Array.isArray(imageData.sections)) {
+        for (const sectionBase64 of imageData.sections) {
+          userMessageContent.push({
+            type: "image_url",
+            image_url: { url: `data:${imageData.mimeType || "image/jpeg"};base64,${sectionBase64}` },
+          })
+        }
+      }
+    }
 
     const chatMessages: any[] = [
       { role: "system", content: systemPrompt },
       ...truncateHistory(conversationHistory, 15),
-      { role: "user", content: userMessageContent },
+      { role: "user", content: Array.isArray(userMessageContent) && userMessageContent.length === 1 && userMessageContent[0].type === "text" ? userMessageContent[0].text : userMessageContent },
     ]
 
-    const initialResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openRouterKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        "X-Title": "AI Website Builder",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: chatMessages,
-        stream: true,
-        ...(modelId.includes("gpt-5") || modelId.includes("-o1")
-          ? { max_completion_tokens: 32768 }
-          : { max_tokens: 32768 }),
-      }),
-    })
-
-    if (!initialResponse.ok) {
-      const errorText = await initialResponse.text()
-      throw new Error(`OpenRouter API error: ${initialResponse.status} ${errorText}`)
-    }
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
 
     return new ReadableStream({
       async start(controller) {
         try {
           // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: cloneData ? { cloneData } : null })}\n\n`))
+
+          const initialResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openRouterKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": baseAppUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+              "X-Title": "AI Website Builder",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: chatMessages,
+              stream: true,
+              ...(modelId.includes("gpt-5") || modelId.includes("-o1")
+                ? { max_completion_tokens: 32768 }
+                : { max_tokens: 32768 }),
+            }),
+          })
+
+          if (!initialResponse.ok) {
+            const errorText = await initialResponse.text()
+            throw new Error(`OpenRouter API error: ${initialResponse.status} ${errorText}`)
+          }
 
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
@@ -1908,6 +1963,7 @@ async function handleOpenRouterRequest(
             role: "assistant",
             content: "",
             isAutomated,
+            metadata: cloneData ? { cloneData } : null,
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
@@ -1925,7 +1981,7 @@ async function handleOpenRouterRequest(
                 headers: {
                   Authorization: `Bearer ${openRouterKey}`,
                   "Content-Type": "application/json",
-                  "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+                  "HTTP-Referer": baseAppUrl || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
                   "X-Title": "AI Website Builder",
                 },
                 body: JSON.stringify({
@@ -1997,7 +2053,7 @@ async function handleOpenRouterRequest(
                         const completeLines = lines.slice(0, -1)
 
                         for (const line of completeLines) {
-                          if (line.match(/^```\w+\s+file="/)) {
+                          if (line.match(/^```\w*\s*file=/)) {
                             inCodeBlock = true
                             continue
                           }
@@ -2010,7 +2066,7 @@ async function handleOpenRouterRequest(
                           }
                         }
 
-                        if (lastLine.match(/^```\w+\s+file="/)) {
+                        if (lastLine.match(/^```\w*\s*file=/)) {
                           inCodeBlock = true
                           accumulatedBuffer = ""
                         } else {
@@ -2121,6 +2177,510 @@ async function handleOpenRouterRequest(
 }
 
 
+async function handleOllamaRequest(
+  history: any[],
+  message: string,
+  projectId: string,
+  userId: string,
+  discussMode: boolean,
+  isAutomated: boolean,
+  isCodeRequest: boolean,
+  selectedModel: string,
+  messageType: "greeting" | "question" | "build",
+  systemPrompt: string,
+  executeActionTags: ((content: string) => Promise<void>) | undefined,
+  userMessageId?: string,
+  sessionId = "main",
+  cloneData?: any,
+) {
+  const ollamaModelId = OLLAMA_MODELS[selectedModel]
+  if (!ollamaModelId) {
+    throw new Error("Ollama model invalid")
+  }
+
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+
+  try {
+    // ──────────────────────────────────────────────────
+    // Extract existing file list from conversation history
+    // so the model knows what files already exist in the project
+    // ──────────────────────────────────────────────────
+    const existingFiles: string[] = []
+    for (const msg of history) {
+      if (msg.role === "assistant" && msg.content) {
+        const fileMatches = msg.content.match(/```\w+\s+file="([^"]+)"/g)
+        if (fileMatches) {
+          for (const match of fileMatches) {
+            const pathMatch = match.match(/file="([^"]+)"/)
+            if (pathMatch?.[1] && !existingFiles.includes(pathMatch[1])) {
+              existingFiles.push(pathMatch[1])
+            }
+          }
+        }
+      }
+    }
+    const hasExistingProject = existingFiles.length > 0
+
+    // For Ollama: if there's an existing project, ALWAYS treat as code request
+    // because "add me an about page" should generate code, not just describe it
+    const ollamaForceCode = hasExistingProject || isCodeRequest
+
+    // ──────────────────────────────────────────────────
+    // OPTIMIZATION 1: Focused System Prompt for Local Models
+    // Includes iteration support so follow-up requests generate actual code
+    // ──────────────────────────────────────────────────
+    const iterationContext = hasExistingProject
+      ? `\n\n## EXISTING PROJECT FILES:\n${existingFiles.map(f => `- ${f}`).join("\n")}\n\n## ITERATION RULES (FOLLOW-UP REQUESTS):\nThe user already has a project with the files listed above. When they ask to add, change, fix, or modify something:\n1. Output ONLY the files that need to be created or modified — do NOT regenerate unchanged files.\n2. When modifying a file, output the COMPLETE updated file content (not a diff or partial update).\n3. If adding a new page/component, ALSO update App.tsx to add the route/import for it.\n4. ALWAYS output the actual code files using the \`\`\`language file="path"\`\`\` format.\n5. Never just describe what you would change — WRITE THE ACTUAL CODE.`
+      : ""
+
+    const ollamaSystemPrompt = discussMode
+      ? `You are a helpful AI assistant. Be concise and helpful.`
+      : `You are a full-stack web developer. Output code files using: \`\`\`language file="path"\n[code]\n\`\`\`
+
+RULES:
+- Write FULL, COMPLETE files. No placeholders like "// rest of code".
+- Use Vite + React + TypeScript + Tailwind CSS.
+- Start with brief <Thinking>, <Planning>, then write code files IMMEDIATELY.
+- Use <Tasks> for progress. Use <VersionName>Name</VersionName>.
+- Generate as many files as possible. System auto-continues for remaining files.
+- For new projects include: index.html, package.json, vite.config.ts, tsconfig.json, tailwind.config.js, postcss.config.js, src/main.tsx, src/App.tsx, src/index.css, and all pages/components.
+- NEVER describe code without writing it. Write code NOW.${iterationContext}`
+
+    // ──────────────────────────────────────────────────
+    // OPTIMIZATION 2: Minimal History (save context for output tokens)
+    // With num_ctx: 4096, we need to keep input lean so model has
+    // max space for generating code. File list from history provides project context.
+    // ──────────────────────────────────────────────────
+    const conversationHistory = history.slice(0, -1).map((msg) => ({
+      role: msg.role === "assistant" ? "assistant" : "user",
+      content: msg.content.length > 1500 ? msg.content.substring(0, 1500) + "\n...[truncated]" : msg.content,
+    }))
+    const trimmedHistory = truncateHistory(conversationHistory, 2)
+
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
+
+    // ──────────────────────────────────────────────────
+    // OPTIMIZATION 5: Strip Injected Context from Message
+    // ──────────────────────────────────────────────────
+    const contextMarkers = [
+      "\n\n## Supabase Credentials",
+      "\n\n## Neon Database",
+      "\n\n## Project Secrets",
+      "\n\n## Connected MCP Context",
+      "\n\n## Available User Account Integrations",
+      "\n\n## Current Project Files",
+      "\n\n## GitHub Integration Context",
+      "\n\n## SECURITY PROJECT CONTEXT",
+    ]
+    let cleanMessage = message
+    for (const marker of contextMarkers) {
+      const idx = cleanMessage.indexOf(marker)
+      if (idx !== -1) {
+        cleanMessage = cleanMessage.substring(0, idx)
+      }
+    }
+    if (cleanMessage.length > 3000) {
+      cleanMessage = cleanMessage.substring(0, 3000) + "\n...[message trimmed for local model]"
+    }
+    console.log(`[Ollama/${ollamaModelId}] Message cleaned: ${message.length} → ${cleanMessage.length} chars | Existing files: ${existingFiles.length} | Force code: ${ollamaForceCode}`)
+
+    let userPrompt = cleanMessage
+
+    if (messageType === "greeting" && !hasExistingProject) {
+      userPrompt = `${cleanMessage}\n\nRespond naturally and briefly.`
+    } else if (messageType === "question" && !hasExistingProject) {
+      userPrompt = `${cleanMessage}\n\nProvide a clear, concise answer.`
+    } else if (ollamaForceCode) {
+      console.log(`[Ollama/${ollamaModelId}] Code generation mode (existing files: ${existingFiles.length})`)
+      userPrompt = `${cleanMessage}
+
+${hasExistingProject ? `Existing project. Output ONLY new/changed files. Update App.tsx for new routes.` : `New project. Generate all files.`}
+Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. System auto-continues for remaining files.`
+    }
+
+    const chatMessages = [
+      { role: "system" as const, content: ollamaSystemPrompt },
+      ...trimmedHistory,
+      { role: "user" as const, content: userPrompt },
+    ]
+
+    // Log prompt size for debugging
+    const totalPromptChars = chatMessages.reduce((sum, m) => sum + m.content.length, 0)
+    console.log(`[Ollama/${ollamaModelId}] Prompt size: ${totalPromptChars} chars (${Math.ceil(totalPromptChars / 4)} est. tokens), ${chatMessages.length} messages`)
+
+    return new ReadableStream({
+      async start(controller) {
+        try {
+          // Immediate heartbeat to trigger UI thinking state (non-blocking)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: cloneData ? { cloneData } : null })}\n\n`))
+
+          // Create initial assistant message entry for persistence (fire in parallel with model request)
+          const dbInsertPromise = db.insert(messagesTable).values({
+            projectId,
+            sessionId,
+            role: "assistant",
+            content: "",
+            isAutomated,
+            metadata: cloneData ? { cloneData } : null,
+          }).returning({ id: messagesTable.id })
+
+          // ──────────────────────────────────────────────────
+          // OPTIMIZATION 3: Use Ollama native /api/chat endpoint
+          // num_predict: -1 = unlimited output tokens (never stop mid-generation)
+          // num_ctx: 4096 = small context to keep max model layers in GPU (12GB VRAM limit)
+          // ──────────────────────────────────────────────────
+          const ollamaRequestPromise = fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              model: ollamaModelId,
+              messages: chatMessages,
+              stream: true,
+              keep_alive: "30m",
+              think: false,
+              options: {
+                num_ctx: 4096,
+                num_predict: -1,
+              },
+            }),
+          })
+
+          // Wait for both in parallel
+          const [dbResult, response] = await Promise.all([dbInsertPromise, ollamaRequestPromise])
+
+          const assistantMsgId = dbResult[0].id
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            throw new Error(`Ollama API error: ${response.status} ${errorText}`)
+          }
+
+          const reader = response.body?.getReader()
+          if (!reader) {
+            throw new Error("No response body reader")
+          }
+
+          // ──────────────────────────────────────────────────
+          // OPTIMIZATION 4: Watchdog Timer
+          // If no tokens arrive in 10s (model loading VRAM), send "warming up" message
+          // ──────────────────────────────────────────────────
+          let firstTokenReceived = false
+          const watchdogTimer = setTimeout(() => {
+            if (!firstTokenReceived) {
+              console.log(`[Ollama/${ollamaModelId}] Watchdog: No tokens in 10s — model likely loading into VRAM`)
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: "⏳ Loading model into memory..." })}\n\n`))
+            }
+          }, 10000)
+
+          const decoder = new TextDecoder()
+          let buffer = ""
+          let chunkCount = 0
+          let continuationCount = 0
+          const maxContinuations = 15
+
+          const continueMessage = "Continue generating from where you stopped. Do NOT repeat previous code."
+
+          do {
+            // Ollama native /api/chat streams NDJSON (one JSON per line, no "data: " prefix)
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
+
+              for (const line of lines) {
+                if (!line.trim()) continue
+
+                try {
+                  const parsed = JSON.parse(line)
+                  const content = parsed.message?.content
+
+                  if (content) {
+                    if (!firstTokenReceived) {
+                      firstTokenReceived = true
+                      clearTimeout(watchdogTimer)
+                      console.log(`[Ollama/${ollamaModelId}] First token received`)
+                    }
+
+                    // Action Tag handling
+                    if (content.includes("<Action>")) {
+                      fullResponseRaw += content
+                      continue
+                    }
+                    fullResponseRaw += content
+                    fullResponse += content
+                    chunkCount++
+
+                    // Periodically persist progress
+                    if (chunkCount % 80 === 0) {
+                      db.update(messagesTable)
+                        .set({ content: fullResponse })
+                        .where(eq(messagesTable.id, assistantMsgId))
+                        .catch(() => {}) // fire-and-forget
+                    }
+
+                    if (ollamaForceCode) {
+                      accumulatedBuffer += content
+                      const bufLines = accumulatedBuffer.split("\n")
+                      let textToSend = ""
+
+                      const lastLine = bufLines[bufLines.length - 1]
+                      const completeLines = bufLines.slice(0, -1)
+
+                      for (const bLine of completeLines) {
+                        // More robust regex to catch varied code block formats from local models
+                        if (bLine.match(/^```\w*\s*file=/)) {
+                          inCodeBlock = true
+                          continue
+                        }
+                        if (bLine.trim() === "```" && inCodeBlock) {
+                          inCodeBlock = false
+                          continue
+                        }
+                        if (!inCodeBlock) {
+                          textToSend += bLine + "\n"
+                        }
+                      }
+
+                      if (lastLine.match(/^```\w*\s*file=/)) {
+                        inCodeBlock = true
+                        accumulatedBuffer = ""
+                      } else {
+                        accumulatedBuffer = lastLine
+                      }
+
+                      if (textToSend.trim()) {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend })}\n\n`))
+                      }
+                    } else {
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                    }
+                  }
+
+                  // Check if response is done
+                  if (parsed.done === true) {
+                    break
+                  }
+                } catch (e) {
+                  // Skip malformed lines
+                }
+              }
+            }
+
+            // ──────────────────────────────────────────────────
+            // SMART AUTO-CONTINUATION
+            // Detect missing files from the plan and auto-continue
+            // ──────────────────────────────────────────────────
+            if (fullResponse.length > 0 && continuationCount < maxContinuations) {
+              // Extract planned files from <Planning> tags
+              const planningMatch = fullResponse.match(/<Planning>([\s\S]*?)<\/Planning>/i)
+              let plannedFiles: string[] = []
+              if (planningMatch) {
+                const planText = planningMatch[1]
+                // Match file paths like src/App.tsx, package.json, etc.
+                const pathMatches = planText.match(/(?:src\/|public\/)?[\w\-./]+\.\w+/g)
+                if (pathMatches) {
+                  plannedFiles = [...new Set(pathMatches.filter(p => p.includes('.') && !p.startsWith('//')))]
+                }
+              }
+
+              // Extract actually generated files
+              const generatedFiles: string[] = []
+              const fileBlockMatches = fullResponse.match(/```\w+\s+file="([^"]+)"/g)
+              if (fileBlockMatches) {
+                for (const match of fileBlockMatches) {
+                  const pathMatch = match.match(/file="([^"]+)"/)
+                  if (pathMatch?.[1]) generatedFiles.push(pathMatch[1])
+                }
+              }
+
+              // Check for unclosed code blocks
+              const openBlocks = (fullResponse.match(/```\w+\s+file="/g) || []).length
+              const closeBlocks = (fullResponse.match(/^```$/gm) || []).length
+              const hasUnclosedBlock = openBlocks > closeBlocks
+
+              // Find missing files
+              const missingFiles = plannedFiles.filter(f => 
+                !generatedFiles.some(g => g.endsWith(f) || f.endsWith(g) || g.includes(f) || f.includes(g))
+              )
+
+              const shouldContinue = hasUnclosedBlock || missingFiles.length > 0
+
+              if (shouldContinue) {
+                continuationCount++
+                const missingList = missingFiles.length > 0 
+                  ? `\n\nYou still need to generate these files:\n${missingFiles.map(f => `- ${f}`).join("\n")}`
+                  : ""
+                
+                console.log(`[Ollama] Auto-continuing (${continuationCount}/${maxContinuations}): ${missingFiles.length} files missing, unclosed block: ${hasUnclosedBlock}`)
+                console.log(`[Ollama] Generated: ${generatedFiles.join(", ")}`)
+                console.log(`[Ollama] Missing: ${missingFiles.join(", ")}`)
+
+                // Build continuation messages — only include the tail of the response for context
+                const contMessages = [
+                  { role: "system" as const, content: ollamaSystemPrompt },
+                  { role: "assistant" as const, content: fullResponse.slice(-1500) },
+                  { role: "user" as const, content: `Continue generating the remaining code files. Do NOT repeat files you already created (${generatedFiles.join(", ")}).${missingList}\n\nOutput each file using \`\`\`language file="path"\`\`\` format. Write COMPLETE file contents. Start writing code NOW.` },
+                ]
+
+                // Fire continuation request
+                const contResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    model: ollamaModelId,
+                    messages: contMessages,
+                    stream: true,
+                    keep_alive: "30m",
+                    think: false,
+                    options: { num_ctx: 4096, num_predict: -1 },
+                  }),
+                })
+
+                if (contResponse.ok && contResponse.body) {
+                  // Read the continuation stream
+                  const contReader = contResponse.body.getReader()
+                  let contBuffer = ""
+
+                  while (true) {
+                    const { done: contDone, value: contValue } = await contReader.read()
+                    if (contDone) break
+
+                    contBuffer += decoder.decode(contValue, { stream: true })
+                    const contLines = contBuffer.split("\n")
+                    contBuffer = contLines.pop() || ""
+
+                    for (const contLine of contLines) {
+                      if (!contLine.trim()) continue
+                      try {
+                        const contParsed = JSON.parse(contLine)
+                        const contContent = contParsed.message?.content
+                        if (contContent) {
+                          if (contContent.includes("<Action>")) {
+                            fullResponseRaw += contContent
+                            continue
+                          }
+                          fullResponseRaw += contContent
+                          fullResponse += contContent
+                          chunkCount++
+
+                          if (chunkCount % 80 === 0) {
+                            db.update(messagesTable)
+                              .set({ content: fullResponse })
+                              .where(eq(messagesTable.id, assistantMsgId))
+                              .catch(() => {})
+                          }
+
+                          if (ollamaForceCode) {
+                            accumulatedBuffer += contContent
+                            const bufLines2 = accumulatedBuffer.split("\n")
+                            let textToSend2 = ""
+                            const lastLine2 = bufLines2[bufLines2.length - 1]
+                            const completeLines2 = bufLines2.slice(0, -1)
+
+                            for (const bLine2 of completeLines2) {
+                              if (bLine2.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue }
+                              if (bLine2.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue }
+                              if (!inCodeBlock) textToSend2 += bLine2 + "\n"
+                            }
+
+                            if (lastLine2.match(/^```\w+\s+file="/)) {
+                              inCodeBlock = true; accumulatedBuffer = ""
+                            } else {
+                              accumulatedBuffer = lastLine2
+                            }
+
+                            if (textToSend2.trim()) {
+                              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: textToSend2 })}\n\n`))
+                            }
+                          } else {
+                            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: contContent })}\n\n`))
+                          }
+                        }
+                        if (contParsed.done === true) break
+                      } catch (e) { /* skip */ }
+                    }
+                  }
+
+                  // Check again if we need another continuation
+                  continue
+                }
+              }
+            }
+            break
+          } while (true)
+
+          clearTimeout(watchdogTimer)
+
+          // Final check for action tags
+          if (executeActionTags) {
+            await (executeActionTags as any)(fullResponseRaw, userId, projectId, assistantMsgId)
+          }
+
+          console.log(`[Ollama/${ollamaModelId}] Response complete: ${fullResponse.length} chars`)
+
+          // No credit deduction for local Ollama models
+          const tokensUsed = Math.ceil((userPrompt.length + fullResponse.length) / 4)
+          const cost = 0
+
+          if (ollamaForceCode) {
+            await saveAssistantMessageWithParallelGeneration(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          } else {
+            await saveAssistantMessage(
+              projectId,
+              fullResponse,
+              [],
+              controller,
+              encoder,
+              assistantMsgId,
+              [],
+              false,
+              discussMode,
+              isAutomated,
+              tokensUsed,
+              cost,
+              userMessageId,
+              sessionId,
+              userId
+            )
+          }
+        } catch (error) {
+          console.error(`[Ollama/${ollamaModelId}] Stream error:`, error)
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: "Local Ollama model is not responding. Make sure Ollama is running on your machine (ollama serve)." })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, projectId })}\n\n`))
+        } finally {
+          controller.close()
+        }
+      },
+    })
+  } catch (e) {
+    console.error("[Ollama] Handler error:", e)
+    return createErrorStream("Failed to connect to local Ollama server. Make sure Ollama is running (ollama serve) and the model is pulled.")
+  }
+}
+
 async function handleZaiRequest(
   history: any[],
   message: string,
@@ -2135,6 +2695,7 @@ async function handleZaiRequest(
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId?: string,
   sessionId = "main",
+  cloneData?: any,
 ) {
   const zaiKey = process.env.ZAI_API_KEY
 
@@ -2180,7 +2741,7 @@ async function handleZaiRequest(
       async start(controller) {
         try {
           // Immediate heartbeat and metadata to trigger UI thinking state and sync user message ID
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: cloneData ? { cloneData } : null })}\n\n`))
 
           // Create initial assistant message entry for persistence
           const [assistantMsg] = await db.insert(messagesTable).values({
@@ -2189,6 +2750,7 @@ async function handleZaiRequest(
             role: "assistant",
             content: "",
             isAutomated,
+            metadata: cloneData ? { cloneData } : null,
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
@@ -2269,7 +2831,7 @@ async function handleZaiRequest(
                         const completeLines = lines.slice(0, -1)
 
                         for (const line of completeLines) {
-                          if (line.match(/^```\w+\s+file="/)) {
+                          if (line.match(/^```\w*\s*file=/)) {
                             inCodeBlock = true
                             continue
                           }
@@ -2282,7 +2844,7 @@ async function handleZaiRequest(
                           }
                         }
 
-                        if (lastLine.match(/^```\w+\s+file="/)) {
+                        if (lastLine.match(/^```\w*\s*file=/)) {
                           inCodeBlock = true
                           accumulatedBuffer = ""
                         } else {
@@ -2406,6 +2968,7 @@ async function handleOpenAIRequest(
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId: string | undefined,
   sessionId = "main",
+  cloneData?: any,
 ) {
   const openAIKey = process.env.OPENAI_API_KEY
 
@@ -2422,12 +2985,6 @@ async function handleOpenAIRequest(
       content: msg.content,
     }))
 
-    const encoder = new TextEncoder()
-    let fullResponse = ""
-    let fullResponseRaw = ""
-    let accumulatedBuffer = ""
-    let inCodeBlock = false
-
     let userPrompt = message
     if (messageType === "greeting") {
       userPrompt = `${message}\n\nRespond naturally and briefly like a friendly human. No thinking tags, no code, just a warm greeting back.`
@@ -2440,13 +2997,21 @@ async function handleOpenAIRequest(
 
     const userContent: any[] = [{ type: "text", text: userPrompt }]
     if (imageData?.data && imageData?.mimeType) {
-      console.log(`[OpenAI/${modelId}] Attaching vision context (image)`)
+      console.log(`[OpenAI/${modelId}] Attaching vision context (main + ${imageData.sections?.length || 0} sections)`)
+      // Main full page
       userContent.push({
         type: "image_url",
-        image_url: {
-          url: `data:${imageData.mimeType};base64,${imageData.data}`,
-        },
+        image_url: { url: `data:${imageData.mimeType};base64,${imageData.data}` },
       })
+      // High-res sections
+      if (Array.isArray(imageData.sections)) {
+        for (const sectionBase64 of imageData.sections) {
+          userContent.push({
+            type: "image_url",
+            image_url: { url: `data:${imageData.mimeType};base64,${sectionBase64}` },
+          })
+        }
+      }
     }
 
     const chatMessages = [
@@ -2455,32 +3020,38 @@ async function handleOpenAIRequest(
       { role: "user", content: userContent as any },
     ]
 
-    const initialResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${openAIKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: modelId,
-        messages: chatMessages,
-        stream: true,
-        ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
-          ? { max_completion_tokens: 32768 }
-          : { max_tokens: 32768 }),
-      }),
-    })
-
-    if (!initialResponse.ok) {
-      const errorText = await initialResponse.text()
-      throw new Error(`OpenAI API error: ${initialResponse.status} ${errorText}`)
-    }
+    const encoder = new TextEncoder()
+    let fullResponse = ""
+    let fullResponseRaw = ""
+    let accumulatedBuffer = ""
+    let inCodeBlock = false
 
     return new ReadableStream({
       async start(controller) {
         try {
-          // Immediate heartbeat
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+          // Immediate Activity Signal
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: cloneData ? { cloneData } : null })}\n\n`))
+
+          const initialResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${openAIKey}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              model: modelId,
+              messages: chatMessages,
+              stream: true,
+              ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
+                ? { max_completion_tokens: 32768 }
+                : { max_tokens: 32768 }),
+            }),
+          })
+
+          if (!initialResponse.ok) {
+            const errorText = await initialResponse.text()
+            throw new Error(`OpenAI API error: ${initialResponse.status} ${errorText}`)
+          }
 
           const [assistantMsg] = await db.insert(messagesTable).values({
             projectId,
@@ -2488,6 +3059,7 @@ async function handleOpenAIRequest(
             role: "assistant",
             content: "",
             isAutomated,
+            metadata: cloneData ? { cloneData } : null,
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
@@ -2568,12 +3140,12 @@ async function handleOpenAIRequest(
                         const completeLines = sublines.slice(0, -1)
 
                         for (const sl of completeLines) {
-                          if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
+                          if (sl.match(/^```\w*\s*file=/)) { inCodeBlock = true; continue; }
                           if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
                           if (!inCodeBlock) textToSend += sl + "\n"
                         }
 
-                        if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
+                        if (lastLine.match(/^```\w*\s*file=/)) { inCodeBlock = true; accumulatedBuffer = ""; }
                         else accumulatedBuffer = lastLine;
 
                         if (textToSend.trim()) {
@@ -2650,6 +3222,7 @@ async function handleMinimaxRequest(
   executeActionTags: ((content: string) => Promise<void>) | undefined,
   userMessageId?: string,
   sessionId = "main",
+  cloneData?: any,
 ) {
   const minimaxKey = process.env.MINIMAX_API_KEY
 
@@ -2683,7 +3256,7 @@ async function handleMinimaxRequest(
     return new ReadableStream({
       async start(controller) {
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: cloneData ? { cloneData } : null })}\n\n`))
 
           const [assistantMsg] = await db.insert(messagesTable).values({
             projectId,
@@ -2691,6 +3264,7 @@ async function handleMinimaxRequest(
             role: "assistant",
             content: "",
             isAutomated,
+            metadata: cloneData ? { cloneData } : null,
           }).returning({ id: messagesTable.id })
 
           const assistantMsgId = assistantMsg.id
@@ -2765,12 +3339,12 @@ async function handleMinimaxRequest(
                         const completeLines = sublines.slice(0, -1)
 
                         for (const sl of completeLines) {
-                          if (sl.match(/^```\w+\s+file="/)) { inCodeBlock = true; continue; }
+                          if (sl.match(/^```\w*\s*file=/)) { inCodeBlock = true; continue; }
                           if (sl.trim() === "```" && inCodeBlock) { inCodeBlock = false; continue; }
                           if (!inCodeBlock) textToSend += sl + "\n"
                         }
 
-                        if (lastLine.match(/^```\w+\s+file="/)) { inCodeBlock = true; accumulatedBuffer = ""; }
+                        if (lastLine.match(/^```\w*\s*file=/)) { inCodeBlock = true; accumulatedBuffer = ""; }
                         else accumulatedBuffer = lastLine;
 
                         if (textToSend.trim()) {
@@ -3340,7 +3914,7 @@ async function runFalMax(
   return new ReadableStream({
     async start(controller) {
       try {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId })}\n\n`))
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: " ", userMessageId, metadata: body?.cloneData ? { cloneData: body.cloneData } : null })}\n\n`))
 
         const [assistantMsg] = await db.insert(messagesTable).values({
           projectId,
@@ -3348,7 +3922,7 @@ async function runFalMax(
           role: "assistant",
           content: "",
           isAutomated,
-          metadata: { model: "falmax" }
+          metadata: { model: "falmax", cloneData: body?.cloneData }
         }).returning({ id: messagesTable.id })
 
         const assistantMsgId = assistantMsg.id

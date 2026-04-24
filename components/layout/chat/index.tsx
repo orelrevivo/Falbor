@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2, Wrench, Copy as CopyIcon, ExternalLink } from "lucide-react"
+import { Languages, Mic, AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2, Wrench, Copy as CopyIcon, ExternalLink } from "lucide-react"
+import ReactCountryFlag from "react-country-flag"
+
+
 import {
   Loader,
   X,
@@ -49,6 +52,109 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { SkillSelector } from "@/components/chat/SkillSelector"
 import { useWorkbench } from "@/lib/workbench-context"
 import * as LucideIcons from "lucide-react"
+
+const LANGUAGES = [
+  { name: "Hebrew", code: "IL" },
+  { name: "English", code: "US" },
+  { name: "Mandarin Chinese", code: "CN" },
+  { name: "Hindi", code: "IN" },
+  { name: "Spanish", code: "ES" },
+  { name: "French", code: "FR" },
+  { name: "Modern Standard Arabic", code: "SA" },
+  { name: "Bengali", code: "BD" },
+  { name: "Portuguese", code: "PT" },
+  { name: "Russian", code: "RU" },
+  { name: "Urdu", code: "PK" },
+  { name: "Indonesian", code: "ID" },
+  { name: "German", code: "DE" },
+  { name: "Japanese", code: "JP" },
+  { name: "Nigerian Pidgin", code: "NG" },
+  { name: "Marathi", code: "IN" },
+  { name: "Telugu", code: "IN" },
+  { name: "Turkish", code: "TR" },
+  { name: "Tamil", code: "IN" },
+  { name: "Yue Chinese (Cantonese)", code: "CN" },
+  { name: "Vietnamese", code: "VN" },
+  { name: "Tagalog", code: "PH" },
+  { name: "Wu Chinese", code: "CN" },
+  { name: "Korean", code: "KR" },
+  { name: "Iranian Persian", code: "IR" },
+  { name: "Hausa", code: "NG" },
+  { name: "Swahili", code: "TZ" },
+  { name: "Javanese", code: "ID" },
+  { name: "Italian", code: "IT" },
+  { name: "Punjabi (Western)", code: "PK" },
+  { name: "Kannada", code: "IN" },
+  { name: "Gujarati", code: "IN" },
+  { name: "Thai", code: "TH" },
+  { name: "Amharic", code: "ET" },
+  { name: "Bhojpuri", code: "IN" },
+  { name: "Southern Min (Hokkien)", code: "CN" },
+  { name: "Jin Chinese", code: "CN" },
+  { name: "Yoruba", code: "NG" },
+  { name: "Hakka Chinese", code: "CN" },
+  { name: "Burmese", code: "MM" },
+  { name: "Oromo", code: "ET" },
+  { name: "Pashto", code: "AF" },
+  { name: "Maithili", code: "IN" },
+  { name: "Ukrainian", code: "UA" },
+  { name: "Sundanese", code: "ID" },
+  { name: "Polish", code: "PL" },
+  { name: "Malayalam", code: "IN" },
+  { name: "Xiang Chinese", code: "CN" },
+  { name: "Malay", code: "MY" },
+  { name: "Igbo", code: "NG" },
+  { name: "Northern Uzbek", code: "UZ" },
+  { name: "Sindhi", code: "PK" },
+  { name: "Azerbaijani", code: "AZ" },
+  { name: "Romanian", code: "RO" },
+  { name: "Dutch", code: "NL" },
+  { name: "Nepali", code: "NP" },
+  { name: "Zhuang", code: "CN" },
+  { name: "Saraiki", code: "PK" },
+  { name: "Sinhala", code: "LK" },
+  { name: "Chittagonian", code: "BD" },
+  { name: "Greek", code: "GR" },
+  { name: "Hungarian", code: "HU" },
+  { name: "Czech", code: "CZ" },
+  { name: "Zulu", code: "ZA" },
+  { name: "Sylheti", code: "BD" },
+  { name: "Madurese", code: "ID" },
+  { name: "Somali", code: "SO" },
+  { name: "Hmong", code: "CN" },
+  { name: "Rwandan", code: "RW" },
+  { name: "Bemba", code: "ZM" },
+  { name: "Swedish", code: "SE" },
+  { name: "Ilocano", code: "PH" },
+  { name: "Quechua", code: "PE" },
+  { name: "Shona", code: "ZW" },
+  { name: "Uyghur", code: "CN" },
+  { name: "Hiligaynon", code: "PH" },
+  { name: "Mossi", code: "BF" },
+  { name: "Xhosa", code: "ZA" },
+  { name: "Belarusian", code: "BY" },
+  { name: "Balochi", code: "PK" },
+  { name: "Konkani", code: "IN" },
+  { name: "Kikuyu", code: "KE" },
+  { name: "Kapampangan", code: "PH" },
+  { name: "Batak", code: "ID" },
+  { name: "Wolof", code: "SN" },
+  { name: "Nama", code: "NA" },
+  { name: "Tigrinya", code: "ER" },
+  { name: "Bulgarian", code: "BG" },
+  { name: "Danish", code: "DK" },
+  { name: "Finnish", code: "FI" },
+  { name: "Slovak", code: "SK" },
+  { name: "Norwegian", code: "NO" },
+  { name: "Turkmen", code: "TM" },
+  { name: "Armenian", code: "AM" },
+  { name: "Georgian", code: "GE" },
+  { name: "Estonian", code: "EE" },
+  { name: "Lithuanian", code: "LT" },
+  { name: "Latvian", code: "LV" },
+  { name: "Slovenian", code: "SI" },
+  { name: "Albanian", code: "AL" }
+]
 
 const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
   const IconComponent = (LucideIcons as any)[name] || LucideIcons.HelpCircle
@@ -97,6 +203,7 @@ interface ModelOption {
   isPremium: boolean
   iconUrl: string
   description?: string
+  shortDescription?: string
   soon?: boolean
   subModels?: { id: string; label: string; iconUrl: string; color: string }[]
 }
@@ -197,62 +304,29 @@ const EMAIL_TEMPLATES = [
 ]
 const MODEL_OPTIONS: ModelOption[] = [
   {
-    id: "gpt-5",
-    label: "GPT 5",
-    isPremium: false,
-    iconUrl: "/icons/openai.png",
-    description: "OpenAI's state-of-the-art flagship model with unmatched reasoning and coding intelligence."
-  },
-  {
     id: "claude-opus-4.6-fast",
-    label: "Claude Opus 4.6 Fast",
+    label: "Falbor 2.0 Max",
+    shortDescription: "Teams engines",
     isPremium: true,
-    iconUrl: "/icons/claude.png",
+    iconUrl: "/icons/FalmodelsMAX.png",
     description: "Fast mode consumes tokens significantly faster than other models. Monitor your usage closely."
   },
   {
-    id: "claude-opus-4.6",
-    label: "Claude Opus 4.6",
+    id: "gpt-5",
+    label: "Falbor 1.0 Pro",
+    shortDescription: "Pro subscribers",
     isPremium: true,
-    iconUrl: "/icons/claude.png",
-    description: "Anthropic's most powerful model for highly complex creative and technical reasoning."
+    iconUrl: "/icons/FalmodelsMed.png",
+    description: "OpenAI's state-of-the-art flagship model with unmatched reasoning and coding intelligence."
   },
   {
-    id: "claude-haiku-4.5",
-    label: "Claude Haiku 4.5",
+    id: "ollama/glm-4.7-flash",
+    label: "Falbor 1.0",
+    shortDescription: "Free engines",
     isPremium: false,
-    iconUrl: "/icons/claude.png",
-    description: "Fast and efficient model for quick responses and lightweight tasks."
+    iconUrl: "/icons/Falmodels.png",
+    description: "A fast, simple, and affordable model—expandable for complex tasks."
   },
-  {
-    id: "gemini-3-flash",
-    label: "Gemini 3 Flash",
-    isPremium: false,
-    iconUrl: "/icons/gemini.png",
-    description: "Google's ultra-lightweight and fast multimodal model."
-  },
-  // {
-  //   id: "falmax",
-  //   label: "FalMax",
-  //   isPremium: true,
-  //   iconUrl: "/icons/falbor.png",
-  //   description: "Professional model specialized in building games, complex websites, and long-form technical tasks.",
-  //   soon: true,
-  //   subModels: [
-  //     { id: "gpt-5", label: "GPT 5", iconUrl: "/icons/ChatGPT_logo.svg-Photoroom.png", color: "#10a37f" },
-  //     { id: "gemini-3.1-flash", label: "Gemini 3.1 Flash", iconUrl: "/icons/gemini.png", color: "#1a73e8" },
-  //     { id: "claude-opus-4.6", label: "Claude Opus 4.6", iconUrl: "/icons/claude.png", color: "#1a73e8" },
-  //     { id: "claude-haiku-4.5", label: "Claude Haiku 4.5", iconUrl: "/icons/claude.png", color: "#1a73e8" },
-  //     // { id: "grok-4-fast", label: "Grok 4 Fast", iconUrl: "/icons/grok-light.png", color: "#000000" },
-  //   ]
-  // },
-  // {
-  //   id: "glm-5-turbo",
-  //   label: "GLM 5 Turbo",
-  //   isPremium: false,
-  //   iconUrl: "/icons/zAI.png",
-  //   description: "Powerful general-purpose model with strong reasoning and instruction following."
-  // },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -443,8 +517,15 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [selectedModel, setSelectedModel] = useState<string>(initialModel)
 
   useEffect(() => {
-    if (balanceData?.subscriptionTier === "none" && selectedModel !== "gpt-5") {
-      setSelectedModel("gpt-5")
+    const tier = balanceData?.subscriptionTier || "none"
+    if (tier === "none" || tier === "standard") {
+      if (selectedModel !== "ollama/glm-4.7-flash") {
+        setSelectedModel("ollama/glm-4.7-flash")
+      }
+    } else if (tier === "pro") {
+      if (selectedModel === "claude-opus-4.6-fast") {
+        setSelectedModel("gpt-5")
+      }
     }
   }, [balanceData?.subscriptionTier, selectedModel])
 
@@ -522,7 +603,30 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [cloneUrl, setCloneUrl] = useState("")
   const [isCloning, setIsCloning] = useState(false)
   const [cloneError, setCloneError] = useState<string | null>(null)
+  const [showCloneModal, setShowCloneModal] = useState(false)
+  const [clonedUrl, setClonedUrl] = useState("")
+  const [showTranslateModal, setShowTranslateModal] = useState(false)
+  const [translateStep, setTranslateStep] = useState<'record' | 'language' | 'processing'>('record')
+  const [recordedTranscript, setRecordedTranscript] = useState("")
+  const [translateSourceLang, setTranslateSourceLang] = useState("Hebrew")
+  const [isTranslatingText, setIsTranslatingText] = useState(false)
+  const translationRecognitionRef = useRef<any>(null)
+  const translationLastTranscriptRef = useRef("")
+
   const cloneDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Translation auto-record logic
+  useEffect(() => {
+    if (showTranslateModal && translateStep === 'record') {
+      startTranslationRecording()
+    } else {
+      stopTranslationRecording()
+    }
+
+    return () => {
+      stopTranslationRecording()
+    }
+  }, [showTranslateModal, translateStep])
 
   // Close clone dropdown when clicking outside
   useEffect(() => {
@@ -538,23 +642,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   // Simple clone text insert — backend does all the heavy lifting
   const handleInsertCloneText = () => {
     if (isLoading || isViewer) return
-    const clonePrefix = "Clone this website URL: "
-    setMessage(prev => {
-      const newMsg = prev ? `${prev}\n${clonePrefix}` : clonePrefix
-      return newMsg
-    })
-    setIsActive(true)
+    setShowCloneModal(true)
     setShowCloneDropdown(false)
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus()
-        // Move cursor to end
-        const len = textareaRef.current.value.length
-        textareaRef.current.setSelectionRange(len, len)
-        textareaRef.current.style.height = 'auto'
-        textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px'
-      }
-    }, 0)
   }
 
   const handleSelectMapsBusiness = (businessInfo: string) => {
@@ -947,12 +1036,17 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       localStorage.removeItem(filesKey)
       localStorage.removeItem(pastedKey)
       setMessage("")
+      localStorage.removeItem(draftKey)
+      localStorage.removeItem(filesKey)
+      localStorage.removeItem(pastedKey)
+      setMessage("")
       setSelectedImage(null)
       setImagePreview(null)
       setImageName("")
       setImageSize(0)
       setUploadedFiles([])
       setPastedContents([])
+      setClonedUrl("")
       setIsDesignActive(false)
 
 
@@ -1302,10 +1396,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     }
     analyserRef.current = null
     if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current)
-      animationRef.current = null
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
     }
-  }
+  };
+
   const handleVoiceToggle = async () => {
     if (isListening) {
       stopVoiceInput()
@@ -1367,16 +1462,96 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       alert("Could not access microphone. Please check permissions and try again.")
     }
   }
+
+  const startTranslationRecording = async () => {
+    if (!("SpeechRecognition" in window || "webkitSpeechRecognition" in window)) {
+      alert("Speech recognition is not supported in this browser.")
+      return
+    }
+    try {
+      const SpeechRecognitionConstructor = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition
+      const recognition = new SpeechRecognitionConstructor()
+      recognition.continuous = true
+      recognition.interimResults = true
+      // We set a generic lang, or the user can choose. Standard behavior is to use browser default.
+      recognition.lang = navigator.language || "en-US"
+
+      recognition.onresult = (event: any) => {
+        let transcript = ""
+        for (let i = 0; i < event.results.length; ++i) {
+          transcript += event.results[i][0].transcript
+        }
+        setRecordedTranscript(transcript)
+      }
+      recognition.onerror = (event: any) => {
+        console.error("Translation record error:", event.error)
+        stopTranslationRecording()
+      }
+      recognition.start()
+      translationRecognitionRef.current = recognition
+    } catch (err) {
+      console.error("Failed to start translation recording:", err)
+    }
+  }
+
+  const stopTranslationRecording = () => {
+    translationRecognitionRef.current?.stop()
+    translationRecognitionRef.current = null
+  }
+
+  const handleTranslate = async () => {
+    if (!recordedTranscript.trim()) return
+    setIsTranslatingText(true)
+    setTranslateStep('processing')
+    try {
+      const res = await fetch("/api/chat/translate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: recordedTranscript,
+          targetLanguage: "English"
+        }),
+      })
+      const data = await res.json()
+      if (data.translatedText) {
+        setMessage(data.translatedText)
+        localStorage.setItem(draftKey, data.translatedText)
+        setShowTranslateModal(false)
+        setTranslateStep('record')
+        setRecordedTranscript("")
+      }
+    } catch (err) {
+      console.error("Translation failed:", err)
+      alert("Translation failed. Please try again.")
+      setTranslateStep('language')
+    } finally {
+      setIsTranslatingText(false)
+    }
+  }
   useEffect(() => {
     if (showDesignModal) {
       setTempConfig(designConfig ?? designPresets["Base"])
     }
   }, [showDesignModal, designConfig])
+  // Map of Ollama frontend IDs to actual Ollama model tags (must mirror OLLAMA_MODELS in route.ts)
+  const OLLAMA_MODEL_MAP: Record<string, string> = {
+    "ollama/glm-4.7-flash": "glm-4.7-flash:latest",
+    "ollama/gemma4-31b": "gemma4:31b",
+  }
+
   const handleModelSelect = async (modelId: string) => {
     const model = MODEL_OPTIONS.find((m) => m.id === modelId)
     if (!model) return
-    if (model.id === "falmax" && balanceData?.subscriptionTier !== "teams") {
-      alert("FalMax is exclusive to Teams subscribers.")
+
+    const tier = balanceData?.subscriptionTier || "none"
+
+    if (model.id === "claude-opus-4.6-fast" && tier !== "teams") {
+      alert("Falbor 2.0 Max is exclusive to Teams subscribers.")
+      return
+    }
+
+    if (model.id === "gpt-5" && tier !== "pro" && tier !== "teams") {
+      alert("Falbor 1.0 Pro is exclusive to Pro subscribers.")
       return
     }
 
@@ -1388,6 +1563,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     setSelectedModel(modelId)
     setIsAutoSelected(false) // Reset auto-selected when manually selecting a model
     setShowModelDropdown(false)
+
+    // If selecting an Ollama model, fire a background warmup to pre-load into VRAM
+    if (OLLAMA_MODEL_MAP[modelId]) {
+      console.log(`[ChatInput] Warming up Ollama model: ${OLLAMA_MODEL_MAP[modelId]}`)
+      fetch("/api/ollama-warmup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: OLLAMA_MODEL_MAP[modelId] }),
+      }).then(res => {
+        if (res.ok) console.log("[ChatInput] Ollama model warmed up successfully")
+        else console.warn("[ChatInput] Ollama warmup returned non-OK status")
+      }).catch(err => {
+        console.warn("[ChatInput] Ollama warmup failed (server may be offline):", err)
+      })
+    }
 
     // Persist to DB if we are in a project
     if (projectId) {
@@ -1555,7 +1745,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     }
 
     const submitText = (typeof textOverride === "string" ? textOverride : message) || ""
-    const hasAttachments = uploadedFiles.length > 0 || pastedContents.length > 0 || !!selectedImage || (isDesignActive && designConfig)
+    const hasAttachments = uploadedFiles.length > 0 || pastedContents.length > 0 || !!selectedImage || (isDesignActive && designConfig) || !!clonedUrl
     if (!submitText.toString().trim() && !hasAttachments)
       return
 
@@ -1577,6 +1767,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       userMessage += `\n\n[CRITICAL SYSTEM INSTRUCTION]: You are in AUTO-FIX mode. You must fix the terminal error by providing the full updated content for the problematic file(s). Use a markdown code block with the 'file="path/to/file"' attribute. Do NOT provide an explanation or commentary. ONLY provide the fixed code blocks. This is necessary to apply the fix automatically to the workbench.`;
     }
 
+    // Build context prefix: images, files, pastes, DB, design, clone
+    let contextPrefix = "";
+
+    if (pastedContents.length > 0) {
+      contextPrefix += pastedContents.map((p) => `\n[PASTED_CONTENT_START]\n${p.content}\n[PASTED_CONTENT_END]`).join("\n")
+    }
+
+    if (clonedUrl) {
+      const clonePrefix = "Build a site like this one: ";
+      if (!userMessage.startsWith(clonePrefix)) {
+        userMessage = `${clonePrefix}${clonedUrl}\n${userMessage}`;
+      }
+      contextPrefix += `\n[CLONE_URL:${clonedUrl}]\nInstruction: You are tasked with recreating the design and structure of this website. Please perform a comprehensive analysis of the target URL as previous data may have changed. Replicate the UI faithfully based on the current state of the site.`;
+    }
+
     if (uploadedFiles.length > 0) {
       const fileSections = uploadedFiles
         .map(
@@ -1584,12 +1789,11 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             `\n\n## File: ${file.name}\n\`\`\`${file.type.split("/")[1] || "text/plain"}\n${file.content}\n\`\`\``,
         )
         .join("")
-      userMessage = userMessage ? `${userMessage}${fileSections}` : fileSections.slice(1)
+      contextPrefix += fileSections
     }
-    if (pastedContents.length > 0) {
-      const pastedSections = pastedContents.map((p) => `\n\n## Pasted Text\n\`\`\`text\n${p.content}\n\`\`\``).join("")
-      userMessage += pastedSections
-    }
+
+    userMessage = userMessage + contextPrefix;
+
     // Append database before design to ensure design is the last section
     if (credentialsSaved && databaseCredentials.supabaseUrl && databaseCredentials.anonKey) {
       userMessage += `\n\n## Database Connection\nVITE_SUPABASE_URL=${databaseCredentials.supabaseUrl}\nVITE_SUPABASE_ANON_KEY=${databaseCredentials.anonKey}`
@@ -1652,6 +1856,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setPastedContents([])
       setTasks([])
       setIsDesignActive(false)
+      setClonedUrl("")
       setShowTaskPanel(true)
       if (projectId && onNewMessage) {
         const tempUser: Message = {
@@ -1695,7 +1900,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         console.log(`[ChatInput] Sending message with model: ${selectedModel}`)
         abortControllerRef.current = new AbortController()
         try {
-          const effectiveModel = balanceData?.subscriptionTier === "none" ? "gpt-5" : selectedModel
+          const tier = balanceData?.subscriptionTier || "none"
+          const effectiveModel = (tier === "none" || tier === "standard") ? "ollama/glm-4.7-flash" : selectedModel
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1723,6 +1929,9 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           let accumulated = ""
           let lineBuffer = ""
           let streamError = false
+          let currentMetadata: any = null
+          let syncedUserMessageId: string | null = null
+
           while (true) {
             try {
               const { done, value } = await reader.read()
@@ -1739,15 +1948,30 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                 if (line.startsWith("data: ")) {
                   try {
                     const data = JSON.parse(line.slice(6))
+
                     if (data.error) {
                       console.error("[ChatInput] Stream error:", data.error)
                       streamError = true
                       alert(`Error: ${data.error}`)
                       break
                     }
+
+                    // Sync user message ID if received (heartbeat or done)
+                    if (data.userMessageId && !syncedUserMessageId) {
+                      syncedUserMessageId = data.userMessageId
+                      onNewMessage({
+                        ...tempUser,
+                        id: data.userMessageId,
+                        sessionId
+                      })
+                    }
+
+                    // Capture metadata (heartbeat or done)
+                    if (data.metadata) {
+                      currentMetadata = data.metadata
+                    }
+
                     if (data.cloneScreenshot) {
-                      // Prepend the captured screenshot as a visible image in the AI message
-                      // This lets the user confirm what site was captured before code is generated
                       const screenshotMd = `🖼️ **Captured Screenshot of [${data.cloneUrl || "target site"}](${data.cloneUrl || ""})**\n\n<clone-screenshot src="${data.cloneScreenshot}" />\n\n---\n\n`
                       accumulated = screenshotMd
                       onNewMessage({
@@ -1755,8 +1979,10 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         content: accumulated,
                         id: tempAssistantId,
                         isAutomated: false,
+                        metadata: currentMetadata,
                       })
                     }
+
                     if (data.text) {
                       accumulated += data.text
                       parseTasksFromContent(accumulated)
@@ -1766,21 +1992,14 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         content: accumulated,
                         id: tempAssistantId,
                         isAutomated: false,
+                        metadata: currentMetadata,
                       })
                     }
+
                     if (data.done) {
                       console.log("[ChatInput] Received done signal, message ID:", data.messageId)
 
-                      // 1. Sync user message ID if server provided one
-                      if (data.userMessageId) {
-                        onNewMessage({
-                          ...tempUser,
-                          id: data.userMessageId,
-                          sessionId
-                        })
-                      }
-
-                      // 2. Finalize assistant message
+                      // Final assistant message
                       const finalContent = accumulated.trim() ? accumulated : (data.content || accumulated)
                       onNewMessage({
                         id: data.messageId || `final-${Date.now()}`,
@@ -1797,7 +2016,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         cost: data.cost || null,
                         sessionId,
                         imageData: data.imageData || null,
-                        metadata: data.metadata || null,
+                        metadata: data.metadata || currentMetadata,
                       })
                       router.refresh()
                     }
@@ -1827,7 +2046,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         }
       } else if (projectId) {
         abortControllerRef.current = new AbortController()
-        const effectiveModel = balanceData?.subscriptionTier === "none" ? "gpt-5" : selectedModel
+        const tier = balanceData?.subscriptionTier || "none"
+        const effectiveModel = (tier === "none" || tier === "standard") ? "ollama/glm-4.7-flash" : selectedModel
         await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -2241,8 +2461,27 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
             </div>
           )}
-          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0 || isDesignActive) && (
+          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0 || isDesignActive || clonedUrl) && (
             <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
+              {clonedUrl && (
+                <Badge
+                  variant="secondary"
+                  className="gap-2 bg-[#e7e5df] dark:bg-[#2C2C30] text-gray-700 py-1 px-2 pr-1"
+                >
+                  <img
+                    src={`https://www.google.com/s2/favicons?domain=${clonedUrl.replace(/https?:\/\//, "")}&sz=32`}
+                    className="w-3.5 h-3.5 rounded-sm"
+                    alt=""
+                  />
+                  <span className="truncate max-w-[150px]">{clonedUrl}</span>
+                  <button
+                    onClick={() => setClonedUrl("")}
+                    className="p-0.5 bg-[#e7e5df] dark:bg-[#2C2C30] rounded transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
               {isDesignActive && designConfig && (
                 <Badge
                   variant="secondary"
@@ -2371,23 +2610,29 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               <div className="flex items-center">
                 <div className="relative flex items-center" ref={menuRef}>
                   <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <DropdownMenuTrigger asChild>
-                          <div
-                            className={cn(
-                              "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
-                              (isLoading || isViewer) && "cursor-not-allowed opacity-50 relative"
-                            )}
-                          >
-                            <Plus className="w-4 h-4" />
-                          </div>
-                        </DropdownMenuTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>{isViewer ? "Viewing mode" : "Tools & Attachments"}</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    {!mounted ? (
+                      <div className="h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all">
+                        <Plus className="w-4 h-4" />
+                      </div>
+                    ) : (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <DropdownMenuTrigger asChild>
+                            <div
+                              className={cn(
+                                "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
+                                (isLoading || isViewer) && "cursor-not-allowed opacity-50 relative"
+                              )}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </div>
+                          </DropdownMenuTrigger>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{isViewer ? "Viewing mode" : "Tools & Attachments"}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
 
                     <DropdownMenuContent
                       side="top"
@@ -2483,7 +2728,20 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         </div>
                         <span className="font-medium text-gray-700 dark:text-white/90">Business</span>
                       </DropdownMenuItem>
-
+                      {!isImproving && message.trim() && !isLoading && (
+                        <DropdownMenuItem
+                          onClick={handleImprovePrompt}
+                          className={cn(
+                            "flex items-center gap-2 px-1.5 mb-0.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]",
+                          )}
+                        >
+                          <div className="w-5 h-5 flex items-center justify-center rounded-md bg-gray-50 dark:bg-black/20">
+                            <img src="/icons/Improving.png" className="w-3.5 h-3.5 dark:hidden" alt="" />
+                            <img src="/icons/Improving-dark.png" className="w-3.5 h-3.5 hidden dark:block" alt="" />
+                          </div>
+                          <span className="font-medium text-gray-700 dark:text-white/90">Enhance prompt</span>
+                        </DropdownMenuItem>
+                      )}
                       {/* Move Business button here too? The user said "the two buttons", 
                           but typically Business and Clone are part of the toolkit. 
                           Keeping Clone standalone as per current setup unless asked otherwise.
@@ -2499,15 +2757,15 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                           id="clone-tool-button"
                           onClick={handleInsertCloneText}
                           className={cn(
-                            "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all",
-                            (isLoading || isViewer) && "cursor-not-allowed opacity-50"
+                            "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
+                            isViewer && "cursor-not-allowed opacity-50"
                           )}
                         >
                           <Wrench className="w-4 h-4" />
                         </div>
                       </TooltipTrigger>
                       <TooltipContent>
-                        <p>Clone Website</p>
+                        <p>Build a site like this one</p>
                       </TooltipContent>
                     </Tooltip>
                   </div>
@@ -2606,76 +2864,102 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
             <div className="flex items-center gap-px">
               {/* Standalone Enhance Prompt Button */}
-              {mounted && balanceData?.subscriptionTier !== "none" && (
+              {mounted && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
                       type="button"
-                      className="h-7 px-2.5 border-dashed border-border text-[12px] bg-white dark:bg-[#2C2C30] shadow-none rounded-md text-foreground ml-2 hover:bg-muted transition-colors cursor-pointer border"
+                      className="h-7 px-2.5 border-none text-[12px] bg-white dark:bg-[#2C2C30] shadow-none rounded-md text-foreground ml-2 hover:bg-muted transition-colors cursor-pointer border"
                       disabled={isLoading || isViewer}
                       variant="ghost"
                       size="sm"
                     >
-                      <Cpu className="w-4 h-4 mr-0.5" />
-                      <span className="truncate max-w-[100px]">
-                        {currentModel.label}
-                        {currentModel.id === 'falmax' && (
-                          <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-500/10 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-500/20">teams+</span>
+                      <div className="flex items-center w-full">
+                        <Cpu className="w-4 h-4 mr-1.5 flex-shrink-0" />
+                        <span className="truncate max-w-[120px] font-bold">
+                          {currentModel.label}
+                        </span>
+                        {currentModel.id === 'claude-opus-4.6-fast' && (
+                          <span className="ml-auto text-[9px] font-bold text-blue-600 bg-blue-500/10 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-500/20">teams+</span>
                         )}
-                      </span>
+                      </div>
                     </Button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48 max-h-[400px] overflow-y-auto bg-card border border-border shadow-md z-[100]">
+                  <DropdownMenuContent align="start" className="w-52 max-h-[400px] overflow-y-auto bg-card border border-border shadow-md z-[100]">
                     <TooltipProvider>
-                      {MODEL_OPTIONS.map((model) => (
-                        <Tooltip key={model.id}>
-                          <TooltipTrigger asChild>
-                            <DropdownMenuItem
-                              onClick={() => !model.soon && handleModelSelect(model.id)}
-                              className={cn(
-                                "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7] dark:hover:bg-[#2C2C30]",
-                                selectedModel === model.id && "bg-[#e7e7e7] dark:bg-[#2C2C30]",
-                                model.soon && "opacity-70 cursor-not-allowed"
-                              )}
-                            >
-                              <div className="w-4 h-4 rounded-full overflow-hidden flex-shrink-0">
-                                <img src={model.iconUrl || "/placeholder.svg"} alt="" className="w-full h-full object-cover" />
-                              </div>
-                              <span className="text-sm font-medium">
-                                {model.label}
-                                {/* {model.id === 'falmax' && (
-                                  <span className="ml-1 text-[10px] font-bold text-blue-600 bg-blue-50 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-100/50">teams+</span>
-                                )} */}
-                              </span>
-                              {model.isPremium && !hasSubscription && (
-                                <Lock className="w-3 h-3 ml-auto text-gray-700" />
-                              )}
-                              {model.soon && (
-                                <span className="ml-1 text-[10px] font-bold text-gray-700 bg-gray-50 px-1 border border-gray-200 rounded uppercase tracking-tighter shadow-sm">Soon</span>
-                              )}
-                            </DropdownMenuItem>
-                          </TooltipTrigger>
-                          {model.description && (
-                            <TooltipContent side="right" className="max-w-[220px] text-xs p-3">
-                              <p className="mb-2 text-white/90">{model.description}</p>
-                              {model.subModels && model.subModels.length > 0 && (
-                                <div className="flex flex-col gap-1.5">
-                                  {model.subModels.map((sub) => (
-                                    <div key={sub.id} className="flex items-center gap-1.5">
-                                      <div className="w-3.5 h-3.5 rounded-full overflow-hidden flex-shrink-0">
-                                        <img src={sub.iconUrl} alt={sub.label} className="w-full h-full object-cover" />
-                                      </div>
-                                      <span className="text-[11px] text-white/90">
-                                        {sub.label}
-                                      </span>
-                                    </div>
-                                  ))}
+                      {MODEL_OPTIONS.map((model) => {
+                        const tier = balanceData?.subscriptionTier || "none";
+                        const isLocked = (model.id === "claude-opus-4.6-fast" && tier !== "teams") ||
+                          (model.id === "gpt-5" && !["pro", "teams"].includes(tier));
+
+                        return (
+                          <Tooltip key={model.id}>
+                            <TooltipTrigger asChild>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  if (model.soon) return;
+                                  if (model.id === "claude-opus-4.6-fast" && tier !== "teams") {
+                                    alert("Falbor 2.0 Max is exclusive to Teams subscribers.");
+                                    return;
+                                  }
+                                  if (model.id === "gpt-5" && tier !== "pro" && tier !== "teams") {
+                                    alert("Falbor 1.0 Pro is exclusive to Pro subscribers.");
+                                    return;
+                                  }
+                                  handleModelSelect(model.id);
+                                }}
+                                className={cn(
+                                  "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7] dark:hover:bg-[#2C2C30] p-2",
+                                  selectedModel === model.id && "bg-[#e7e7e7] dark:bg-[#2C2C30]",
+                                  (model.soon || isLocked) && "opacity-60 grayscale-[0.5] cursor-not-allowed"
+                                )}
+                              >
+                                <div className="w-8 h-8 rounded-sm overflow-hidden flex-shrink-0 border border-border/50 bg-muted/30 p-1 flex items-center justify-center">
+                                  <img src={model.iconUrl || "/placeholder.svg"} alt="" className="w-full h-full object-contain" />
                                 </div>
-                              )}
-                            </TooltipContent>
-                          )}
-                        </Tooltip>
-                      ))}
+                                <div className="flex flex-col items-start gap-0.5 flex-1 overflow-hidden ml-1">
+                                  <div className="flex items-center gap-1.5 w-full">
+                                    <span className="text-[13px] font-bold truncate">
+                                      {model.label}
+                                    </span>
+                                    {isLocked && <Lock className="w-3 h-3 text-gray-700 flex-shrink-0" />}
+                                  </div>
+                                  {model.description && (
+                                    <span className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
+                                      {model.description}
+                                    </span>
+                                  )}
+                                </div>
+                                {model.isPremium && !hasSubscription && !isLocked && (
+                                  <Lock className="w-3 h-3 ml-auto text-gray-700" />
+                                )}
+                                {model.soon && (
+                                  <span className="ml-1 text-[10px] font-bold text-gray-700 bg-gray-50 px-1 border border-gray-200 rounded uppercase tracking-tighter shadow-sm">Soon</span>
+                                )}
+                              </DropdownMenuItem>
+                            </TooltipTrigger>
+                            {model.description && (
+                              <TooltipContent side="right" className="max-w-[220px] text-xs p-3">
+                                <p className="mb-2 text-white/90">{model.description}</p>
+                                {model.subModels && model.subModels.length > 0 && (
+                                  <div className="flex flex-col gap-1.5">
+                                    {model.subModels.map((sub) => (
+                                      <div key={sub.id} className="flex items-center gap-1.5">
+                                        <div className="w-3.5 h-3.5 rounded-full overflow-hidden flex-shrink-0">
+                                          <img src={sub.iconUrl} alt={sub.label} className="w-full h-full object-cover" />
+                                        </div>
+                                        <span className="text-[11px] text-white/90">
+                                          {sub.label}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </TooltipContent>
+                            )}
+                          </Tooltip>
+                        );
+                      })}
                     </TooltipProvider>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -2683,45 +2967,49 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               <div className="flex items-center gap-1.5 ml-1">
                 {/* Database Toggle and Hover panel removed from here, now in Plus menu */}
               </div>
-              {!isImproving && message.trim() && !isLoading && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      onClick={handleImprovePrompt}
-                      className="h-7 w-7 p-0.5 cursor-pointer text-sm rounded-md hover:bg-[#e7e7e7] text-black"
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <img src="/icons/Improving.png" className="dark:hidden" alt="" />
-                      <img src="/icons/Improving-dark.png" className="hidden dark:block" alt="" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Enhance prompt</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {/* Voice Input Button */}
+              {/* Voice & Translate Split Button */}
               {!isListening && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      type="button"
-                      onClick={handleVoiceToggle}
-                      className="h-7 w-7 p-1.5 cursor-pointer text-sm rounded-md hover:bg-muted text-foreground"
-                      title="Voice input"
-                      disabled={isLoading}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <AudioLinesIcon className="w-4 h-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Voice input</p>
-                  </TooltipContent>
-                </Tooltip>
+                <div className="flex items-center h-7 border border-dashed border-border rounded-md overflow-hidden bg-white dark:bg-[#2C2C30] transition-colors ml-1 mr-1">
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <button
+                          type="button"
+                          onClick={handleVoiceToggle}
+                          className="flex items-center gap-1.5 px-2.5 h-full border-r border-dashed hover:bg-muted/70 text-[10px] uppercase tracking-wider font-bold transition-all text-foreground min-w-[70px] justify-center"
+                          disabled={isLoading}
+                        >
+                          <AudioLinesIcon className="w-4 h-4" />
+                          <span>Voice</span>
+                        </button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Voice input</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="px-1.5 h-full hover:bg-muted/70 transition-all text-foreground cursor-pointer flex items-center justify-center flex-1">
+                        <ChevronDown className="w-3.5 h-3.5" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-40 z-[100] bg-card border-border">
+                      <DropdownMenuItem
+                        onClick={() => {
+                          setShowTranslateModal(true)
+                          setTranslateStep('record')
+                          setRecordedTranscript("")
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <Languages className="w-4 h-4 mr-2" />
+                        Translate
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
               )}
               {isImproving && (
                 <div className="h-7 w-7 flex items-center justify-center">
@@ -2806,6 +3094,133 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           </div>
         )}
       </div>
+
+      {/* Translation Modal */}
+      <Dialog open={showTranslateModal} onOpenChange={(open) => {
+        if (!open) {
+          stopTranslationRecording()
+        }
+        setShowTranslateModal(open)
+      }}>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden bg-white dark:bg-[#1E1E21] border-border shadow-2xl z-[10000]">
+          <div className="p-5">
+            <div className="flex items-center justify-between mb-4">
+              <DialogTitle className="text-lg font-bold flex items-center gap-2 text-foreground">
+                <Languages className="w-5 h-5 text-[#0099ff]" />
+                Voice Translation
+              </DialogTitle>
+              <button
+                onClick={() => setShowTranslateModal(false)}
+                className="p-1 hover:bg-muted rounded-full transition-colors text-foreground"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="min-h-[200px] flex flex-col items-center justify-center text-center">
+              <AnimatePresence mode="wait">
+                {translateStep === 'record' && (
+                  <motion.div
+                    key="record"
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 1.1 }}
+                    className="flex flex-col items-center gap-5 w-full"
+                  >
+                    <div className="relative">
+                      <div className="absolute inset-0 bg-red-500/20 rounded-full animate-ping" />
+                      <div className="relative w-14 h-14 bg-red-500 rounded-full flex items-center justify-center text-white shadow-lg">
+                        <Mic className="w-7 h-7" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-base font-semibold text-foreground">Speak now...</p>
+                      <p className="text-xs text-muted-foreground italic px-4 min-h-[30px] line-clamp-2">
+                        {recordedTranscript || "Waiting for your voice..."}
+                      </p>
+                    </div>
+
+                    <Button
+                      className="w-full bg-[#0099ff] hover:bg-[#0088ee] text-white font-bold h-10 rounded-lg text-sm"
+                      onClick={() => {
+                        stopTranslationRecording()
+                        setTranslateStep('language')
+                      }}
+                    >
+                      Next Step
+                    </Button>
+                  </motion.div>
+                )}
+
+                {translateStep === 'language' && (
+                  <motion.div
+                    key="language"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    className="flex flex-col items-center gap-4 w-full"
+                  >
+                    <p className="text-sm font-semibold text-foreground">Select your language</p>
+
+                    <div className="w-full h-[240px] overflow-y-auto px-1 scrollbar-thin scrollbar-thumb-muted">
+                      <div className="grid grid-cols-3 gap-2 w-full">
+                        {LANGUAGES.map((lang) => (
+                          <button
+                            key={lang.name}
+                            onClick={() => setTranslateSourceLang(lang.name)}
+                            className={cn(
+                              "flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg border transition-all hover:bg-muted/50",
+                              translateSourceLang === lang.name
+                                ? "border-[#0099ff] bg-[#0099ff]/5 text-[#0099ff] ring-1 ring-[#0099ff]"
+                                : "border-border bg-muted/20 text-foreground"
+                            )}
+                          >
+                            <ReactCountryFlag
+                              countryCode={lang.code}
+                              svg
+                              style={{ width: '18px', height: '12px', borderRadius: '1px' }}
+                            />
+                            <span className="text-[10px] font-bold uppercase truncate w-full">{lang.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full bg-[#0099ff] hover:bg-[#0088ee] text-white font-bold h-10 rounded-lg gap-2 text-sm mt-1"
+                      onClick={handleTranslate}
+                      disabled={isTranslatingText}
+                    >
+                      {isTranslatingText ? <Loader2 className="w-4 h-4 animate-spin" /> : <Languages className="w-4 h-4" />}
+                      Translate to English
+                    </Button>
+
+                    <button
+                      onClick={() => setTranslateStep('record')}
+                      className="text-[11px] text-muted-foreground hover:text-foreground transition-colors font-medium"
+                    >
+                      Back to recording
+                    </button>
+                  </motion.div>
+                )}
+
+                {translateStep === 'processing' && (
+                  <motion.div
+                    key="processing"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="flex flex-col items-center gap-6"
+                  >
+                    <div className="w-16 h-16 border-4 border-[#0099ff]/20 border-t-[#0099ff] rounded-full animate-spin" />
+                    <p className="text-lg font-medium text-foreground">Translating your message...</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={!!selectedFile} onOpenChange={() => setSelectedFile(null)}>
         <DialogContent className="sm:max-w-3xl max-h-[80vh] overflow-y-auto p-0 z-[9999]">
@@ -3028,8 +3443,71 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         </DialogContent>
       </Dialog>
 
+      <Dialog open={showCloneModal} onOpenChange={setShowCloneModal}>
+        <DialogContent className="sm:max-w-md bg-white border border-gray-200 shadow-xl rounded-xl">
+          <DialogTitle className="text-lg font-bold text-gray-800">Build a site like this one</DialogTitle>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="url" className="text-sm font-medium text-gray-700">Enter website URL</Label>
+              <Input
+                id="url"
+                placeholder="https://example.com"
+                value={cloneUrl}
+                onChange={(e) => setCloneUrl(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && cloneUrl.trim()) {
+                    const url = cloneUrl.trim();
+                    setClonedUrl(url)
+                    setCloneUrl("")
+                    setShowCloneModal(false)
+                    setIsActive(true)
 
-    </div >
+                    // Auto-fill chat input
+                    const prefix = "Build a site like this one: ";
+                    setMessage(prev => {
+                      const trimmedPrev = prev.trim();
+                      if (trimmedPrev === url) return `${prefix}${url}`; // Replace if only URL was there
+                      if (!prev.includes(prefix)) {
+                        return `${prefix}${url}\n${prev}`.trim()
+                      }
+                      return prev
+                    })
+                  }
+                }}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setShowCloneModal(false)}>Cancel</Button>
+              <Button
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => {
+                  if (cloneUrl.trim()) {
+                    const url = cloneUrl.trim();
+                    setClonedUrl(url)
+                    setCloneUrl("")
+                    setShowCloneModal(false)
+                    setIsActive(true)
+
+                    // Auto-fill chat input
+                    const prefix = "Build a site like this one: ";
+                    setMessage(prev => {
+                      const trimmedPrev = prev.trim();
+                      if (trimmedPrev === url) return `${prefix}${url}`; // Replace if only URL was there
+                      if (!prev.includes(prefix)) {
+                        return `${prefix}${url}\n${prev}`.trim()
+                      }
+                      return prev
+                    })
+                  }
+                }}
+              >
+                Start Building
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   )
 })
 export function ChatInput(props: ChatInputProps) {

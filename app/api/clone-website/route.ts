@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server"
 import { auth } from "@clerk/nextjs/server"
+import sharp from "sharp"
 
 export const maxDuration = 30
 
@@ -78,7 +79,7 @@ function extractFonts(html: string, css: string): string[] {
   let m: RegExpExecArray | null
   while ((m = fontFamilyRe.exec(css)) !== null) {
     const fam = m[1].trim().replace(/['"]/g, "").split(",")[0].trim()
-    if (fam && !["inherit","initial","unset","revert","sans-serif","serif","monospace","system-ui"].some(k => fam.toLowerCase().includes(k))) {
+    if (fam && !["inherit", "initial", "unset", "revert", "sans-serif", "serif", "monospace", "system-ui"].some(k => fam.toLowerCase().includes(k))) {
       fonts.push(fam)
     }
   }
@@ -171,6 +172,41 @@ function extractStaticAssets(html: string, css: string, baseUrl: string) {
     ogImageUrl,
     staticImages: [...new Set(imgUrls)],
     backgroundImages: [...new Set(bgUrls)],
+  }
+}
+
+/** Slice a full-page screenshot into high-res sections for better AI vision */
+async function sliceScreenshot(base64: string): Promise<string[]> {
+  if (!base64) return []
+  try {
+    const buffer = Buffer.from(base64, "base64")
+    const image = sharp(buffer)
+    const metadata = await image.metadata()
+    if (!metadata.width || !metadata.height) return []
+
+    const sectionHeight = 1000
+    const overlap = 100
+    const sections: string[] = []
+
+    // Slice vertical chunks
+    for (let y = 0; y < metadata.height; y += (sectionHeight - overlap)) {
+      const h = Math.min(sectionHeight, metadata.height - y)
+      if (h < 50) break // Ignore tiny slivers at the bottom
+
+      const chunk = await image
+        .clone()
+        .extract({ left: 0, top: y, width: metadata.width, height: h })
+        .jpeg({ quality: 85 })
+        .toBuffer()
+      
+      sections.push(chunk.toString("base64"))
+      if (sections.length >= 10) break // Limit to 10 sections to avoid token bloat
+    }
+
+    return sections
+  } catch (err) {
+    console.error("[CloneWebsite] Slicing error:", err)
+    return []
   }
 }
 
@@ -280,19 +316,22 @@ export async function POST(req: NextRequest) {
               const imgRes = await fetch(shotUrl, { signal: AbortSignal.timeout(10000) })
               if (imgRes.ok) {
                 const buf = await imgRes.arrayBuffer()
+                const base64 = Buffer.from(buf).toString("base64")
                 console.log(`[CloneWebsite] Microlink full-page screenshot: ${(buf.byteLength / 1024).toFixed(0)} KB`)
+                const sectionScreenshots = await sliceScreenshot(base64)
                 return {
-                  base64: Buffer.from(buf).toString("base64"),
+                  base64,
                   mimeType: imgRes.headers.get("content-type")?.split(";")[0] || "image/jpeg",
                   microlinkMeta: mlData?.data,
                   renderedImages: [...new Set(renderedImages)],
                   microlinkLogo: resolveUrl(microlinkLogo, url),
+                  sectionScreenshots,
                 }
               }
             }
             // No screenshot URL but we have the meta + images — log it
             console.warn("[CloneWebsite] Microlink: no screenshot URL in response")
-            return { base64: "", mimeType: "image/jpeg", microlinkMeta: mlData?.data, renderedImages: [...new Set(renderedImages)], microlinkLogo: "" }
+            return { base64: "", mimeType: "image/jpeg", microlinkMeta: mlData?.data, renderedImages: [...new Set(renderedImages)], microlinkLogo: "", sectionScreenshots: [] }
           }
         } catch (e) {
           console.warn("[CloneWebsite] Microlink failed:", (e as Error).message)
@@ -307,11 +346,14 @@ export async function POST(req: NextRequest) {
           })
           if (thumRes.ok) {
             const buf = await thumRes.arrayBuffer()
+            const base64 = Buffer.from(buf).toString("base64")
             console.log(`[CloneWebsite] thum.io fallback: ${(buf.byteLength / 1024).toFixed(0)} KB`)
+            const sectionScreenshots = await sliceScreenshot(base64)
             return {
-              base64: Buffer.from(buf).toString("base64"),
+              base64,
               mimeType: thumRes.headers.get("content-type")?.split(";")[0] || "image/png",
               renderedImages: [],
+              sectionScreenshots,
             }
           }
         } catch (e) {
@@ -350,7 +392,7 @@ export async function POST(req: NextRequest) {
               stylesheetUrls.slice(0, 4).map(async (cssUrl) => {
                 try {
                   const r = await fetch(cssUrl, { headers: { "User-Agent": "Mozilla/5.0" }, signal: AbortSignal.timeout(3000) })
-                  if (r.ok) { const t = await r.text(); console.log(`[CloneWebsite] CSS: ${(t.length/1024).toFixed(0)}KB — ${cssUrl.split("/").pop()}`); return t }
+                  if (r.ok) { const t = await r.text(); console.log(`[CloneWebsite] CSS: ${(t.length / 1024).toFixed(0)}KB — ${cssUrl.split("/").pop()}`); return t }
                 } catch { /* skip */ }
                 return ""
               })
@@ -387,8 +429,8 @@ export async function POST(req: NextRequest) {
 
     // Image merging: rendered (JS) images from Microlink take priority over static HTML
     const renderedImages = screenshot?.renderedImages || []
-    const staticImages   = s?.staticImages || []
-    const bgImages       = s?.backgroundImages || []
+    const staticImages = s?.staticImages || []
+    const bgImages = s?.backgroundImages || []
 
     // Merge all image sources, deduplicate, filter noise (tracking pixels, icons < 10px, etc.)
     const ignoredPatterns = [
@@ -411,7 +453,7 @@ export async function POST(req: NextRequest) {
     // Section images = all images minus logo/favicon/og (those have defined roles)
     const knownRoleUrls = new Set([logoUrl, faviconUrl, ogImageUrl].filter(Boolean))
     const sectionImages = allImages.filter(u => !knownRoleUrls.has(u))
-    const heroImages    = sectionImages.filter(u =>
+    const heroImages = sectionImages.filter(u =>
       /hero|banner|cover|header|og|social|preview/i.test(u)
     ).slice(0, 3)
 
@@ -442,6 +484,7 @@ export async function POST(req: NextRequest) {
         allImages,
       },
       pageText: html?.pageText || "",
+      sectionScreenshots: screenshot?.sectionScreenshots || [],
     })
 
   } catch (err: any) {

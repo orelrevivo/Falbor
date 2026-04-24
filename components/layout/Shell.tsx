@@ -53,7 +53,7 @@ export default function Shell({
   }, [isLoaded, user])
 
   // Don't wrap if not loaded or not signed in
-  if (!mounted || !isLoaded || !user) {
+  if (!isLoaded || !user) {
     return <>{children}</>
   }
 
