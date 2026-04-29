@@ -2316,9 +2316,9 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
     // --- PRE-FLIGHT CONNECTIVITY CHECK ---
     // If we can't reach Ollama, we throw here so the resilience chain can fallback to cloud models
     try {
-      const pingRes = await fetch(`${OLLAMA_BASE_URL}/api/tags`, { 
+      const pingRes = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
         headers: { "ngrok-skip-browser-warning": "true" },
-        signal: AbortSignal.timeout(1500) 
+        signal: AbortSignal.timeout(1500)
       }).catch(() => null)
       if (!pingRes || !pingRes.ok) {
         console.warn(`[Ollama/${ollamaModelId}] Connectivity check failed. Triggering fallback chain...`)
@@ -2351,7 +2351,7 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
           // ──────────────────────────────────────────────────
           const ollamaRequestPromise = fetch(`${OLLAMA_BASE_URL}/api/chat`, {
             method: "POST",
-            headers: { 
+            headers: {
               "Content-Type": "application/json",
               "ngrok-skip-browser-warning": "true"
             },
@@ -2441,7 +2441,7 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
                       db.update(messagesTable)
                         .set({ content: fullResponse })
                         .where(eq(messagesTable.id, assistantMsgId))
-                        .catch(() => {}) // fire-and-forget
+                        .catch(() => { }) // fire-and-forget
                     }
 
                     if (ollamaForceCode) {
@@ -2525,7 +2525,7 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
               const hasUnclosedBlock = openBlocks > closeBlocks
 
               // Find missing files
-              const missingFiles = plannedFiles.filter(f => 
+              const missingFiles = plannedFiles.filter(f =>
                 !generatedFiles.some(g => g.endsWith(f) || f.endsWith(g) || g.includes(f) || f.includes(g))
               )
 
@@ -2533,10 +2533,10 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
 
               if (shouldContinue) {
                 continuationCount++
-                const missingList = missingFiles.length > 0 
+                const missingList = missingFiles.length > 0
                   ? `\n\nYou still need to generate these files:\n${missingFiles.map(f => `- ${f}`).join("\n")}`
                   : ""
-                
+
                 console.log(`[Ollama] Auto-continuing (${continuationCount}/${maxContinuations}): ${missingFiles.length} files missing, unclosed block: ${hasUnclosedBlock}`)
                 console.log(`[Ollama] Generated: ${generatedFiles.join(", ")}`)
                 console.log(`[Ollama] Missing: ${missingFiles.join(", ")}`)
@@ -2551,7 +2551,7 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
                 // Fire continuation request
                 const contResponse = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
                   method: "POST",
-                  headers: { 
+                  headers: {
                     "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "true"
                   },
@@ -2596,7 +2596,7 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
                             db.update(messagesTable)
                               .set({ content: fullResponse })
                               .where(eq(messagesTable.id, assistantMsgId))
-                              .catch(() => {})
+                              .catch(() => { })
                           }
 
                           if (ollamaForceCode) {
@@ -2691,7 +2691,7 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
         } catch (error: any) {
           console.error(`[Ollama/${ollamaModelId}] Stream error:`, error)
           const isDomain = typeof window !== 'undefined' ? !window.location.hostname.includes('localhost') : true;
-          const errorMessage = isDomain 
+          const errorMessage = isDomain
             ? "Ollama (Local AI) is unreachable from the Falbor domain. The system attempted to connect but failed. For local AI support, please run the app on your local machine or use a secure tunnel with OLLAMA_ORIGINS set."
             : "Local Ollama model is not responding. Make sure Ollama is running on your machine (ollama serve).";
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: errorMessage })}\n\n`))
@@ -3070,7 +3070,7 @@ async function handleOpenAIRequest(
               stream: true,
               ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
                 ? { max_completion_tokens: 32768 }
-                : { max_tokens: 32768 }),
+                : { max_tokens: 16384 }),
             }),
           })
 
@@ -3110,7 +3110,7 @@ async function handleOpenAIRequest(
                   stream: true,
                   ...(modelId.startsWith("gpt-5") || modelId.startsWith("o1")
                     ? { max_completion_tokens: 32768 }
-                    : { max_tokens: 32768 }),
+                    : { max_tokens: 16384 }),
                 }),
               })
 

@@ -320,7 +320,7 @@ const MODEL_OPTIONS: ModelOption[] = [
     description: "OpenAI's state-of-the-art flagship model with unmatched reasoning and coding intelligence."
   },
   {
-    id: "ollama/glm-4.7-flash",
+    id: "gpt-4o-mini",
     label: "Falbor 1.0",
     shortDescription: "Free engines",
     isPremium: false,
@@ -522,7 +522,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
 
     const tier = balanceData?.subscriptionTier || "none"
     const model = MODEL_OPTIONS.find(m => m.id === selectedModel)
-    
+
     // Only force reset if the CURRENTLY selected model is strictly forbidden by the tier
     if (tier === "none" || tier === "standard") {
       if (model?.isPremium && selectedModel !== "ollama/glm-4.7-flash") {
@@ -1571,7 +1571,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     // If selecting an Ollama model, fire a background warmup to pre-load into VRAM
     if (OLLAMA_MODEL_MAP[modelId]) {
       console.log(`[ChatInput] Warming up Ollama model: ${OLLAMA_MODEL_MAP[modelId]}`)
-      
+
       const triggerWarmup = async () => {
         try {
           // 1. Try server-side warmup first (works on localhost)
@@ -1580,7 +1580,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ model: OLLAMA_MODEL_MAP[modelId] }),
           })
-          
+
           if (res.ok) {
             console.log("[ChatInput] Ollama model warmed up via server")
             return
