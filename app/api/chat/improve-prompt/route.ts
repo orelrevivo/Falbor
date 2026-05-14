@@ -87,7 +87,7 @@ Return **only** the improved prompt – nothing else.
   }
 
   // Fallback to local Ollama (for local dev environments or custom tunnels)
-  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://wad-animosity-pellet.ngrok-free.dev"
   console.log(`[ImprovePrompt] Attempting fallback to Ollama at: ${OLLAMA_BASE_URL}`)
   
   try {
@@ -95,10 +95,13 @@ Return **only** the improved prompt – nothing else.
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true" // Mandatory to bypass Ngrok's manual warning page
+        ...(OLLAMA_BASE_URL.includes("ngrok") ? {
+          "ngrok-skip-browser-warning": "true",
+          "Host": "localhost:11434"
+        } : {})
       },
       body: JSON.stringify({
-        model: "glm-4.7-flash:latest", 
+        model: "qwen2.5:3b", 
         messages: [
           { role: "system", content: systemInstruction },
           { role: "user", content: `Original prompt:\n"${prompt}"` },
@@ -110,9 +113,10 @@ Return **only** the improved prompt – nothing else.
     if (!response.ok) {
       const errorText = await response.text()
       console.error("[ImprovePrompt] Ollama API error:", response.status, errorText)
+      console.error("[ImprovePrompt] Target URL:", `${OLLAMA_BASE_URL}/api/chat`)
       return new Response(JSON.stringify({ 
         error: `Ollama error: ${response.status}`,
-        details: errorText 
+        details: errorText || "Forbidden - Check Ngrok/Ollama CORS settings"
       }), { status: 503 })
     }
 

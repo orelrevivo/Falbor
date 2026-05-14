@@ -1589,7 +1589,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           // 2. If server-side fails (common on production domains), try client-side direct ping
           // This only works if the user has OLLAMA_ORIGINS set up, but it's better than a 502 error.
           console.log("[ChatInput] Server-side warmup failed or unavailable, trying client-side ping...")
-          const clientRes = await fetch("http://localhost:11434/api/tags").catch(() => null)
+          const clientRes = await fetch("https://wad-animosity-pellet.ngrok-free.dev/api/tags", { headers: { "ngrok-skip-browser-warning": "true" } }).catch(() => null)
           if (clientRes?.ok) {
             console.log("[ChatInput] Ollama detected locally via client-side ping")
           }

@@ -2203,7 +2203,7 @@ async function handleOllamaRequest(
     throw new Error("Ollama model invalid")
   }
 
-  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://wad-animosity-pellet.ngrok-free.dev"
 
   try {
     // ──────────────────────────────────────────────────
@@ -2353,7 +2353,8 @@ Keep <Thinking> and <Planning> to 1-2 lines. Write code files IMMEDIATELY. Syste
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "ngrok-skip-browser-warning": "true"
+              "ngrok-skip-browser-warning": "true",
+              "Host": "localhost:11434"
             },
             body: JSON.stringify({
               model: ollamaModelId,

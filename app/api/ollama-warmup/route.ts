@@ -6,7 +6,7 @@
  * an Ollama model from the dropdown.
  */
 export async function POST(request: Request) {
-  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://localhost:11434"
+  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://wad-animosity-pellet.ngrok-free.dev"
 
   try {
     const body = await request.json()
@@ -22,7 +22,10 @@ export async function POST(request: Request) {
     // Using keep_alive: "30m" ensures it stays loaded
     const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "true"
+      },
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: "hi" }],
