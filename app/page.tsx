@@ -22,6 +22,8 @@ import FeatureCards from "@/components/layout/features/FeatureCards"
 import { HomeTabs } from "@/components/home/home-tabs"
 import * as motion from "framer-motion/client"
 import { ThemeHandler } from "@/components/layout/ThemeHandler"
+import Link from "next/link"
+import { Badge } from "@/components/ui/badge"
 
 interface ProjectItem {
   id: string
@@ -76,18 +78,20 @@ export default async function HomePage() {
     >
       <main className="flex flex-1 flex-col items-center w-full">
 
-        {/* ================= NOT AUTH ================= */}
         {!isAuthenticated && (
-          <div className="w-full flex flex-col">
+          <div className="w-full flex flex-col relative">
             <ThemeHandler force="light" />
             <LandingScrollHandler />
-            <DefaultDemo />
-            {/* ✅ FIXED BACKGROUND SECTION */}
-            <div className="relative w-full min-h-screen flex flex-col items-center justify-center">
+
+            {/* ✅ STICKY HERO SECTION (Pins in place) */}
+            <div className="sticky top-0 w-full h-screen flex flex-col items-center justify-center z-10 overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 w-full z-20">
+                <DefaultDemo />
+              </div>
 
               {/* ✅ centered background image layer */}
               <div
-                className="pointer-events-none absolute inset-0 w-full h-full"
+                className="pointer-events-none absolute inset-0 w-full h-full z-0"
                 style={{
                   backgroundImage: "url('/bg/bg-v3.png')",
                   backgroundRepeat: "no-repeat",
@@ -96,7 +100,7 @@ export default async function HomePage() {
                 }}
               />
 
-              {/* ✅ CONTENT ABOVE BG */}
+              {/* ✅ CONTENT ABOVE BG (Exactly original coordinates!) */}
               <div className="relative z-10 w-full max-w-4xl px-4 flex flex-col items-center mt-[-200px]">
                 <HeroText />
                 <div className="w-full flex justify-center mt-6">
@@ -105,12 +109,25 @@ export default async function HomePage() {
               </div>
             </div>
 
-            <div className="flex flex-col min-h-screen">
+            {/* ✅ Section 2: Features / HeroSection (z-20) */}
+            <div className="sticky top-0 w-full h-screen overflow-y-auto no-scrollbar flex flex-col items-center justify-start z-20 bg-white shadow-[0_-20px_40px_rgba(0,0,0,0.06)] border-t border-zinc-150/40 pt-20 pb-16">
               <HeroSection />
-              <div className="flex justify-center mt-20">
+            </div>
+
+            {/* ✅ Section 3: ApplicationPreview (z-30) */}
+            <div className="sticky top-0 w-full h-screen overflow-y-auto no-scrollbar flex flex-col items-center justify-start z-30 bg-background shadow-[0_-20px_40px_rgba(0,0,0,0.06)] border-t border-zinc-150/40 pt-20 pb-16">
+              <div className="w-full max-w-7xl px-4 flex justify-center">
                 <ApplicationPreview />
               </div>
+            </div>
+
+            {/* ✅ Section 4: PricingSection (z-40) */}
+            <div className="sticky top-0 w-full h-screen overflow-y-auto no-scrollbar flex flex-col items-center justify-start z-40 bg-white shadow-[0_-20px_40px_rgba(0,0,0,0.06)] border-t border-zinc-150/40 pt-20 pb-16">
               <PricingSection />
+            </div>
+
+            {/* ✅ Section 5: FAQ (z-50) */}
+            <div className="sticky top-0 w-full h-screen overflow-y-auto no-scrollbar flex flex-col items-center justify-start z-50 bg-background shadow-[0_-20px_40px_rgba(0,0,0,0.06)] border-t border-zinc-150/40 pt-20 pb-24">
               <FAQ />
             </div>
           </div>
@@ -119,7 +136,8 @@ export default async function HomePage() {
         {/* ================= AUTH ================= */}
         {isAuthenticated && (
           <div
-            className="absolute z-10 p-6 sm:p-8 no-scrollbar w-full h-full bg-card bg-[url('/bg/bg-blue.png')] dark:bg-[url('/bg/bg-blue-dark.png')] bg-no-repeat bg-center bg-cover"
+            // bg-[url('/bg/bg-v23-chat.png')]
+            className="absolute z-10 p-6 sm:p-8 bg-[#FAFAFA] no-scrollbar w-full h-full dark:bg-[url('/bg/bg-blue-dark.png')] bg-no-repeat bg-center bg-cover"
             style={{
               top: "0px",
               left: "0px",
@@ -129,11 +147,8 @@ export default async function HomePage() {
             }}
           >
             <div
-              className="flex flex-col items-center h-full justify-center top-[-170px] relative w-full"
+              className="flex flex-col items-center h-full justify-center top-[-110px] relative w-full"
             >
-              <div className="z-10 w-full flex flex-col items-center">
-                <HeroText />
-              </div>
               {/* <img src="/bg/bg-text.png" alt="" className="absolute mt-[-160px] ml-25 w-[50%] pointer-events-none" /> */}
               <div className="w-full flex justify-center mt-6 z-10">
                 <InputArea isAuthenticated />

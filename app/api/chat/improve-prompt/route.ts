@@ -40,6 +40,7 @@ Take the user's original prompt and rewrite it to be:
 Return **only** the improved prompt – nothing else.
 `.trim()
 
+  // 1. Try Google Gemini first
   const googleKey = process.env.GOOGLE_API_KEY
   if (googleKey) {
     try {
@@ -86,97 +87,106 @@ Return **only** the improved prompt – nothing else.
     }
   }
 
-  // Fallback to local Ollama (for local dev environments or custom tunnels)
-  const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "https://wad-animosity-pellet.ngrok-free.dev"
-  console.log(`[ImprovePrompt] Attempting fallback to Ollama at: ${OLLAMA_BASE_URL}`)
-  
-  try {
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        ...(OLLAMA_BASE_URL.includes("ngrok") ? {
-          "ngrok-skip-browser-warning": "true",
-          "Host": "localhost:11434"
-        } : {})
-      },
-      body: JSON.stringify({
-        model: "qwen2.5:3b", 
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: `Original prompt:\n"${prompt}"` },
-        ],
-        stream: true,
-      }),
-    })
+  // 2. Fallback to OpenAI GPT-4o-mini
+  const openaiKey = process.env.OPENAI_API_KEY
+  if (openaiKey) {
+    try {
+      console.log("[ImprovePrompt] Falling back to OpenAI GPT-4o-mini")
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("[ImprovePrompt] Ollama API error:", response.status, errorText)
-      console.error("[ImprovePrompt] Target URL:", `${OLLAMA_BASE_URL}/api/chat`)
-      return new Response(JSON.stringify({ 
-        error: `Ollama error: ${response.status}`,
-        details: errorText || "Forbidden - Check Ngrok/Ollama CORS settings"
-      }), { status: 503 })
-    }
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemInstruction },
+            { role: "user", content: `Original prompt:\n"${prompt}"` },
+          ],
+          stream: true,
+          max_tokens: 800,
+        }),
+      })
 
-    const encoder = new TextEncoder()
-    let accumulated = ""
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error("[ImprovePrompt] OpenAI error:", response.status, errorText)
+        throw new Error(`OpenAI error: ${response.status}`)
+      }
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        const reader = response.body?.getReader()
-        if (!reader) {
-          controller.close()
-          return
-        }
+      const encoder = new TextEncoder()
+      let accumulated = ""
 
-        const decoder = new TextDecoder()
-        let buffer = ""
+      const stream = new ReadableStream({
+        async start(controller) {
+          const reader = response.body?.getReader()
+          if (!reader) { controller.close(); return }
 
-        try {
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
+          const decoder = new TextDecoder()
+          let buffer = ""
 
-            buffer += decoder.decode(value, { stream: true })
-            const lines = buffer.split("\n")
-            buffer = lines.pop() || ""
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
 
-            for (const line of lines) {
-              if (!line.trim()) continue
-              try {
-                const parsed = JSON.parse(line)
-                const text = parsed.message?.content
-                if (text) {
-                  accumulated += text
-                  controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text })}\n\n`))
-                }
-              } catch (e) { /* skip parse errors */ }
+              buffer += decoder.decode(value, { stream: true })
+              const lines = buffer.split("\n")
+              buffer = lines.pop() || ""
+
+              for (const line of lines) {
+                if (!line.startsWith("data: ")) continue
+                const data = line.slice(6)
+                if (data === "[DONE]") continue
+                try {
+                  const parsed = JSON.parse(data)
+                  const content = parsed.choices?.[0]?.delta?.content
+                  if (content) {
+                    accumulated += content
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: content })}\n\n`))
+                  }
+                } catch (e) { /* skip parse errors */ }
+              }
             }
+
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, improvedPrompt: accumulated.trim() })}\n\n`))
+            controller.close()
+          } catch (err) {
+            console.error("[ImprovePrompt] OpenAI stream error:", err)
+            controller.error(err)
           }
+        },
+      })
 
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, improvedPrompt: accumulated.trim() })}\n\n`))
-          controller.close()
-        } catch (err) {
-          console.error("[ImprovePrompt] Stream error:", err)
-          controller.error(err)
-        }
-      },
-    })
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    })
-  } catch (err) {
-    console.error("[ImprovePrompt] Connection failed:", err)
-    return new Response(JSON.stringify({ 
-      error: "Failed to connect to local Ollama server. Make sure Ollama is running (ollama serve) and the model is pulled.",
-      details: err instanceof Error ? err.message : String(err)
-    }), { status: 503 })
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      })
+    } catch (err) {
+      console.error("[ImprovePrompt] OpenAI fallback failed:", err)
+    }
   }
+
+  // 3. Final fallback: return the original prompt as-is (silent pass-through)
+  const encoder = new TextEncoder()
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ text: prompt })}\n\n`))
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true, improvedPrompt: prompt })}\n\n`))
+      controller.close()
+    }
+  })
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+    },
+  })
 }

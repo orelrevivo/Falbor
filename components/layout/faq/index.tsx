@@ -1,25 +1,7 @@
-/*
- * SPDX-License-Identifier: AGPL-3.0-only
- * index.tsx
- * Copyright (C) 2025 Nextify Limited
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License as
- * published by the Free Software Foundation, either version 3 of the
- * License, or (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
- *
- * You should have received a copy of the GNU Affero General Public License
- * along with this program. If not, see <https://www.gnu.org/licenses/>.
- *
- */
+'use client'
 
 import { Section } from '@/components/ui/section'
-import type { ReactNode } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import {
   Accordion,
   AccordionContent,
@@ -77,21 +59,42 @@ export default function FAQ({
   ],
   className,
 }: FAQProps) {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   return (
     <Section className={className}>
       <div className='max-w-container mx-auto flex flex-col items-center gap-8 mb-30'>
         <h2 className='text-center text-black text-3xl leading-tight font-sans font-light sm:text-5xl'>
           {title}
         </h2>
-        {items !== false && items.length > 0 && (
-          <Accordion type='single' collapsible className='w-full max-w-[800px]'>
-            {items.map((item, index) => (
-              <AccordionItem key={index} value={item.value || `item-${index + 1}`}>
-                <AccordionTrigger>{item.question}</AccordionTrigger>
-                <AccordionContent>{item.answer}</AccordionContent>
-              </AccordionItem>
-            ))}
-          </Accordion>
+        {!mounted ? (
+          items !== false && (
+            <div className='w-full max-w-[800px] space-y-3'>
+              {items.map((item, index) => (
+                <div key={index} className='text-md text-black glass-4 bg-[#F7F7F2] rounded-lg px-4 py-4 font-medium flex items-center justify-between'>
+                  <span>{item.question}</span>
+                  <div className='icon bg-[#0099ff]/20 rounded-full p-2'>
+                    <svg width="15" height="15" viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" className='text-[#0099ff] size-4 shrink-0'><path d="M8 2.75C8 2.33579 7.66421 2 7.25 2C6.83579 2 6.5 2.33579 6.5 2.75V6.5H2.75C2.33579 6.5 2 6.83579 2 7.25C2 7.66421 2.33579 8 2.75 8H6.5V11.75C6.5 12.1642 6.83579 12.5 7.25 12.5C7.66421 12.5 8 12.1642 8 11.75V8H11.75C12.1642 8 12.5 7.66421 12.5 7.25C12.5 6.83579 12.1642 6.5 11.75 6.5H8V2.75Z" fill="currentColor" fillRule="evenodd" clipRule="evenodd"></path></svg>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        ) : (
+          items !== false && items.length > 0 && (
+            <Accordion type='single' collapsible className='w-full max-w-[800px]'>
+              {items.map((item, index) => (
+                <AccordionItem key={index} value={item.value || `item-${index + 1}`}>
+                  <AccordionTrigger>{item.question}</AccordionTrigger>
+                  <AccordionContent>{item.answer}</AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          )
         )}
       </div>
     </Section>

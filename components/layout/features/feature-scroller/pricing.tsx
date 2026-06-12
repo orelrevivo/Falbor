@@ -132,17 +132,17 @@ const PricingSection = () => {
 
     return (
         <>
-            <section className="bg-white py-[120px] md:py-[160px]">
+            <section className="bg-white py-4">
                 <div className="container px-6 mx-auto max-w-[1280px]">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {tiers.map((tier) => (
                             <div
                                 key={tier.name}
-                                className={`relative overflow-hidden bg-[#F7F7F2] rounded-[32px] p-10 flex flex-col min-h-[480px] ${tier.popular ? "" : ""
+                                className={`relative overflow-hidden bg-[#F7F7F2] rounded-[32px] p-6 md:p-8 flex flex-col min-h-[440px] ${tier.popular ? "" : ""
                                     }`}
                             >
                                 <div
-                                    className={`absolute bottom-0 left-0 w-full h-[180px] bg-gradient-to-t ${tier.gradient} pointer-events-none`}
+                                    className={`absolute bottom-0 left-0 w-full h-[140px] bg-gradient-to-t ${tier.gradient} pointer-events-none`}
                                 />
 
                                 <div className="relative z-10 flex-grow">

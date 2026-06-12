@@ -18,6 +18,9 @@ import { TaskModal } from "./workbench/tasks/task-modal"
 import { PresenceLayer } from "./chat/presence-layer"
 import { PluginLoader } from "./workbench/plugin-loader"
 import { ActivePluginContainer } from "./plugins/ActivePluginContainer"
+import { toast } from "sonner"
+import { Button } from "@/components/ui/button"
+import { Bot, Lock, ArrowRight, Loader2 } from "lucide-react"
 
 interface StrictMessage extends Omit<SchemaMessage, "role"> {
   role: "user" | "assistant"
@@ -28,6 +31,7 @@ interface ChatInterfaceProps {
   initialMessages: SchemaMessage[]
   initialUserMessage?: string
   userProfile?: UserProfile | null
+  showBuildMode?: boolean
 }
 // Code preview panel is always open — no keyword detection needed
 
@@ -68,7 +72,7 @@ function extractFilesFromStreamingContent(content: string): { files: Array<{ pat
   return { files, activeFile }
 }
 
-export function ChatInterface({ project, initialMessages, initialUserMessage, userProfile }: ChatInterfaceProps) {
+export function ChatInterface({ project, initialMessages, initialUserMessage, userProfile, showBuildMode = true }: ChatInterfaceProps) {
   const [messages, setMessages] = useState<StrictMessage[]>([])
   const [windowWidth, setWindowWidth] = useState(0)
   const [isResizingState, setIsResizingState] = useState(false)
@@ -83,12 +87,14 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   const {
     activeTab: workbenchTab,
     setActiveTab: setWorkbenchTab,
+    isTerminalOpen,
+    setIsTerminalOpen,
   } = useWorkbench()
 
   const [hasProjectFiles, setHasProjectFiles] = useState(false)
   const [activeMessageId, setActiveMessageId] = useState<string | null>(project.activeMessageId || null)
   const [isSplitScreen, setIsSplitScreen] = useState(false)
-  const [isTerminalOpen, setIsTerminalOpen] = useState(false)
+  const [isGameMakerMode, setIsGameMakerMode] = useState(false)
 
   // Guard refs — prevent duplicate triggers across re-renders
   const hasAutoTriggered = useRef(false)
@@ -109,6 +115,31 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
   const pathname = usePathname()
   const searchParams = useSearchParams()
 
+  const gameMakerKey = useMemo(
+    () => (project?.id ? `chat-game-maker-${project.id}` : "chat-game-maker-global"),
+    [project?.id],
+  )
+
+  const withGameMakerMetadata = useCallback(
+    (metadata: any) => {
+      const alreadyEnabled = !!metadata?.gameMakerMode || metadata?.mode === "game-maker"
+      if (alreadyEnabled) return metadata
+      if (!isGameMakerMode) return metadata
+      return { ...(metadata || {}), gameMakerMode: true, mode: "game-maker" }
+    },
+    [isGameMakerMode],
+  )
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    try {
+      const saved = localStorage.getItem(gameMakerKey)
+      if (saved) setIsGameMakerMode(saved === "1")
+    } catch { }
+  }, [gameMakerKey])
+
+  const isLocked = false;
+
   // Sync server notification settings to localStorage on mount
   useEffect(() => {
     if (userProfile) {
@@ -116,6 +147,16 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       localStorage.setItem("falbor_bell_volume", userProfile.notificationVolume.toString())
     }
   }, [userProfile])
+
+  // Listen for browser view triggers from chat messages
+  useEffect(() => {
+    const handleBrowserSwitch = () => {
+      setWorkbenchTab("browser");
+      setIsPreviewOpen(true);
+    };
+    window.addEventListener("workbench:switch-to-browser", handleBrowserSwitch);
+    return () => window.removeEventListener("workbench:switch-to-browser", handleBrowserSwitch);
+  }, [setWorkbenchTab]);
 
   useLayoutEffect(() => {
     document.documentElement.style.setProperty('--chat-width', `${leftWidth}px`);
@@ -281,7 +322,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         body: JSON.stringify({
           projectId: project.id,
           message: userContent,
-          selectedModel: modelOverride || project.selectedModel || "gemini",
+          selectedModel: modelOverride || project.selectedModel || "gpt-4o",
           sessionId: "main",
           isAutomated,
           metadata,
@@ -295,7 +336,11 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           const errorData = await resClone.json()
           if (errorData.error) errorMsg = errorData.error
         } catch (e) { }
-        throw new Error(errorMsg)
+        alert(errorMsg)
+        setIsStreaming(false)
+        isStreamingRef.current = false
+        setMessages(prev => prev.filter(m => m.id !== tempId))
+        return
       }
 
       const reader = res.body?.getReader()
@@ -480,7 +525,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           if (internalSubmit) {
             setTimeout(() => internalSubmit(msg, isAutomated), 200);
           } else {
-            handleAutoGenerate(msg, null, null, isAutomated);
+            handleAutoGenerate(msg, withGameMakerMetadata(null), null, isAutomated);
           }
         },
         toggleCodePreview: () => setIsPreviewOpen(prev => !prev),
@@ -490,7 +535,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
         }
       });
     }
-  }, [project, handleAutoGenerate]);
+  }, [project, handleAutoGenerate, withGameMakerMetadata]);
 
   // ─── Auto-trigger: initial user message from URL prompt ──────────────────
   useEffect(() => {
@@ -504,7 +549,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
     setIsPreviewOpen(true)
 
     // Call directly — hasInitialized is already true so messages are loaded and rendered.
-    handleAutoGenerate(initialUserMessage)
+    handleAutoGenerate(initialUserMessage, withGameMakerMetadata(null))
   }, [initialUserMessage, project.id, handleAutoGenerate])
 
   const handleNewMessage = useCallback((message: SchemaMessage | null) => {
@@ -579,7 +624,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       setMessages((prev) => [...prev, newUserMsg])
 
       // Trigger AI generation in main chat
-      handleAutoGenerate(message, taskMetadata, model, true)
+      handleAutoGenerate(message, withGameMakerMetadata(taskMetadata), model, true)
     }
     window.addEventListener('chat:new-task-session' as any, handleNewTask)
     return () => window.removeEventListener('chat:new-task-session' as any, handleNewTask)
@@ -743,7 +788,15 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       })
       if (!res.ok) return
       const { files } = await res.json()
-      files.forEach((file: any) => zip.file(file.path, file.content))
+      files.forEach((file: any) => {
+        const maybeImageData = file.imageData || ""
+        const match = maybeImageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i)
+        if (match) {
+          zip.file(file.path, match[2], { base64: true })
+          return
+        }
+        zip.file(file.path, file.content)
+      })
       const content = await zip.generateAsync({ type: "blob" })
       const url = URL.createObjectURL(content)
       const a = document.createElement("a")
@@ -786,8 +839,8 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       detail: { type: 'MSG_USER', message: newUserMsg, senderId: user?.id }
     }))
 
-    handleAutoGenerate(content, null, null, isAutomated)
-  }, [project.id, handleAutoGenerate, user?.id])
+    handleAutoGenerate(content, withGameMakerMetadata(null), null, isAutomated)
+  }, [project.id, handleAutoGenerate, user?.id, withGameMakerMetadata])
 
   // ─── Real-time Collaboration Listeners ────────────────────────────────────
   const handleRealtimeMessage = useCallback((data: any) => {
@@ -907,7 +960,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       // We can't call handleAutoGenerate inside setMessages safely, 
       // so we use a timeout or just do it after setMessages.
       setTimeout(() => {
-        handleAutoGenerate(newContent, originalMetadata)
+        handleAutoGenerate(newContent, withGameMakerMetadata(originalMetadata))
       }, 0)
 
       return updated
@@ -949,7 +1002,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
       const updated = prevMsgs.slice(0, currentIdx)
 
       // Re-generate
-      setTimeout(() => handleAutoGenerate(userMsg.content, userMsg.metadata), 0)
+      setTimeout(() => handleAutoGenerate(userMsg.content, withGameMakerMetadata(userMsg.metadata)), 0)
       return updated
     })
   }, [handleAutoGenerate, lastMessagesRef])
@@ -972,7 +1025,15 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
               role={role}
               handleDownload={handleDownload}
               isTerminalOpen={isTerminalOpen}
-              onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+              onToggleTerminal={() => {
+                const nextOpen = !isTerminalOpen
+                setIsTerminalOpen(nextOpen)
+                if (nextOpen) {
+                  // Switch to preview tab so the terminal panel is visible
+                  setIsPreviewOpen(true)
+                  setWorkbenchTab("preview")
+                }
+              }}
               isSplitScreen={isSplitScreen}
               onEnterSplit={() => setIsSplitScreen(true)}
               projectName={project.title}
@@ -985,7 +1046,14 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
             role={role}
             handleDownload={handleDownload}
             isTerminalOpen={isTerminalOpen}
-            onToggleTerminal={() => setIsTerminalOpen(prev => !prev)}
+            onToggleTerminal={() => {
+              const nextOpen = !isTerminalOpen
+              setIsTerminalOpen(nextOpen)
+              if (nextOpen) {
+                setIsPreviewOpen(true)
+                setWorkbenchTab("preview")
+              }
+            }}
             isSplitScreen={isSplitScreen}
             onEnterSplit={() => setIsSplitScreen(true)}
             projectName={project.title}
@@ -1022,7 +1090,10 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
           >
             <div
               ref={messagesContainerRef}
-              className="flex-1 overflow-y-auto overflow-x-hidden space-y-4 no-scrollbar"
+              className={cn(
+                "flex-1 overflow-y-auto overflow-x-hidden space-y-4 no-scrollbar relative",
+                isLocked && "pointer-events-none opacity-75"
+              )}
             >
               <div
                 className={cn(
@@ -1037,6 +1108,7 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                   onActivateVersion={handleActivateVersion}
                   onRegenerate={handleRegenerateMessage}
                   onEdit={(id, content) => setEditingMessage({ id, content })}
+                  onCodeExtracted={handleCodeExtracted}
                 />
                 <div ref={messagesEndRef} className="h-4" />
               </div>
@@ -1045,21 +1117,21 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
             {/* Chat Input Area - Restored 'Square' design from screenshot */}
             <div
               className={cn(
-                "sticky bottom-0 z-20 transition-all duration-300",
+                "sticky bottom-0 z-20 transition-all duration-300 relative",
                 isPreviewOpen ? "bg-transparent" : "bg-[#FAF9F5]"
               )}
             >
               <div
                 className={cn(
                   "w-full",
-                  !isPreviewOpen && "max-w-3xl mx-auto"
+                  !isPreviewOpen && "max-w-3xl mx-auto relative"
                 )}
               >
                 <ChatInput
                   isAuthenticated={true}
                   projectId={project.id}
                   role={role}
-                  initialModel={project.selectedModel || "gemini"}
+                  initialModel={project.selectedModel || "gpt-4o"}
                   onNewMessage={handleNewMessage}
                   onDismissError={() => setPreviewError(null)}
                   previewError={previewError}
@@ -1074,13 +1146,14 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                   onCancelEdit={() => setEditingMessage(null)}
                   onSaveEdit={handleEditMessage}
                   sessionId="main"
+                  showBuildMode={showBuildMode}
                 />
               </div>
             </div>
           </div>
 
           {/* Resize handle — minimal and centered in the gap */}
-          {isPreviewOpen && !isSplitScreen && (
+          {/* {isPreviewOpen && !isSplitScreen && (
             <div
               className="group relative z-[60] flex items-center justify-center -mx-1"
               style={{ width: 12, cursor: 'col-resize' }}
@@ -1097,10 +1170,10 @@ export function ChatInterface({ project, initialMessages, initialUserMessage, us
                 )}
               />
             </div>
-          )}
+          )} */}
 
           {/* Workbench Panel "Island" */}
-          {(isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings") && (
+          {(isPreviewOpen || workbenchTab === "database" || workbenchTab === "settings" || workbenchTab === "browser") && (
             <div
               className={cn(
                 "flex-1 overflow-hidden bg-white dark:bg-[#111114] border border-[#dddcd8] dark:border-white/10 rounded-sm shadow-xs",

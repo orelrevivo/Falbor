@@ -30,28 +30,11 @@ const cards: Card[] = [
 export default function EuroSection() {
   return (
     <div className="bg-white text-white flex flex-col items-center justify-center px-4 py-12 rounded-xl">
-      {/* Top glowing icon */}
-      <div className="mb-6">
-        <button className="button" type="button">
-          <span className="print print--under">
-          </span>
-        </button>
-      </div>
-      {/* Main heading */}
-      <h1 className="text-4xl md:text-5xl font-bold text-center mb-4 text-black">
-        Enabling developers to build <br />
-        <span className="text-black/90 font-sans font-light">with next-level AI coding assistants</span>
-      </h1>
-
-      {/* Subheading */}
-      <p className="text-center text-black/80 max-w-[30%] mb-12">
-        Falbor handles the complex work, letting you focus on bringing your ideas to life rather than debugging.
-      </p>
 
       {/* Cards layout */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-6xl">
+      <div className="grid grid-cols-1 md:grid-cols-2 w-full max-w-6xl">
         {/* Top card with two-column layout */}
-        <div className="md:col-span-2 bg-white rounded-xl p-6 flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
+        <div className="md:col-span-2 bg-white rounded-xl flex flex-col md:flex-row items-center md:items-start space-y-4 md:space-y-0 md:space-x-6">
           {/* Left side: text */}
           <div className="flex-1">
             <h3 className="font-semibold text-lg mb-2 text-black/90">{cards[0].title}</h3>

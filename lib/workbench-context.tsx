@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react"
 
-export type WorkbenchTab = "preview" | "code" | "database" | "settings"
+export type WorkbenchTab = "preview" | "code" | "database" | "settings" | "browser"
 export type DatabaseTab = "tables" | "users" | "sql" | "emails" | "storage" | "functions" | "credentials" | "auth_providers" | "feedback" | "ai" | "usage"
 export type SettingsSection = "project-settings" | "ai-models" | "custom-knowledge" | "security" | "automations" | "publish-template" | "secrets" | "github" | "analytics" | "plugins" | "versions" | "sushi"
 
@@ -88,6 +88,8 @@ interface WorkbenchContextType {
   setIsPreviewFullScreen: (isFull: boolean) => void
   refreshCounter: number
   refreshPreview: () => void
+  isTerminalOpen: boolean
+  setIsTerminalOpen: (open: boolean) => void
 
   pluginRegistry: PluginRegistry
   registerPlugin: (plugin: any) => void
@@ -119,6 +121,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
   const [zoom, setZoom] = useState(100)
   const [isPreviewFullScreen, setIsPreviewFullScreen] = useState(false)
   const [refreshCounter, setRefreshCounter] = useState(0)
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false)
 
   const refreshPreview = () => setRefreshCounter(prev => prev + 1)
 
@@ -194,6 +197,7 @@ export function WorkbenchProvider({ children }: { children: React.ReactNode }) {
         zoom, setZoom,
         isPreviewFullScreen, setIsPreviewFullScreen,
         refreshCounter, refreshPreview,
+        isTerminalOpen, setIsTerminalOpen,
         pluginRegistry,
         registerPlugin: (plugin: any) => {
           if (typeof window !== "undefined" && (window as any).falbor?.registerPlugin) {

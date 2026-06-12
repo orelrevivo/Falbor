@@ -11,6 +11,9 @@ interface Project {
     owner_name?: string
     collaborator_count?: number
     preview_url?: string | null
+    is_public?: boolean
+    published_url?: string | null
+    is_favorite?: boolean
 }
 
 interface User {
@@ -30,13 +33,16 @@ export async function ProjectsGrid({ userId }: { userId: string }) {
       p.updated_at,
       p.user_id,
       true as is_owner,
+      p.is_public,
+      p.published_url,
       (SELECT COUNT(*) FROM project_collaborators pc 
        WHERE pc.project_id = p.id AND pc.status = 'accepted') as collaborator_count,
       (SELECT a.preview_url
        FROM artifacts a
        WHERE a.project_id = p.id
        ORDER BY a.created_at DESC
-       LIMIT 1) as preview_url
+       LIMIT 1) as preview_url,
+      EXISTS (SELECT 1 FROM favorites f WHERE f.project_id = p.id AND f.user_id = ${userId}) as is_favorite
     FROM projects p
     WHERE p.user_id = ${userId}
     ORDER BY p.updated_at DESC
@@ -50,11 +56,14 @@ export async function ProjectsGrid({ userId }: { userId: string }) {
       p.updated_at,
       p.user_id,
       false as is_owner,
+      p.is_public,
+      p.published_url,
       (SELECT a.preview_url
        FROM artifacts a
        WHERE a.project_id = p.id
        ORDER BY a.created_at DESC
-       LIMIT 1) as preview_url
+       LIMIT 1) as preview_url,
+      EXISTS (SELECT 1 FROM favorites f WHERE f.project_id = p.id AND f.user_id = ${userId}) as is_favorite
     FROM projects p
     JOIN project_collaborators pc ON p.id = pc.project_id
     WHERE pc.user_id = ${userId} AND pc.status = 'accepted'

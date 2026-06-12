@@ -44,7 +44,8 @@ import {
   Terminal,
   Package,
   History,
-  Rocket
+  Rocket,
+  Bot
 } from 'lucide-react';
 import { useWorkbench } from '@/lib/workbench-context';
 import { cn } from '@/lib/utils';
@@ -173,8 +174,6 @@ export default function SidebarProjects({
   const [recentsOpen, setRecentsOpen] = useState(true);
   const [favoritesOpen, setFavoritesOpen] = useState(true);
   const [githubDialogOpen, setGithubDialogOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchOpen, setSearchOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
@@ -235,6 +234,8 @@ export default function SidebarProjects({
   const pathname = usePathname();
   const isSettingsPage = pathname?.startsWith('/settings');
   const isChatPage = pathname?.startsWith('/chat/');
+  const activeProjectId = isChatPage ? pathname.split('/chat/')[1] : null;
+  const activeProject = projects.find(p => p.id === activeProjectId);
   const isHomePage = pathname === '/' || pathname === '';
   const isTemplatesPage = pathname?.startsWith('/templates');
   const isPricingPage = pathname?.startsWith('/pricing');
@@ -243,14 +244,12 @@ export default function SidebarProjects({
   const isProfilePage = pathname?.startsWith('/profile');
   const isAlwaysOpenPage = isHomePage || isTemplatesPage || isPricingPage || isProjectsPage || isSecurityPage || isProfilePage;
 
-  const effectiveHovered = isAlwaysOpenPage ? true : (isChatPage ? true : (isSettingsPage ? true : (isHovered || searchOpen || isActionMenuOpen || isProjectMenuOpen)));
+  const effectiveHovered = isAlwaysOpenPage ? true : (isChatPage ? true : (isSettingsPage ? true : (isHovered || isActionMenuOpen || isProjectMenuOpen)));
 
   const favoriteProjects = projects.filter(p => p.is_favorite);
   const recentProjects = projects.filter(p => !p.is_favorite);
 
-  const filteredProjects = searchQuery
-    ? projects.filter(p => p.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : [];
+
 
   const handleToggleFavorite = async (projectId: string, e: React.MouseEvent) => {
     e.preventDefault();
@@ -302,15 +301,15 @@ export default function SidebarProjects({
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         className={cn(
-          'fixed top-[-10px] left-0 h-screen transition-all duration-300 ease-in-out z-[100] flex flex-col bg-none',
-          isAlwaysOpenPage ? 'w-[180px] transition-none' : ((isChatPage || isSettingsPage) ? 'w-[160px] transition-none' : (effectiveHovered ? 'w-[180px]' : 'w-[64px]')),
+          'fixed top-[50px] left-0 h-[calc(100vh-50px)] transition-all duration-300 ease-in-out z-[100] flex flex-col bg-background border-r border-border',
+          (isAlwaysOpenPage || isChatPage || isSettingsPage) ? 'w-[200px] transition-none' : (effectiveHovered ? 'w-[180px]' : 'w-[64px]'),
           className
         )}
       >
         {isChatPage ? (
           <div className="flex flex-col h-full">
             {/* Chat Mode Sidebar Header */}
-            <div className="ml-2 mt-15 pb-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
+            <div className="ml-3 mt-3 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
               <Link href="/" className='flex flex-col gap-1'>
                 <Button className={cn(
                   "py-2 bg-transparent text-foreground border border-[#0099ff] bg-background BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
@@ -319,6 +318,46 @@ export default function SidebarProjects({
                   <span className="font-medium text-[13px]">Back</span>
                 </Button>
               </Link>
+
+              <div className="mt-2 mb-3">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button className="py-2 h-8 bg-transparent text-zinc-700 dark:text-white shadow-xs border border-border hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-sm flex items-center justify-between w-full px-3.5">
+                      <span className="flex items-center gap-2 truncate text-xs font-semibold">
+                        <img src="/icons/Home-icons/folder.png" alt="Folder" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                        <img src="/icons/Home-icons/folder-dark.png" alt="Folder" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
+                        <span className="truncate">{activeProject?.title || "Select an app"}</span>
+                      </span>
+                      <ChevronDown className="h-3 w-3 shrink-0 text-zinc-400" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-52 h-72 shadow-md border border-[#0099ff] z-[200]">                    <DropdownMenuItem onClick={() => router.push('/')} className="font-semibold text-[#0099ff]">
+                    <Plus className="mr-2 h-4 w-4" />
+                    New App
+                  </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {projects.length === 0 ? (
+                      <div className="text-center py-2 text-xs text-muted-foreground">
+                        No apps found
+                      </div>
+                    ) : (
+                      projects.map((project) => (
+                        <DropdownMenuItem
+                          key={project.id}
+                          onClick={() => router.push(`/chat/${project.id}`)}
+                          className={cn(
+                            "cursor-pointer flex items-center justify-between",
+                            project.id === activeProjectId && "bg-accent text-accent-foreground font-bold"
+                          )}
+                        >
+                          <span className="truncate text-xs">{project.title || "Untitled Project"}</span>
+                          {project.id === activeProjectId && <span className="w-2 h-2 rounded-full bg-[#0099ff]" />}
+                        </DropdownMenuItem>
+                      ))
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
 
               <Button
                 onClick={() => setActiveTab("preview")}
@@ -462,7 +501,7 @@ export default function SidebarProjects({
         ) : isSettingsPage ? (
           <div className="flex flex-col h-full">
             {/* Settings Mode Sidebar Header */}
-            <div className="ml-2 mt-15 pb-2 space-y-1 flex-1 overflow-y-auto no-scrollbar">
+            <div className="ml-3 mt-3 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
               <Link href="/" className='flex flex-col gap-1'>
                 <Button className={cn(
                   "py-2 bg-transparent text-foreground border border-[#0099ff] bg-background BackgroundStyleButton rounded-full flex items-center gap-2 justify-start w-full px-3.5 py-1",
@@ -512,11 +551,53 @@ export default function SidebarProjects({
         ) : (
           <div className="flex flex-col h-full">
             {/* Header Section */}
-            <div className="ml-3 mt-15 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
+            <div className="ml-3 mt-3 pb-2 space-y-1 pr-3 flex-1 overflow-y-auto no-scrollbar">
               {effectiveHovered && (
-                <div className="mb-2">
-                  <HomeTabs />
-                </div>
+                <>
+                  <div className="mb-2">
+                    <HomeTabs />
+                  </div>
+                  <div className="mb-3">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button className="py-2 h-8 bg-transparent text-zinc-700 dark:text-white shadow-xs border border-border hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-sm flex items-center justify-between w-full px-3.5">
+                          <span className="flex items-center gap-2 truncate text-xs font-semibold">
+                            <img src="/icons/Home-icons/folder.png" alt="Folder" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                            <img src="/icons/Home-icons/folder-dark.png" alt="Folder" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
+                            <span className="truncate">{activeProject?.title || "Select an app"}</span>
+                          </span>
+                          <ChevronDown className="h-3 w-3 shrink-0 text-zinc-400" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-52 h-72 shadow-md border border-[#0099ff] z-[200]">
+                        <DropdownMenuItem onClick={() => router.push('/')} className="font-semibold text-[#0099ff]">
+                          <Plus className="mr-2 h-4 w-4" />
+                          New App
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        {projects.length === 0 ? (
+                          <div className="text-center py-2 text-xs text-muted-foreground">
+                            No apps found
+                          </div>
+                        ) : (
+                          projects.map((project) => (
+                            <DropdownMenuItem
+                              key={project.id}
+                              onClick={() => router.push(`/chat/${project.id}`)}
+                              className={cn(
+                                "cursor-pointer flex items-center justify-between",
+                                project.id === activeProjectId && "bg-accent text-accent-foreground font-bold"
+                              )}
+                            >
+                              <span className="truncate text-xs">{project.title || "Untitled Project"}</span>
+                              {project.id === activeProjectId && <span className="w-2 h-2 rounded-full bg-[#0099ff]" />}
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </>
               )}
               {/* <div
                 className={cn(
@@ -566,71 +647,7 @@ export default function SidebarProjects({
                 )}
               </div> */}
 
-              {/* Search Section - Integrated Inline */}
-              <div className="space-y-1">
-                {!searchOpen ? (
-                  <Button
-                    onClick={() => setSearchOpen(true)}
-                    className={cn(
-                      "py-2 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
-                      "w-full px-3.5"
-                    )}
-                  >
-                    <Search className="h-4 w-4 shrink-0" />
-                    {effectiveHovered && <span className="font-medium text-[13px]">Search</span>}
-                  </Button>
-                ) : (
-                  <div className="">
-                    <div className="relative flex items-center">
-                      <Search className="absolute left-2.5 h-3.5 w-3.5 text-zinc-400" />
-                      <Input
-                        autoFocus
-                        placeholder="Search projects..."
-                        className="h-7 pl-8 pr-8 text-[13px] bg-[#2C2C30]"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Escape') setSearchOpen(false);
-                        }}
-                      />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="absolute right-1 h-6 w-6 hover:bg-zinc-200"
-                        onClick={() => {
-                          setSearchOpen(false);
-                          setSearchQuery("");
-                        }}
-                      >
-                        <ChevronRight className="h-3 w-3 rotate-90" />
-                      </Button>
-                    </div>
 
-                    {searchQuery && (
-                      <div className="max-h-[200px] overflow-y-auto px-1 pb-1 animate-in fade-in slide-in-from-top-1">
-                        {filteredProjects.length === 0 ? (
-                          <div className="py-3 text-center text-[11px] text-zinc-500 italic">No matches found</div>
-                        ) : (
-                          filteredProjects.map(project => (
-                            <Link
-                              key={project.id}
-                              href={`/chat/${project.id}`}
-                              onClick={() => {
-                                setSearchOpen(false);
-                                setSearchQuery("");
-                              }}
-                              className="flex items-center gap-2 p-2 hover:bg-zinc-100 rounded-md text-[12px] text-zinc-600 transition-colors"
-                            >
-                              <FileText className="h-3.5 w-3.5 text-zinc-400" />
-                              <span className="truncate">{project.title}</span>
-                            </Link>
-                          ))
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
 
               <Link href="/">
                 <Button
@@ -639,7 +656,8 @@ export default function SidebarProjects({
                     "w-full px-3.5"
                   )}
                 >
-                  <Home className="h-4 w-4 shrink-0" />
+                  <img src="/icons/Home-icons/home.png" alt="Home" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                  <img src="/icons/Home-icons/home-dark.png" alt="Home" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
                   {effectiveHovered && <span className="font-medium text-[13px]">Home</span>}
                 </Button>
               </Link>
@@ -647,13 +665,28 @@ export default function SidebarProjects({
                 <Button
                   className={cn(
                     "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
-                    "w-full px-3.5"
+                    "w-full px-3.5",
+                    pathname === "/projects" && "BackgroundStyleButton text-black dark:text-white font-bold"
                   )}
                 >
-                  <MessageSquare className="h-4 w-4 shrink-0" />
+                  <img src="/icons/Home-icons/chats.png" alt="Chats" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                  <img src="/icons/Home-icons/chats-dark.png" alt="Chats" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
                   {effectiveHovered && <span className="font-medium text-[13px]">Chats</span>}
                 </Button>
               </Link>
+              {/* <Link href="/agents">
+                <Button
+                  className={cn(
+                    "py-2 mb-1 bg-transparent text-zinc-700 dark:text-white/80 BackgroundStyle rounded-sm flex items-center gap-2 justify-start w-full px-3.5 py-1",
+                    "w-full px-3.5",
+                    pathname?.startsWith("/agents") && "BackgroundStyleButton text-zinc-900 dark:text-white font-bold"
+                  )}
+                >
+                  <img src="/icons/Home-icons/agents.png" alt="Agents" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                  <img src="/icons/Home-icons/agents-dark.png" alt="Agents" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
+                  {effectiveHovered && <span className="font-medium text-[13px]">Agents</span>}
+                </Button>
+              </Link> */}
 
               {effectiveHovered && (
                 <div className="">
@@ -664,7 +697,8 @@ export default function SidebarProjects({
                         "w-full px-3.5"
                       )}
                     >
-                      <BookTemplate className="h-4 w-4 shrink-0" />
+                      <img src="/icons/Home-icons/templates.png" alt="Templates" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                      <img src="/icons/Home-icons/templates-dark.png" alt="Templates" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
                       <span className="font-medium text-[13px]">Templates</span>
                     </Button>
                   </Link>
@@ -675,7 +709,8 @@ export default function SidebarProjects({
                         "w-full px-3.5"
                       )}
                     >
-                      <CreditCard className="h-4 w-4 shrink-0" />
+                      <img src="/icons/Home-icons/pricing.png" alt="Pricing" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                      <img src="/icons/Home-icons/pricing-dark.png" alt="Pricing" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
                       <span className="font-medium text-[13px]">Pricing</span>
                     </Button>
                   </Link>
@@ -686,50 +721,19 @@ export default function SidebarProjects({
                         "w-full px-3.5"
                       )}
                     >
-                      <Settings className="h-4 w-4 shrink-0" />
+                      <img src="/icons/Home-icons/setting.png" alt="Settings" className="h-4 w-4 shrink-0 object-contain dark:hidden" />
+                      <img src="/icons/Home-icons/setting-dark.png" alt="Settings" className="h-4 w-4 shrink-0 object-contain hidden dark:block" />
                       <span className="font-medium text-[13px]">Settings</span>
                     </Button>
                   </Link>
                 </div>
               )}
 
-              {/* Projects List Under Main Buttons */}
-              {effectiveHovered && (
-                <div className="mt-4 space-y-4">
-                  {favoriteProjects.length > 0 && (
-                    <div>
-                      <div className="px-2 py-1 text-[13px] text-gray-800 dark:text-white/80">Favorites</div>
-                      {favoriteProjects.map(project => (
-                        <ProjectItemRow
-                          key={project.id}
-                          project={project}
-                          handleToggleFavorite={handleToggleFavorite}
-                          handleCopyId={handleCopyId}
-                          handleDeleteProject={handleDeleteProject}
-                          setIsProjectMenuOpen={setIsProjectMenuOpen}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <div>
-                    <div className="px-2 py-1 text-[13px] text-gray-800 dark:text-white/80">Recent Projects</div>
-                    {recentProjects.map(project => (
-                      <ProjectItemRow
-                        key={project.id}
-                        project={project}
-                        handleToggleFavorite={handleToggleFavorite}
-                        handleCopyId={handleCopyId}
-                        handleDeleteProject={handleDeleteProject}
-                        setIsProjectMenuOpen={setIsProjectMenuOpen}
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Projects List Under Main Buttons - Removed to use the new premium Select an App dropdown */}
             </div>
 
             {/* Footer */}
-            {effectiveHovered && user && (
+            {/* {effectiveHovered && user && (
               <div className="mb-3 ml-3 pr-3">
                 <div onClick={() => openUserProfile()} className="flex items-center gap-3 px-2 py-2 rounded-lg BackgroundStyle hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer group">
                   {user.imageUrl ? <img src={user.imageUrl} alt="User" className="h-8 w-8 rounded-full object-cover shadow-sm" /> : <div className="h-8 w-8 rounded-full bg-zinc-500 flex items-center justify-center text-white text-xs font-bold">{user.firstName?.slice(0, 1)}</div>}
@@ -739,7 +743,7 @@ export default function SidebarProjects({
                   </div>
                 </div>
               </div>
-            )}
+            )} */}
           </div>
         )}
         <PluginsModal

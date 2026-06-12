@@ -6,7 +6,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from "react"
 import React from "react"
 import { createPortal } from "react-dom"
 
-import { Github, GitCommit, TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database, Zap } from "lucide-react"
+import { Github, GitCommit, TerminalIcon, Plus, Loader2, X, Loader, RefreshCw, ArrowLeft, ArrowRight, Smartphone, Tablet, Monitor, ChevronDown, Globe, Code2, Settings, Database, Zap, Laptop, Lock } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -428,6 +428,34 @@ export function CodePreview({
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const lastAutoSelectedPathRef = useRef<string | null>(null);
 
+  // autonomous virtual browser states
+  const [browserUrl, setBrowserUrl] = useState("https://www.google.com")
+  const [browserTitle, setBrowserTitle] = useState("Browser Viewport")
+  const [browserStep, setBrowserStep] = useState<"init" | "navigate" | "click" | "success">("success")
+  const [browserExtractedItem, setBrowserExtractedItem] = useState("")
+
+  useEffect(() => {
+    const handleSwitch = (e: any) => {
+      if (e.detail?.url) {
+        setBrowserUrl(e.detail.url)
+      }
+      if (e.detail?.title) {
+        setBrowserTitle(e.detail.title)
+      }
+      if (e.detail?.step) {
+        setBrowserStep(e.detail.step)
+      }
+      if (e.detail?.extractedItemName) {
+        setBrowserExtractedItem(e.detail.extractedItemName)
+      }
+      // Force switch to browser tab
+      setInternalTabValue("browser")
+      if (onTabChange) onTabChange("browser")
+    }
+    window.addEventListener("workbench:switch-to-browser", handleSwitch)
+    return () => window.removeEventListener("workbench:switch-to-browser", handleSwitch)
+  }, [onTabChange])
+
   // Preview toolbar state
   const [previewUrl, setPreviewUrl] = useState("/")
   const [urlHistory, setUrlHistory] = useState<string[]>(["/"])
@@ -678,7 +706,15 @@ export function CodePreview({
   const handleDownload = useCallback(async () => {
     const JSZip = (await import("jszip")).default
     const zip = new JSZip()
-    effectiveFiles.forEach((file) => zip.file(file.path, file.content))
+    effectiveFiles.forEach((file) => {
+      const maybeImageData = file.imageData || ""
+      const match = maybeImageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,(.+)$/i)
+      if (match) {
+        zip.file(file.path, match[2], { base64: true })
+        return
+      }
+      zip.file(file.path, file.content)
+    })
     const content = await zip.generateAsync({ type: "blob" })
     const url = URL.createObjectURL(content)
     const a = document.createElement("a")
@@ -890,14 +926,99 @@ export function CodePreview({
     />
   )
 
+  const renderBrowserTab = () => {
+    return (
+      <div className="h-full w-full flex flex-col bg-white dark:bg-[#1C1C1E] overflow-hidden">
+        {/* Browser Top Header */}
+        <div className="flex items-center justify-between px-4 py-2 bg-white dark:bg-[#2C2C2E]/80 select-none">
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-2.5 h-2.5 rounded-full bg-[#FF5F56]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-[#FFBD2E]" />
+            <div className="w-2.5 h-2.5 rounded-full bg-[#27C93F]" />
+          </div>
+
+          {/* Title Tab Indicator */}
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 font-semibold px-3 py-1 bg-white/75 dark:bg-[#1E1E20] rounded border border-black/5 dark:border-white/5 mx-3 truncate max-w-sm">
+            <Globe className="w-3.5 h-3.5 text-blue-500" />
+            <span className="truncate">{browserTitle}</span>
+          </div>
+
+          {/* Secure address bar representation */}
+          <div className="flex-1 flex items-center bg-white dark:bg-[#1E1E20] border border-black/5 dark:border-white/5 rounded-lg px-3 py-1 gap-2 text-xs font-mono text-gray-500 overflow-hidden text-ellipsis whitespace-nowrap">
+            <Lock className="w-3 h-3 text-emerald-500 shrink-0" />
+            <span className="truncate text-emerald-600 dark:text-emerald-400 select-all">{browserUrl}</span>
+          </div>
+        </div>
+
+        {/* Live Content Panel */}
+        <div className="relative flex-1 bg-white dark:bg-[#18181B]">
+          {browserUrl && (
+            <iframe
+              src={browserUrl}
+              className="w-full h-full border-none pointer-events-none"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+              title="Autonomous Live Browser Sandbox"
+            />
+          )}
+
+          {/* Virtual overlays synced with AI Step */}
+          {browserStep === "init" && (
+            <div className="absolute inset-0 bg-gray-950/95 text-green-400 font-mono text-xs p-6 flex flex-col items-center justify-center gap-4 z-30">
+              <Loader2 className="w-8 h-8 animate-spin text-green-400" />
+              <div className="flex flex-col items-center gap-1">
+                <span className="font-bold tracking-wider uppercase animate-pulse">Initializing Virtual Sandbox Node</span>
+                <span className="text-gray-500">Allocating sandboxed Chromium browser instance...</span>
+              </div>
+            </div>
+          )}
+
+          {browserStep === "navigate" && (
+            <div className="absolute inset-0 bg-white/80 dark:bg-black/80 flex flex-col items-center justify-center p-6 gap-4 z-30 backdrop-blur-xs">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-500 dark:text-blue-400 font-bold shadow-lg animate-pulse font-sans">
+                <Globe className="w-4 h-4 animate-spin" />
+                <span>Agent Loading Target Website...</span>
+              </div>
+              <div className="text-xs font-mono text-gray-500 truncate max-w-lg">{browserUrl}</div>
+            </div>
+          )}
+
+          {browserStep === "click" && (
+            <div className="absolute inset-0 pointer-events-none z-20">
+              <div className="absolute inset-0 bg-black/5" />
+
+              {/* Virtual AI Mouse Cursor */}
+              <div className="absolute top-1/2 left-1/3 flex flex-col gap-1 items-start text-blue-500 animate-[browserCursorMove_2.5s_infinite_ease-in-out]">
+                <svg className="w-6 h-6 drop-shadow-md fill-current" viewBox="0 0 24 24">
+                  <path d="M4 4l16 5.333-8.889 1.778L9.333 20z" />
+                </svg>
+                <div className="text-[9px] bg-blue-500 text-white font-bold py-0.5 px-2 rounded shadow-md leading-none whitespace-nowrap">
+                  Agent Clicking Target Button
+                </div>
+              </div>
+
+              <style>{`
+                @keyframes browserCursorMove {
+                  0% { transform: translate(0, 0); }
+                  70% { transform: translate(150px, -40px); }
+                  80% { transform: translate(150px, -40px) scale(0.85); }
+                  100% { transform: translate(150px, -40px); }
+                }
+              `}</style>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full flex flex-col w-full">
       <Tabs value={tabValue} onValueChange={handleTabChange} className="h-full flex flex-col">
         {typeof document !== 'undefined' && document.getElementById('header-left-portal') ? (
           createPortal(
             !isPreviewFullScreen ? (
-              <div className="flex items-center ml-10 mt-1.5">
-                <TabsList className="bg-white dark:bg-card border border-gray-200 dark:border-white/10 shadow-xs flex items-center">
+              <div className="flex items-center ml-[-10px] mt-0">
+                {/* <TabsList className="bg-white dark:bg-card border border-gray-200 dark:border-white/10 shadow-xs flex items-center">
                   <TabsTrigger
                     value="preview"
                     className="gap-2 text-black dark:text-white/80 data-[state=active]:text-[#0099ff] dark:data-[state=active]:text-white cursor-pointer"
@@ -920,6 +1041,22 @@ export function CodePreview({
                   >
                     <Database className="w-4 h-4" />
                   </TabsTrigger>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <TabsTrigger
+                        value="browser"
+                        disabled
+                        className="gap-2 text-black dark:text-white/80 data-[state=active]:text-[#0099ff] dark:data-[state=active]:text-white cursor-pointer"
+                      >
+                        Computer
+                        <Laptop className="w-4 h-4" />
+                      </TabsTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Coming soon!</p>
+                    </TooltipContent>
+                  </Tooltip>
+
                 </TabsList>
 
                 <button
@@ -932,7 +1069,7 @@ export function CodePreview({
                   onClick={() => handleTabChange("settings")}
                 >
                   <Settings className="w-4 h-4" />
-                </button>
+                </button> */}
 
                 {isGitHubImport && (
                   <div className="ml-4 flex items-center gap-2">
@@ -994,6 +1131,13 @@ export function CodePreview({
                 className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-pointer"
               >
                 <Database className="w-4 h-4" />
+              </TabsTrigger>
+
+              <TabsTrigger
+                value="browser"
+                className="gap-2 text-black data-[state=active]:text-[#0099ff] cursor-not-allowed pointer-events-none opacity-50"
+              >
+                <Laptop className="w-4 h-4" />
               </TabsTrigger>
 
 
@@ -1119,6 +1263,12 @@ export function CodePreview({
                   className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
                 >
                   <DatabasePanel projectId={projectId} filesOverride={filesOverride} onSendMessage={onSendMessage} />
+                </TabsContent>
+                <TabsContent
+                  value="browser"
+                  className="flex-1 m-0 flex overflow-hidden rounded-bl-lg"
+                >
+                  {renderBrowserTab()}
                 </TabsContent>
               </div>
             )}

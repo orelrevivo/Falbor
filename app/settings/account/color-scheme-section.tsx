@@ -25,7 +25,7 @@ export function ColorSchemeSection() {
             label: "Light",
             icon: Sun,
             description: "Default light theme",
-            preview: "bg-[#FAF9F5]"
+            preview: "bg-white"
         },
         {
             id: "dark",
@@ -66,10 +66,10 @@ export function ColorSchemeSection() {
                                 key={option.id}
                                 onClick={() => setTheme(option.id)}
                                 className={cn(
-                                    "flex flex-col items-start p-4 rounded-xl border-2 text-left transition-all duration-200 group cursor-pointer",
-                                    isActive 
-                                        ? "border-[#0099ff] bg-[#0099ff]/5 shadow-sm" 
-                                        : "border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm dark:bg-[#1E1E21] dark:border-gray-800"
+                                    "flex flex-col items-start p-4 rounded-xl border text-left transition-all duration-200 group cursor-pointer",
+                                    isActive
+                                        ? "border-[#0099ff] bg-[#0099ff]/5 shadow-sm"
+                                        : "border-gray-200 bg-white hover:border-gray-200 dark:bg-[#1E1E21] dark:border-gray-800"
                                 )}
                             >
                                 <div className="flex items-center justify-between w-full mb-3">
@@ -77,10 +77,10 @@ export function ColorSchemeSection() {
                                         "p-2 rounded-lg transition-colors",
                                         isActive ? "bg-[#0099ff] text-white" : "bg-gray-100 text-gray-500 dark:bg-gray-800"
                                     )}>
-                                        <Icon className="w-5 h-5" />
+                                        <Icon className="w-4 h-4" />
                                     </div>
                                     <div className={cn(
-                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all",
+                                        "w-4 h-4 rounded-full border-1 flex items-center justify-center transition-all",
                                         isActive ? "bg-[#0099ff] border-[#0099ff]" : "border-gray-200 dark:border-gray-700"
                                     )}>
                                         {isActive && <div className="w-2 h-2 rounded-full bg-white" />}
@@ -95,10 +95,10 @@ export function ColorSchemeSection() {
                                         {option.description}
                                     </span>
                                 </div>
-                                
+
                                 {/* Theme Preview Square */}
                                 <div className={cn(
-                                    "mt-4 w-full h-12 rounded-lg border border-gray-100 dark:border-gray-800",
+                                    "mt-4 w-full h-12 rounded-lg",
                                     option.preview
                                 )} />
                             </button>

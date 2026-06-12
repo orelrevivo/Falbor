@@ -140,8 +140,9 @@ function PricingContent() {
       <div className="container mx-auto py-10 px-4">
 
         {/* Title */}
-        <h1 className="text-3xl font-bold mb-12 text-center text-black">
-          <span className="text-black px-2 rounded-md BackgroundStyleButton">Upgrade</span> Plans &amp; Add Balance
+        <h1 className="text-3xl mb-12 text-center text-black">
+          <span className="text-black font-bold px-2 rounded-md BackgroundStyleButton">Upgrade</span> Plans &amp; Add Balance
+          <span className="text-sm text-gray-500 block mt-2">You cant now cancel your subscription.</span>
         </h1>
 
         {/* CONNECTED PRICING TABLE */}

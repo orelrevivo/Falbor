@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useUser, useClerk, useAuth } from "@clerk/nextjs"
 import { useState, useRef, useEffect, useCallback } from "react"
+import { createPortal } from "react-dom"
 import {
   Copy,
   ExternalLink,
@@ -37,8 +38,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { PayPalButtons, PayPalScriptProvider, usePayPalScriptReducer } from "@paypal/react-paypal-js"
 import { useWorkbench } from "@/lib/workbench-context"
 import * as LucideIcons from "lucide-react"
-import { PreviewToolbar } from "@/components/workbench/preview-toolbar"
-import { DEVICE_PRESETS } from "@/components/workbench/device-presets"
+
 
 const DynamicIcon = ({ name, className }: { name: string; className?: string }) => {
   const IconComponent = (LucideIcons as any)[name] || LucideIcons.Zap
@@ -692,115 +692,135 @@ export function Navbar({
   // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <nav className="z-[9999] w-full">
+    <nav className="relative z-[9999] w-full">
       <div className="flex h-10 items-center justify-end">
 
-        {/* In fullscreen: show only the PreviewToolbar, centered */}
-        {isPreviewFullScreen ? (
-          <div className="flex-1 flex justify-center px-4">
-            <div className="max-w-6xl w-full">
-              <PreviewToolbar
-                url={previewUrl}
-                onRefresh={refreshPreview}
-                selectedDevice={selectedDevice}
-                onDeviceChange={setSelectedDevice}
-                zoom={zoom}
-                onZoomChange={setZoom}
-                isFullScreen={isPreviewFullScreen}
-                onToggleFullScreen={() => setIsPreviewFullScreen(!isPreviewFullScreen)}
-                pages={previewPages}
-                onToggleTerminal={onToggleTerminal}
-              />
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 w-full">
-            {activeTab === "preview" && (
-              <div className="flex-1 flex justify-center px-4">
-                <div className="max-w-6xl w-full">
-                  <PreviewToolbar
-                    url={previewUrl}
-                    onRefresh={refreshPreview}
-                    selectedDevice={selectedDevice}
-                    onDeviceChange={setSelectedDevice}
-                    zoom={zoom}
-                    onZoomChange={setZoom}
-                    isFullScreen={isPreviewFullScreen}
-                    onToggleFullScreen={() => setIsPreviewFullScreen(!isPreviewFullScreen)}
-                    pages={previewPages}
-                    onToggleTerminal={onToggleTerminal}
-                  />
-                </div>
-              </div>
-            )}
-
-            {user ? (
+        {!isPreviewFullScreen && (user ? (
               <>
-                {/* Project Dropdown */}
-                <div className="relative">
-                  <Button
-                    onClick={() => setOpenDropdown(openDropdown === "project" ? null : "project")}
-                    variant="link"
-                    size="sm"
-                    className="p-0 h-auto text-black/70 dark:text-white/80 transition-colors flex items-center gap-1 cursor-pointer"
-                  >
-                    <span className="font-medium max-w-[150px] truncate">
-                      {projectName || "Untitled Project"}
-                    </span>
-                    <ChevronDown className={cn("w-4 h-4 ", openDropdown === "project" && "")} />
-                  </Button>
+                {/* Profile button portaled into Shell's navbar-profile-portal */}
+                {typeof document !== 'undefined' && document.getElementById('navbar-profile-portal') ? createPortal(
+                  <div className="relative">
+                    <Button
+                      onClick={() => setOpenDropdown(openDropdown === "profile" ? null : "profile")}
+                      variant="link"
+                      size="sm"
+                      className="p-0 h-auto text-black/70 dark:text-white/80 transition-colors flex items-center gap-1 cursor-pointer"
+                    >
+                      <span className="font-medium max-w-[150px] truncate">
+                        {projectName || "Untitled Project"}
+                      </span>
+                      <ChevronDown className={cn("w-4 h-4 ", openDropdown === "project" && "")} />
+                    </Button>
 
-                  <AnimatePresence>
-                    {openDropdown === "project" && (
-                      <DropdownPanel className="w-56 overflow-hidden">
-                        <div className="p-1.5 flex flex-col gap-1">
-                          {/* Download */}
-                          <button
-                            onClick={() => {
-                              handleDownload()
-                              closeDropdown()
-                            }}
-                            className="flex items-center gap-2 px-3 py-2 text-sm text-black dark:text-white/90 hover:bg-[#f5f5f5] dark:hover:bg-white/10 rounded transition-colors w-full text-left"
-                          >
-                            <Download className="w-4 h-4" />
-                            Download
-                          </button>
+                    <AnimatePresence>
+                      {openDropdown === "profile" && (
+                        <>
+                          <DropdownPanel className="w-60">
+                            <div className="flex flex-col p-1 gap-0.5">
 
-                          {/* Split Screen */}
-                          {onEnterSplit && !isSplitScreen && (
-                            <button
-                              onClick={() => {
-                                onEnterSplit()
-                                closeDropdown()
-                              }}
-                              className="flex items-center gap-2 px-3 py-2 text-sm text-black dark:text-white/90 hover:bg-[#f5f5f5] dark:hover:bg-white/10 rounded transition-colors w-full text-left"
-                            >
-                              <AppWindow className="w-4 h-4" />
-                              Split screen
-                            </button>
-                          )}
+                              {/* Credits */}
+                              {creditsData && (
+                                <div className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors">
+                                  <span>Next credits in</span>
 
-                          {/* Terminal */}
-                          {onToggleTerminal && (
-                            <button
-                              onClick={() => {
-                                onToggleTerminal()
-                                closeDropdown()
-                              }}
-                              className={cn(
-                                "flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors w-full text-left",
-                                isTerminalOpen ? "bg-[#d6d4ce] dark:bg-white/10 text-black dark:text-white" : "text-black dark:text-white/90 hover:bg-[#f5f5f5] dark:hover:bg-white/10"
+                                  <span className="font-mono ml-auto">
+                                    {Math.floor(timeLeft / 60)}:
+                                    {(timeLeft % 60).toString().padStart(2, "0")}
+                                  </span>
+                                </div>
                               )}
-                            >
-                              <TerminalIcon className="w-4 h-4" />
-                              Terminal
-                            </button>
-                          )}
-                        </div>
-                      </DropdownPanel>
-                    )}
-                  </AnimatePresence>
-                </div>
+
+                              {/* Download */}
+                              <button
+                                onClick={() => {
+                                  handleDownload()
+                                  closeDropdown()
+                                }}
+                                className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                              >
+                                <Download className="w-4 h-4 shrink-0" />
+                                <span>Download</span>
+                              </button>
+
+                              {/* Split Screen */}
+                              {onEnterSplit && !isSplitScreen && (
+                                <button
+                                  onClick={() => {
+                                    onEnterSplit()
+                                    closeDropdown()
+                                  }}
+                                  className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                                >
+                                  <AppWindow className="w-4 h-4 shrink-0" />
+                                  <span>Split screen</span>
+                                </button>
+                              )}
+
+                              {/* Projects */}
+                              <Link href="/projects">
+                                <button className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer">
+                                  <span>Projects</span>
+                                </button>
+                              </Link>
+
+                              {/* Pricing */}
+                              <Link href="/pricing">
+                                <button className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer">
+                                  <span>Pricing</span>
+                                </button>
+                              </Link>
+
+                              {/* Templates */}
+                              <Link href="/templates">
+                                <button className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer">
+                                  <span>Templates</span>
+                                </button>
+                              </Link>
+
+                              {/* Terms */}
+                              <Link href="/legal/terms">
+                                <button className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer">
+                                  <span>Terms of Service</span>
+                                </button>
+                              </Link>
+
+                              {/* Privacy */}
+                              <Link href="/legal/privacy">
+                                <button className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer">
+                                  <span>Privacy Policy</span>
+                                </button>
+                              </Link>
+
+                              {/* Manage Account */}
+                              <button
+                                onClick={() => {
+                                  clerk.openUserProfile()
+                                  setOpenDropdown(null)
+                                }}
+                                className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                              >
+                                <span>Manage Account</span>
+                              </button>
+
+                              {/* Logout */}
+                              <button
+                                onClick={() => {
+                                  clerk.signOut()
+                                  setOpenDropdown(null)
+                                }}
+                                className="flex items-center gap-3 w-full px-3 py-2 text-sm text-black/80 dark:text-white/90 rounded-md hover:bg-gray-50 dark:hover:bg-[#2C2C30] transition-colors cursor-pointer"
+                              >
+                                <span>Logout</span>
+                              </button>
+
+                            </div>
+                          </DropdownPanel>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>,
+                  document.getElementById('navbar-profile-portal')!
+                ) : null}
 
                 {/* Share */}
                 {isAdmin && (
@@ -877,7 +897,7 @@ export function Navbar({
                             isAdmin ? "cursor-pointer" : "cursor-not-allowed opacity-70",
                             isPublishing
                               ? "bg-[#0099ff]/20 text-[#0099ff] cursor-not-allowed"
-                              : "bg-[#e7e5df] dark:bg-[#2C2C30] text-black/80 dark:text-white dark:hover:text-white",
+                              : "bg-[#0099ff]/20 dark:bg-[#2C2C30] text-black/80 dark:text-white dark:hover:text-white",
                             !isAdmin && "relative"
                           )}
                           disabled={isPublishing}
@@ -949,7 +969,7 @@ export function Navbar({
                                                 className={cn(
                                                   "flex items-center gap-2 min-w-0 hover:underline",
                                                   !deployment?.deploymentUrl && "opacity-50 pointer-events-none"
-                                                )}
+            )}
                                               >
                                                 <Globe className="w-4 h-4 text-gray-600 dark:text-white/70 flex-shrink-0" />
                                                 <p className="text-sm font-medium truncate min-w-0 dark:text-white/90">
@@ -1470,7 +1490,7 @@ export function Navbar({
 
                 {/* Profile */}
                 <div className="relative">
-                  <button
+                  {/* <button
                     onClick={() => setOpenDropdown(openDropdown === "profile" ? null : "profile")}
                     className="w-6 h-6 rounded-full overflow-hidden focus:outline-none cursor-pointer border border-transparent dark:border-white/10"
                   >
@@ -1479,93 +1499,7 @@ export function Navbar({
                       alt={user.firstName || "User"}
                       className="w-full h-full object-cover"
                     />
-                  </button>
-
-                  <AnimatePresence>
-                    {openDropdown === "profile" && (
-                      <>
-                        {/* <Backdrop onClick={closeDropdown} /> */}
-                        <DropdownPanel className="w-60">
-                          <div className="flex flex-col p-1">
-                            {creditsData && (
-                              <div className="hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm p-1 flex items-center gap-3 w-full text-sm px-2 py-1.5 text-black/80 dark:text-white/90">
-                                Next credits in{" "}
-                                <span className="font-mono">
-                                  {Math.floor(timeLeft / 60)}:
-                                  {(timeLeft % 60).toString().padStart(2, "0")}
-                                </span>
-                              </div>
-                            )}
-
-                            <Link
-                              href="/projects"
-                              className="hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm p-1 cursor-pointer transition-colors"
-                            >
-                              <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 dark:text-white/90 rounded">
-                                Projects
-                              </button>
-                            </Link>
-
-                            <Link
-                              href="/pricing"
-                              className="hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm p-1 cursor-pointer transition-colors"
-                            >
-                              <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 dark:text-white/90 rounded">
-                                Pricing
-                              </button>
-                            </Link>
-
-                            <Link
-                              href="/templates"
-                              className="hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm p-1 cursor-pointer transition-colors"
-                            >
-                              <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 dark:text-white/90 rounded">
-                                Templates
-                              </button>
-                            </Link>
-
-                            <Link
-                              href="/legal/terms"
-                              className="hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm p-1 cursor-pointer transition-colors"
-                            >
-                              <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 dark:text-white/90 rounded">
-                                Terms of Service
-                              </button>
-                            </Link>
-
-                            <Link
-                              href="/legal/privacy"
-                              className="hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm p-1 cursor-pointer transition-colors"
-                            >
-                              <button className="flex items-center gap-3 cursor-pointer w-full text-sm px-2 py-0.5 text-black/80 dark:text-white/90 rounded">
-                                Privacy Policy
-                              </button>
-                            </Link>
-
-                            <button
-                              onClick={() => {
-                                clerk.openUserProfile()
-                                setOpenDropdown(null)
-                              }}
-                              className="flex items-center gap-3 w-full text-sm px-2 p-1 py-1.5 hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm text-black/80 dark:text-white/90 cursor-pointer transition-colors"
-                            >
-                              Manage Account
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                clerk.signOut()
-                                setOpenDropdown(null)
-                              }}
-                              className="flex items-center gap-3 w-full text-sm px-2 py-1.5 p-1 text-black/80 dark:text-white/90 hover:bg-gray-50 dark:hover:bg-[#2C2C30] rounded-sm cursor-pointer transition-colors"
-                            >
-                              Logout
-                            </button>
-                          </div>
-                        </DropdownPanel>
-                      </>
-                    )}
-                  </AnimatePresence>
+                  </button> */}
                 </div>
               </>
             ) : (
@@ -1581,9 +1515,7 @@ export function Navbar({
                   </button>
                 </Link>
               </>
-            )}
-          </div>
-        )}
+            ))}
       </div>
     </nav>
   )

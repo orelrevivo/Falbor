@@ -88,14 +88,14 @@ export function NotificationSettings({ initialProfile }: { initialProfile?: User
                     <div className="flex flex-col space-y-1.5 flex-1">
                         <span className="text-sm font-medium leading-none flex items-center gap-2">
                             {soundEnabled ? (
-                                <Volume2 className="w-4 h-4 text-green-500" />
+                                <Volume2 className="w-4 h-4 text-[#0099ff]" />
                             ) : (
                                 <VolumeX className="w-4 h-4 text-gray-400" />
                             )}
                             Completion Sound
                         </span>
                         <span className="text-sm text-muted-foreground">
-                            Play a notification sound when the AI finishes generating code and responses. 
+                            Play a notification sound when the AI finishes generating code and responses.
                             You&apos;ll hear a &quot;ding&quot; sound each time a response is complete.
                         </span>
                         <span className="text-xs text-muted-foreground/70">
@@ -103,24 +103,22 @@ export function NotificationSettings({ initialProfile }: { initialProfile?: User
                         </span>
                     </div>
                     {/* On/Off Toggle Square */}
-                    <div className="flex rounded-lg border border-gray-200 overflow-hidden shadow-sm h-9">
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden h-9 p-1">
                         <button
                             onClick={() => toggleSound(false)}
-                            className={`px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
-                                !soundEnabled
-                                    ? "bg-gray-900 text-white"
-                                    : "bg-white text-gray-400 hover:bg-gray-50"
-                            }`}
+                            className={`px-4 rounded-sm text-xs font-semibold cursor-pointer ${!soundEnabled
+                                ? "bg-gray-200 text-gray-400"
+                                : "bg-white text-gray-400 hover:bg-gray-50"
+                                }`}
                         >
                             Off
                         </button>
                         <button
                             onClick={() => toggleSound(true)}
-                            className={`px-4 py-2 text-xs font-semibold transition-all cursor-pointer ${
-                                soundEnabled
-                                    ? "bg-green-500 text-white"
-                                    : "bg-white text-gray-400 hover:bg-gray-50"
-                            }`}
+                            className={`px-4 rounded-sm text-xs font-semibold cursor-pointer ${soundEnabled
+                                ? "bg-[#0099ff] text-white"
+                                : "bg-white text-gray-400 hover:bg-gray-50"
+                                }`}
                         >
                             On
                         </button>

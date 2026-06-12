@@ -29,6 +29,9 @@ export const projects = pgTable("projects", {
     .default(null),
   sandboxId: text("sandbox_id"),
   selectedModel: text("selected_model").default("gemini").notNull(),
+  gameMakerEnabled: boolean("game_maker_enabled").default(false).notNull(),
+  gameImageProvider: text("game_image_provider").default("openai").notNull(),
+  gameImageModel: text("game_image_model").default("gpt-image-1").notNull(),
   activeMessageId: uuid("active_message_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -959,3 +962,23 @@ export type NewPlugin = typeof plugins.$inferInsert
 
 export type ProjectSushiType = typeof projectSushi.$inferSelect
 export type NewProjectSushiType = typeof projectSushi.$inferInsert
+
+// ====================
+// AGENTS TABLES
+// ====================
+
+export const agents = pgTable("agents", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: text("status").notNull().default("in_progress"), // 'in_progress' | 'completed'
+  currentStep: text("current_step").default("setup").notNull(),
+  config: jsonb("config").$type<Record<string, any>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+})
+
+export type Agent = typeof agents.$inferSelect
+export type NewAgent = typeof agents.$inferInsert
+

@@ -72,5 +72,5 @@ export default async function ChatPage({
 
   const role = isOwner ? "admin" : (collaborator[0]?.role || "viewer")
 
-  return <ChatInterface project={{ ...project, role } as any} initialMessages={projectMessages as any} initialUserMessage={initialUserMessage} userProfile={userProfile as any} />
+  return <ChatInterface project={{ ...project, role } as any} initialMessages={projectMessages as any} initialUserMessage={initialUserMessage} userProfile={userProfile as any} showBuildMode={false} />
 }

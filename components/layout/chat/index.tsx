@@ -1,11 +1,11 @@
 "use client"
 import type React from "react"
-import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from "react"
+import { useState, useRef, useEffect, forwardRef, useImperativeHandle, Fragment } from "react"
 import { useRouter } from "next/navigation"
 import { useUser } from "@clerk/nextjs"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { Languages, Mic, AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2, Wrench, Copy as CopyIcon, ExternalLink } from "lucide-react"
+import { Languages, Mic, AlertCircle, Palette, StarsIcon, Crown, Lock, Database, ArrowUp, AudioWaveform, AudioLinesIcon, Globe, Rocket, Zap, Cpu, Link2, Wrench, Copy as CopyIcon, ExternalLink, Github, Gamepad2 } from "lucide-react"
 import ReactCountryFlag from "react-country-flag"
 
 
@@ -30,7 +30,8 @@ import {
   StopCircle,
   Bug,
   Scan,
-  Terminal
+  Terminal,
+  MessageSquare
 } from "lucide-react"
 import { Link1Icon } from "@radix-ui/react-icons"
 import { Switch } from "@/components/ui/switch"
@@ -46,6 +47,7 @@ import { Badge } from "@/components/ui/badge"
 import { SupabaseConnectModal } from "@/components/models/supabase-connect-modal"
 import { GoogleDriveModal } from "@/components/models/google-drive-modal"
 import { GoogleMapsModal } from "@/components/models/google-maps-modal"
+import { GithubCloneDialog } from "@/components/models/github-clone"
 import { getMcpConnections } from "@/app/actions/mcp"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -166,6 +168,10 @@ interface ChatInputProps {
   onNewMessage?: (message: Message) => void
   placeholder?: string
   initialModel?: string
+  agentModel?: string
+  agentId?: string
+  agentGameImageProvider?: "openai" | "stability"
+  agentGameImageModel?: string
   connected?: boolean
   onCloseIdeas?: () => void
   isAutomated?: boolean
@@ -186,6 +192,7 @@ interface ChatInputProps {
   onCancelEdit?: () => void
   onSaveEdit?: (id: string, content: string) => void
   role?: "viewer" | "editor" | "admin"
+  showBuildMode?: boolean
 }
 interface BalanceData {
   subscriptionTier: string
@@ -205,6 +212,7 @@ interface ModelOption {
   description?: string
   shortDescription?: string
   soon?: boolean
+  tier?: "standard" | "pro" | "teams"
   subModels?: { id: string; label: string; iconUrl: string; color: string }[]
 }
 type DesignConfig = {
@@ -303,30 +311,42 @@ const EMAIL_TEMPLATES = [
   { id: "reauthentication", label: "Reauthentication" },
 ]
 const MODEL_OPTIONS: ModelOption[] = [
-  {
-    id: "claude-opus-4.6-fast",
-    label: "Falbor 2.0 Max",
-    shortDescription: "Teams engines",
-    isPremium: true,
-    iconUrl: "/icons/FalmodelsMAX.png",
-    description: "Fast mode consumes tokens significantly faster than other models. Monitor your usage closely."
-  },
-  {
-    id: "gpt-5",
-    label: "Falbor 1.0 Pro",
-    shortDescription: "Pro subscribers",
-    isPremium: true,
-    iconUrl: "/icons/FalmodelsMed.png",
-    description: "OpenAI's state-of-the-art flagship model with unmatched reasoning and coding intelligence."
-  },
-  {
-    id: "gpt-4o-mini",
-    label: "Falbor 1.0",
-    shortDescription: "Free engines",
-    isPremium: false,
-    iconUrl: "/icons/Falmodels.png",
-    description: "A fast, simple, and affordable model—expandable for complex tasks."
-  },
+  // FREE
+  { id: "gpt-4o", label: "GPT-4o", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "gpt-4o-mini", label: "GPT-4o Mini", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "gpt-3.5-turbo", label: "GPT-3.5 Turbo", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "deepseek-chat", label: "DeepSeek Chat", isPremium: false, iconUrl: "/icons/deepseek.png" },
+  { id: "deepseek-reasoner", label: "DeepSeek Reasoner", isPremium: false, iconUrl: "/icons/deepseek.png" },
+
+  // STANDARD
+  { id: "gpt-5-standard", label: "GPT-5", tier: "standard", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5-mini-standard", label: "GPT-5 Mini", tier: "standard", isPremium: false, iconUrl: "/icons/openai.png" },
+  { id: "claude-sonnet-4-20250514", label: "Claude Sonnet 4", tier: "standard", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "claude-opus-4-20250514", label: "Claude Opus 4", tier: "standard", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "claude-opus-4-1-20250805", label: "Claude Opus 4.1", tier: "standard", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "claude-sonnet-4-5-20250929", label: "Claude Sonnet 4.5", tier: "standard", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "claude-haiku-4-5-20251015", label: "Claude Haiku 4.5", tier: "standard", isPremium: false, iconUrl: "/icons/claude.png" },
+  { id: "deepseek-v3.2-standard", label: "DeepSeek V3.2", tier: "standard", isPremium: false, iconUrl: "/icons/deepseek.png" },
+  { id: "deepseek-v3-standard", label: "DeepSeek V3", tier: "standard", isPremium: false, iconUrl: "/icons/deepseek.png" },
+  { id: "deepseek-r1-standard", label: "DeepSeek R1", tier: "standard", isPremium: false, iconUrl: "/icons/deepseek.png" },
+  { id: "deepseek-coder-standard", label: "DeepSeek Coder", tier: "standard", isPremium: false, iconUrl: "/icons/deepseek.png" },
+  { id: "deepseek-math-7b-standard", label: "DeepSeek Math 7B", tier: "standard", isPremium: false, iconUrl: "/icons/deepseek.png" },
+
+  // PRO
+  { id: "gpt-5.2-pro", label: "GPT-5.2", tier: "pro", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5.3-codex-pro", label: "GPT-5.3 Codex", tier: "pro", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5.4-pro", label: "GPT-5.4", tier: "pro", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "gpt-5-codex-pro", label: "GPT-5 Codex", tier: "pro", isPremium: true, iconUrl: "/icons/openai.png" },
+  { id: "claude-opus-4-5-20251101", label: "Claude Opus 4.5", tier: "pro", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-sonnet-4-6", label: "Claude Sonnet 4.6", tier: "pro", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "deepseek-janus-pro-pro", label: "DeepSeek Janus Pro", tier: "pro", isPremium: true, iconUrl: "/icons/deepseek.png" },
+  { id: "deepseek-vl2-pro", label: "DeepSeek VL2", tier: "pro", isPremium: true, iconUrl: "/icons/deepseek.png" },
+
+  // TEAMS
+  { id: "claude-opus-4-6", label: "Claude Opus 4.6", tier: "teams", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-opus-4-7", label: "Claude Opus 4.7", tier: "teams", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-opus-4-8", label: "Claude Opus 4.8", tier: "teams", isPremium: true, iconUrl: "/icons/claude.png" },
+  { id: "claude-fable-5", label: "Claude Fable 5", tier: "teams", isPremium: true, iconUrl: "/icons/claude.png" },
 ]
 
 const formatFileSize = (bytes: number) => {
@@ -458,8 +478,12 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     isAuthenticated,
     projectId,
     onNewMessage,
-    placeholder = "Ask anything... to get started",
-    initialModel = "gpt-5",
+    placeholder = "Ask me to build your website..",
+    initialModel = "",
+    agentModel,
+    agentId,
+    agentGameImageProvider,
+    agentGameImageModel,
     connected = false,
     onCloseIdeas,
     isAutomated = false,
@@ -474,7 +498,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
     onCancelEdit,
     onSaveEdit,
     sessionId = "main",
-    role = "admin"
+    role = "admin",
+    showBuildMode = true
   },
   ref,
 ) {
@@ -514,7 +539,13 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [editedContent, setEditedContent] = useState<string>("")
   const [isEditing, setIsEditing] = useState(false)
   const [isListening, setIsListening] = useState(false)
-  const [selectedModel, setSelectedModel] = useState<string>(initialModel)
+  const [selectedModel, setSelectedModel] = useState<string>(agentModel || initialModel)
+
+  useEffect(() => {
+    if (agentModel) {
+      setSelectedModel(agentModel)
+    }
+  }, [agentModel])
 
   // Only enforce tier restrictions when balance data loads or on mount
   useEffect(() => {
@@ -547,6 +578,8 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [selectedDesign, setSelectedDesign] = useState<string | null>(null)
   const [designConfig, setDesignConfig] = useState<DesignConfig | null>(null)
   const [isDesignActive, setIsDesignActive] = useState(false)
+  const [isGameMakerMode, setIsGameMakerMode] = useState(false)
+  const [buildMode, setBuildMode] = useState<"mvp" | "fullstack">("mvp")
   const [tempConfig, setTempConfig] = useState<DesignConfig>(designPresets["Base"])
   const [showPremiumAlert, setShowPremiumAlert] = useState(false)
   const [showLoginDialog, setShowLoginDialog] = useState(false)
@@ -556,6 +589,25 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [isProvisioning, setIsProvisioning] = useState(false)
   const [credentialsSaved, setCredentialsSaved] = useState(false)
   const [mounted, setMounted] = useState(false)
+
+  // Referenced Chat State
+  const [referencedChat, setReferencedChat] = useState<{ id: string, title: string } | null>(null)
+  const [showChatSelector, setShowChatSelector] = useState(false)
+  const [recentChats, setRecentChats] = useState<{ id: string, title: string }[]>([])
+
+  const fetchRecentChats = async () => {
+    try {
+      const res = await fetch('/api/projects')
+      if (res.ok) {
+        const data = await res.json()
+        setRecentChats(data.projects.map((p: any) => ({ id: p.id, title: p.title || 'Untitled Project' })))
+      }
+    } catch (err) {
+      console.error("Failed to fetch recent chats", err)
+    }
+  }
+
+  const overlayRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -609,6 +661,7 @@ const ChatInputImpl = forwardRef<ChatInputRef, ChatInputProps>(function ChatInpu
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [showCloneModal, setShowCloneModal] = useState(false)
   const [clonedUrl, setClonedUrl] = useState("")
+  const [showGithubCloneModal, setShowGithubCloneModal] = useState(false)
   const [showTranslateModal, setShowTranslateModal] = useState(false)
   const [translateStep, setTranslateStep] = useState<'record' | 'language' | 'processing'>('record')
   const [recordedTranscript, setRecordedTranscript] = useState("")
@@ -802,6 +855,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
   const filesKey = projectId ? `chat-files-${projectId}` : "chat-files-global"
   const pastedKey = projectId ? `chat-pasted-${projectId}` : "chat-pasted-global"
   const designKey = "chat-design-config"
+  const gameMakerKey = projectId ? `chat-game-maker-${projectId}` : "chat-game-maker-global"
   const modelKey = projectId ? `chat-selected-model-${projectId}` : "chat-selected-model-global"
   const frameworkKey = "chat-selected-framework-global"
   // Load saved connection from server on mount
@@ -879,7 +933,60 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     if (savedPasted) {
       setPastedContents(JSON.parse(savedPasted))
     }
-  }, [draftKey, filesKey, pastedKey])
+    const savedGameMaker = localStorage.getItem(gameMakerKey)
+    if (savedGameMaker) {
+      setIsGameMakerMode(savedGameMaker === "1")
+    }
+  }, [draftKey, filesKey, pastedKey, gameMakerKey])
+
+  useEffect(() => {
+    localStorage.setItem(gameMakerKey, isGameMakerMode ? "1" : "0")
+  }, [gameMakerKey, isGameMakerMode])
+
+  // Load persisted Game Maker mode from server when opening a chat by project ID
+  useEffect(() => {
+    if (!projectId) return
+    let cancelled = false
+      ; (async () => {
+        try {
+          // Only override local state from server if localStorage doesn't already have a value.
+          const local = (() => {
+            try { return localStorage.getItem(gameMakerKey) } catch { return null }
+          })()
+          if (local === "0" || local === "1") return
+
+          const res = await fetch(`/api/projects/${projectId}`)
+          if (!res.ok) return
+          const data = await res.json()
+          const serverEnabled = !!data?.gameMakerEnabled
+          if (cancelled) return
+          setIsGameMakerMode(serverEnabled)
+          try {
+            localStorage.setItem(gameMakerKey, serverEnabled ? "1" : "0")
+          } catch { }
+        } catch { }
+      })()
+    return () => { cancelled = true }
+  }, [projectId, gameMakerKey])
+
+  // Persist Game Maker toggle to server so it follows the project/chat ID
+  useEffect(() => {
+    if (!projectId) return
+    if (!isAuthenticated) return
+      ; (async () => {
+        try {
+          await fetch(`/api/projects/${projectId}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              gameMakerEnabled: isGameMakerMode,
+              gameImageProvider: agentGameImageProvider || "openai",
+              gameImageModel: agentGameImageModel || "gpt-image-1",
+            }),
+          })
+        } catch { }
+      })()
+  }, [projectId, isAuthenticated, isGameMakerMode, agentGameImageProvider, agentGameImageModel])
 
   useEffect(() => {
     if (editingMessage) {
@@ -1265,6 +1372,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
   };
 
   const isDailyLimitReached = balanceData?.subscriptionTier === 'none' && (balanceData?.dailyMessageCount || 0) >= 5 && dailyResetTimer > 0
+  const isBalanceDepleted = (balanceData?.balance || 0) <= 0
   const refetchBalance = async () => {
     if (!user?.id) return
     await fetchBalance()
@@ -1775,13 +1883,37 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setShowLoginDialog(true)
       return
     }
+
+    if (!selectedModel) {
+      alert("Please select a model to send a message.")
+      return
+    }
     const selectedModelOption = MODEL_OPTIONS.find((m) => m.id === selectedModel)
     const hasSubscription = balanceData?.subscriptionTier !== "none"
     if (selectedModelOption?.isPremium && !hasSubscription) {
       setShowPremiumAlert(true)
       return
     }
+
+    if (isBalanceDepleted) {
+      alert("Out of credits! Please upgrade your plan or wait for a top-up.")
+      return
+    }
+
+    if (isDailyLimitReached) {
+      alert(`Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`)
+      return
+    }
     let userMessage = submitText.trim()
+
+    // Auto-activate Game Maker if message mentions "2d" or "2D"
+    const has2dKeyword = /\b2d\b/i.test(submitText)
+    const effectiveGameMakerMode = isGameMakerMode || has2dKeyword
+    if (has2dKeyword && !isGameMakerMode) {
+      setIsGameMakerMode(true)
+    }
+
+    userMessage = `[MODE:${buildMode.toUpperCase()}]\n${userMessage}`
 
     // Special handling for Auto-Fix prompts to ensure the AI applies the fix directly
     const isAutoFixMessage = userMessage.includes("Terminal Error Detected") || userMessage.includes("AUTOMATIC ERROR FIX");
@@ -1848,23 +1980,14 @@ Please perform a deep ONLINE SCAN to resolve this issue:
     setIsLoading(true)
     try {
       if (!isAutomatedOverride || isAutoFixMessage) {
-        const deductRes = await fetch("/api/user/credits", {
-          method: "POST",
-        })
-        if (!deductRes.ok) {
-          const errData = await deductRes.json().catch(() => ({}))
-          if (deductRes.status === 401) {
-            alert("Please sign in to continue.")
-            return
-          }
-          if (deductRes.status === 402) {
-            alert("Insufficient balance. Please wait for monthly refill or upgrade.")
-            return
-          }
-          alert(errData.error || "Failed to process your request. Please try again.")
+        if (isBalanceDepleted) {
+          alert("Insufficient balance. Please wait for monthly refill or upgrade.")
           return
         }
-        await refetchBalance()
+        if (isDailyLimitReached) {
+          alert(`Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`)
+          return
+        }
       }
       localStorage.removeItem(draftKey)
       localStorage.removeItem(filesKey)
@@ -1879,6 +2002,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       setTasks([])
       setIsDesignActive(false)
       setClonedUrl("")
+      const currentReferencedChat = referencedChat
+      setReferencedChat(null)
       setShowTaskPanel(true)
       if (projectId && onNewMessage) {
         const tempUser: Message = {
@@ -1896,7 +2021,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           cost: null,
           sessionId,
           imageData: null,
-          metadata: null,
+          metadata: currentReferencedChat ? { referencedChat: currentReferencedChat } : null,
         }
         onNewMessage(tempUser)
         const tempAssistantId = `temp-assistant-${Date.now()}`
@@ -1923,7 +2048,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         abortControllerRef.current = new AbortController()
         try {
           const tier = balanceData?.subscriptionTier || "none"
-          const effectiveModel = (tier === "none" || tier === "standard") ? "ollama/glm-4.7-flash" : selectedModel
+          const effectiveModel = selectedModel
           const res = await fetch("/api/chat", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -1936,6 +2061,22 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               isAutomated,
               selectedModel: effectiveModel,
               selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
+              referencedChatId: currentReferencedChat?.id,
+              metadata: (() => {
+                const base: any = {}
+                if (agentId) base.agentId = agentId
+                if (effectiveGameMakerMode) {
+                  base.gameMakerMode = true
+                  base.mode = "game-maker"
+                  if (agentGameImageProvider || agentGameImageModel) {
+                    base.gameImage = {
+                      provider: agentGameImageProvider || "openai",
+                      model: agentGameImageModel || "gpt-image-1",
+                    }
+                  }
+                }
+                return Object.keys(base).length ? base : null
+              })(),
               sessionId,
             }),
             signal: abortControllerRef.current.signal,
@@ -2082,6 +2223,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             isAutomated,
             selectedModel: effectiveModel,
             selectedMcps: selectedMcpIds.map(id => mcpConnections.find(c => c.id === id)).filter(Boolean),
+            metadata: (() => {
+              const base: any = {}
+              if (agentId) base.agentId = agentId
+              if (effectiveGameMakerMode) {
+                base.gameMakerMode = true
+                base.mode = "game-maker"
+                if (agentGameImageProvider || agentGameImageModel) {
+                  base.gameImage = {
+                    provider: agentGameImageProvider || "openai",
+                    model: agentGameImageModel || "gpt-image-1",
+                  }
+                }
+              }
+              return Object.keys(base).length ? base : null
+            })(),
             sessionId,
           }),
           signal: abortControllerRef.current.signal,
@@ -2212,11 +2368,43 @@ Please perform a deep ONLINE SCAN to resolve this issue:
       )}
       {/* bg-[#dbd9d9b2] p-[5px] rounded-[12px] */}
       <div className={hasSubscription ? "" : ""}>
+        {/* {showBuildMode && (
+          <div className="flex">
+            <button
+              type="button"
+              onClick={() => setBuildMode("mvp")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-all border border-l-none rounded-l-none border-border/50",
+                "rounded-tl-md rounded-tr-none rounded-bl-none rounded-br-none",
+                buildMode === "mvp"
+                  ? "bg-white dark:bg-[#3A3A3E] text-gray-800 dark:text-white z-10 relative"
+                  : "bg-[#e7e5df] dark:bg-[#252528] text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#2C2C30] cursor-pointer"
+              )}
+            >
+              <Rocket className="w-3 h-3" />
+              MVP
+            </button>
+            <button
+              type="button"
+              onClick={() => setBuildMode("fullstack")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-all border border-l-0 border-border/50",
+                "rounded-tl-none rounded-tr-md rounded-bl-none rounded-br-none",
+                buildMode === "fullstack"
+                  ? "bg-white dark:bg-[#3A3A3E] text-gray-800 dark:text-white z-10 relative"
+                  : "bg-[#e7e5df] dark:bg-[#252528] text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-[#2C2C30] cursor-pointer"
+              )}
+            >
+              <Zap className="w-3 h-3" />
+              Full Stack
+            </button>
+          </div>
+        )} */}
         <form
           onSubmit={handleSubmit}
           className={cn(
-            "relative p-1 rounded-lg border border-border/50 shadow-sm transition-all",
-            "bg-card dark:bg-[#2C2C30] text-foreground"
+            "relative p-1 transition-all w-[96%] max-w-[700px] mx-auto",
+            "bg-card dark:bg-[#2C2C30] text-foreground rounded-xl border border-border/50",
           )}
           style={{
             transition: "background-image 200ms ease",
@@ -2483,7 +2671,8 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
             </div>
           )}
-          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0 || isDesignActive || clonedUrl) && (
+
+          {(uploadedFiles.length > 0 || pastedContents.length > 0 || selectedMcpIds.length > 0 || isDesignActive || isGameMakerMode || clonedUrl) && (
             <div className="flex flex-wrap gap-2 justify-start px-2 pt-2 pb-1 bg-white/50 backdrop-blur-sm">
               {clonedUrl && (
                 <Badge
@@ -2519,7 +2708,21 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                   </button>
                 </Badge>
               )}
-
+              {isGameMakerMode && (
+                <Badge
+                  variant="secondary"
+                  className="gap-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border-emerald-200 py-1"
+                >
+                  <Gamepad2 className="w-3 h-3" />
+                  Game Maker (2D)
+                  <button
+                    onClick={() => setIsGameMakerMode(false)}
+                    className="ml-1 hover:text-emerald-900"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )}
               {selectedMcpIds.map(id => {
                 const mcp = mcpConnections.find(c => c.id === id)
                 if (!mcp) return null
@@ -2558,61 +2761,152 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               ))}
             </div>
           )}
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => {
-              if (isViewer) return
-              const newMessage = e.target.value
-              const cursorPosition = e.target.selectionStart
-              setMessage(newMessage)
-              localStorage.setItem(draftKey, newMessage)
+          <DropdownMenu open={showChatSelector} onOpenChange={setShowChatSelector}>
+            <DropdownMenuTrigger asChild>
+              {/* Invisible trigger to anchor the dropdown menu to the left side of the input */}
+              <div suppressHydrationWarning className="absolute bottom-[calc(100%+8px)] left-2 w-0 h-0" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="top"
+              align="start"
+              className="w-64 z-[150]"
+            >
+              <div className="px-2 py-1.5 border-b border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 mb-1">
+                <span className="text-[11px] font-semibold text-gray-500 uppercase">Select Chat to Link</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {recentChats.map(chat => (
+                  <DropdownMenuItem
+                    key={chat.id}
+                    onSelect={(e) => {
+                      e.preventDefault()
+                      setReferencedChat(chat)
+                      setMessage(prev => prev.replace(/\/[^ ]*$/, `[${chat.title}] `))
+                      setShowChatSelector(false)
+                      // Refocus textarea so the user can keep typing immediately
+                      setTimeout(() => textareaRef.current?.focus(), 0)
+                    }}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
+                    <MessageSquare className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="truncate">{chat.title}</span>
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <div className="relative w-full min-h-[110px] max-h-[110px]">
+            {/* Transparent overlay that perfectly mirrors the text layout and provides the styled badge */}
+            <div
+              ref={overlayRef}
+              className="absolute inset-0 z-20 pointer-events-none px-2 pt-2 pb-9 text-[14px] font-light whitespace-pre-wrap break-words overflow-y-auto chat-messages-scroll"
+            >
+              {!message && (
+                <span className="text-muted-foreground">
+                  {isViewer
+                    ? "Viewing mode - messaging is disabled"
+                    : isDailyLimitReached
+                      ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
+                      : isBalanceDepleted
+                        ? `Out of credits. Please upgrade or top up.`
+                        : isDiscussMode ? "Discuss anything..." : placeholder}
+                </span>
+              )}
+              {message.split(`[${referencedChat?.title}]`).map((part, i, arr) => (
+                <Fragment key={i}>
+                  {part}
+                  {i < arr.length - 1 && referencedChat && (
+                    <span
+                      className="cursor-pointer pointer-events-auto bg-[#FAFAFA] dark:bg-white/10 text-xs px-1.5 py-0.5 rounded border border-black/5 inline-flex items-center gap-1 mx-0.5 align-middle shadow-sm font-medium"
+                      onClick={() => {
+                        const targetText = `[${referencedChat.title}] `;
+                        const targetTextNoSpace = `[${referencedChat.title}]`;
+                        setMessage(prev => prev.replace(targetText, '').replace(targetTextNoSpace, ''));
+                        setReferencedChat(null);
+                        setTimeout(() => textareaRef.current?.focus(), 0);
+                      }}
+                    >
+                      <MessageSquare className="w-3 h-3 text-zinc-400" />
+                      {referencedChat.title}
+                    </span>
+                  )}
+                </Fragment>
+              ))}
+              {/* Ensure newline characters at the end of the text match textarea height */}
+              {message.endsWith('\n') ? <br /> : null}
+            </div>
 
-              // @ Mention Logic
-              const textBeforeCursor = newMessage.slice(0, cursorPosition)
-              const atIndex = textBeforeCursor.lastIndexOf("@")
+            <textarea
+              ref={textareaRef}
+              value={message}
+              onChange={(e) => {
+                if (isViewer) return
+                const newMessage = e.target.value
+                const cursorPosition = e.target.selectionStart
+                setMessage(newMessage)
+                localStorage.setItem(draftKey, newMessage)
 
-              if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
-                const afterAt = textBeforeCursor.slice(atIndex + 1)
-                if (!afterAt.includes(" ")) {
-                  setMentionStartIndex(atIndex)
-                  setShowSkillSelector(true)
+                // Referenced Chat Logic
+                if (referencedChat && !newMessage.includes(`[${referencedChat.title}]`)) {
+                  setReferencedChat(null)
+                }
+
+                const textBeforeCursor = newMessage.slice(0, cursorPosition)
+                const slashIndex = textBeforeCursor.lastIndexOf("/")
+                if (slashIndex !== -1 && (slashIndex === 0 || textBeforeCursor[slashIndex - 1] === " " || textBeforeCursor[slashIndex - 1] === "\n")) {
+                  const afterSlash = textBeforeCursor.slice(slashIndex + 1)
+                  if (!afterSlash.includes(" ")) {
+                    setShowChatSelector(true)
+                    fetchRecentChats()
+                  } else {
+                    setShowChatSelector(false)
+                  }
+                } else {
+                  setShowChatSelector(false)
+                }
+
+                // @ Mention Logic
+                const atIndex = textBeforeCursor.lastIndexOf("@")
+
+                if (atIndex !== -1 && (atIndex === 0 || textBeforeCursor[atIndex - 1] === " " || textBeforeCursor[atIndex - 1] === "\n")) {
+                  const afterAt = textBeforeCursor.slice(atIndex + 1)
+                  if (!afterAt.includes(" ")) {
+                    setMentionStartIndex(atIndex)
+                    setShowSkillSelector(true)
+                  } else {
+                    setShowSkillSelector(false)
+                  }
                 } else {
                   setShowSkillSelector(false)
                 }
-              } else {
-                setShowSkillSelector(false)
-              }
 
-              if (newMessage.trim().length > 0) {
-                setIsActive(true)
-              }
-            }}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            onFocus={() => {
-              setIsFocused(true)
-              if (message.trim().length > 0) {
-                setIsActive(true)
-              }
-            }}
-            onBlur={() => {
-              setIsFocused(false)
-              if (message.trim().length === 0) {
-                setIsActive(false)
-              }
-            }}
-            placeholder={
-              isViewer
-                ? "Viewing mode - messaging is disabled"
-                : isDailyLimitReached
-                  ? `Daily message quota reached. Resets in ${formatTime(dailyResetTimer)}`
-                  : isDiscussMode ? "Discuss anything..." : placeholder
-            }
-            className="w-full min-h-[120px] max-h-[120px] resize-none bg-transparent text-foreground placeholder:text-muted-foreground px-2 pt-2 pb-10 text-base outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={isLoading || isDailyLimitReached || isViewer}
-          />
-          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
+                if (newMessage.trim().length > 0) {
+                  setIsActive(true)
+                }
+              }}
+              onScroll={(e) => {
+                if (overlayRef.current) overlayRef.current.scrollTop = e.currentTarget.scrollTop
+              }}
+              onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
+              onFocus={() => {
+                setIsFocused(true)
+                if (message.trim().length > 0) {
+                  setIsActive(true)
+                }
+              }}
+              onBlur={() => {
+                setIsFocused(false)
+                if (message.trim().length === 0) {
+                  setIsActive(false)
+                }
+              }}
+              className="absolute inset-0 w-full h-full resize-none text-transparent caret-foreground bg-transparent px-2 pt-2 pb-9 text-base text-[14px] outline-none overflow-y-auto field-sizing-content chat-messages-scroll font-light disabled:cursor-not-allowed disabled:opacity-50 z-10"
+              style={{ color: 'transparent' }}
+              disabled={isLoading || isDailyLimitReached || isBalanceDepleted || isViewer}
+            />
+          </div>
+          <div className="absolute bottom-0 left-0 right-0 z-30 flex items-center justify-between p-1 bg-[#e7e7e700] rounded-[19px]">
             {editingMessage && (
               <Button
                 type="button"
@@ -2632,29 +2926,24 @@ Please perform a deep ONLINE SCAN to resolve this issue:
               <div className="flex items-center">
                 <div className="relative flex items-center" ref={menuRef}>
                   <DropdownMenu>
-                    {!mounted ? (
-                      <div className="h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all">
-                        <Plus className="w-4 h-4" />
-                      </div>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <DropdownMenuTrigger asChild>
-                            <div
-                              className={cn(
-                                "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
-                                (isLoading || isViewer) && "cursor-not-allowed opacity-50 relative"
-                              )}
-                            >
-                              <Plus className="w-4 h-4" />
-                            </div>
-                          </DropdownMenuTrigger>
-                        </TooltipTrigger>
-                        <TooltipContent>
-                          <p>{isViewer ? "Viewing mode" : "Tools & Attachments"}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuTrigger asChild>
+                          <div
+                            suppressHydrationWarning
+                            className={cn(
+                              "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
+                              (isLoading || isViewer) && "cursor-not-allowed opacity-50 relative"
+                            )}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </div>
+                        </DropdownMenuTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>{isViewer ? "Viewing mode" : "Tools & Attachments"}</p>
+                      </TooltipContent>
+                    </Tooltip>
 
                     <DropdownMenuContent
                       side="top"
@@ -2750,6 +3039,56 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                         </div>
                         <span className="font-medium text-gray-700 dark:text-white/90">Business</span>
                       </DropdownMenuItem>
+
+                      {/* Game Maker (2D) */}
+                      <DropdownMenuItem
+                        onClick={() => setIsGameMakerMode((prev) => !prev)}
+                        disabled={isLoading || isViewer}
+                        className={cn(
+                          "flex items-center gap-2 px-1.5 mb-0.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]",
+                          (isLoading || isViewer) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-5 h-5 flex items-center justify-center rounded-md",
+                          isGameMakerMode ? "bg-emerald-100" : "bg-gray-50 dark:bg-black/20"
+                        )}>
+                          <Gamepad2 className={cn("w-3.5 h-3.5", isGameMakerMode ? "text-emerald-700" : "text-gray-700 dark:text-white")} />
+                        </div>
+                        <span className="font-medium text-gray-700 dark:text-white/90">
+                          {isGameMakerMode ? "Game Maker (2D): On" : "Game Maker (2D): Off"}
+                        </span>
+                      </DropdownMenuItem>
+
+                      {/* Import from GitHub */}
+                      <DropdownMenuItem
+                        onClick={() => setShowGithubCloneModal(true)}
+                        disabled={isLoading}
+                        className={cn(
+                          "flex items-center gap-2 px-1.5 mb-0.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]",
+                          isLoading && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        <div className="w-5 h-5 flex items-center justify-center rounded-md bg-gray-50 dark:bg-black/20">
+                          <Github className="w-3.5 h-3.5 text-gray-700 dark:text-white" />
+                        </div>
+                        <span className="font-medium text-gray-700 dark:text-white/90">Import from GitHub</span>
+                      </DropdownMenuItem>
+
+                      {/* Build site like this one */}
+                      <DropdownMenuItem
+                        onClick={handleInsertCloneText}
+                        disabled={isLoading || isViewer}
+                        className={cn(
+                          "flex items-center gap-2 px-1.5 py-1 text-[12px] rounded-sm cursor-pointer hover:bg-gray-100 dark:hover:bg-[#2C2C30]",
+                          (isLoading || isViewer) && "opacity-50 cursor-not-allowed"
+                        )}
+                      >
+                        <div className="w-5 h-5 flex items-center justify-center rounded-md bg-gray-50 dark:bg-black/20">
+                          <Wrench className="w-3.5 h-3.5 text-gray-700 dark:text-white" />
+                        </div>
+                        <span className="font-medium text-gray-700 dark:text-white/90">Captured from URL</span>
+                      </DropdownMenuItem>
                       {!isImproving && message.trim() && !isLoading && (
                         <DropdownMenuItem
                           onClick={handleImprovePrompt}
@@ -2771,26 +3110,90 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                     </DropdownMenuContent>
                   </DropdownMenu>
 
-                  {/* Clone Button */}
-                  <div className="relative" ref={cloneDropdownRef}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <div
-                          id="clone-tool-button"
-                          onClick={handleInsertCloneText}
-                          className={cn(
-                            "h-7 w-7 p-1.5 text-sm cursor-pointer rounded-md BackgroundStyle text-foreground ml-1 transition-all hover:scale-105 active:scale-95",
-                            isViewer && "cursor-not-allowed opacity-50"
-                          )}
-                        >
-                          <Wrench className="w-4 h-4" />
-                        </div>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        <p>Build a site like this one</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
+                  <DropdownMenu open={showModelDropdown} onOpenChange={setShowModelDropdown}>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        suppressHydrationWarning
+                        type="button"
+                        className="h-7 px-2 flex items-center gap-1.5 text-[11px] bg-transparent border-none rounded-md hover:bg-[#E7E5DF] transition-colors ml-1"
+                      >
+                        {MODEL_OPTIONS.find(m => m.id === selectedModel)?.iconUrl ? (
+                          <img src={MODEL_OPTIONS.find(m => m.id === selectedModel)!.iconUrl} className="w-3.5 h-3.5 rounded-sm object-cover" alt="" />
+                        ) : (
+                          <Cpu className="w-3.5 h-3.5 text-zinc-500" />
+                        )}
+                        <span className="font-medium truncate max-w-[100px]">
+                          {MODEL_OPTIONS.find(m => m.id === selectedModel)?.label || "Model"}
+                        </span>
+                        {(() => {
+                          const model = MODEL_OPTIONS.find(m => m.id === selectedModel);
+                          if (!model || !model.tier) return null;
+                          return (
+                            <Badge variant="outline" className={cn(
+                              "ml-0.5 text-[9px] h-4 px-1 py-0 border-transparent",
+                              model.tier === "standard" ? "bg-[#0099ff]/20 text-[#0099ff]" :
+                                model.tier === "pro" ? "bg-purple-500/10 text-purple-600" :
+                                  "bg-orange-500/10 text-orange-600"
+                            )}>
+                              {model.tier.toUpperCase()}
+                            </Badge>
+                          );
+                        })()}
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-[240px] p-1 bg-white dark:bg-[#1E1E21] border border-gray-200 dark:border-white/10 rounded-md shadow-xs z-[100]" sideOffset={8} align="start" side="top">
+                      <div className="max-h-[300px] overflow-y-auto">
+                        {MODEL_OPTIONS.map((model, index) => {
+                          const tier = balanceData?.subscriptionTier?.toLowerCase() || "none"
+                          const isFreeTierModel = index < 3;
+                          const isLocked = !isFreeTierModel && (
+                            (model.tier === "pro" && !["pro", "teams"].includes(tier)) ||
+                            (model.tier === "teams" && tier !== "teams") ||
+                            (tier === "none")
+                          )
+
+                          return (
+                            <DropdownMenuItem
+                              key={model.id}
+                              onClick={(e) => {
+                                if (!isLocked) {
+                                  setSelectedModel(model.id)
+                                  setShowModelDropdown(false)
+                                } else {
+                                  e.preventDefault()
+                                  setShowPremiumAlert(true)
+                                }
+                              }}
+                              className={cn(
+                                "w-full text-left px-2 py-1.5 rounded-sm flex items-center justify-between gap-2 text-xs transition-colors cursor-pointer",
+                                selectedModel === model.id ? "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-medium" : "",
+                                isLocked && "opacity-50 cursor-not-allowed"
+                              )}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <img src={model.iconUrl} className="w-4 h-4 rounded-sm object-cover" alt="" />
+                                <span className="truncate">{model.label}</span>
+                                {model.tier && (
+                                  <Badge variant="outline" className={cn(
+                                    "ml-1 text-[9px] h-4 px-1 py-0 border-transparent rounded-xs",
+                                    model.tier === "standard" ? "bg-[#0099ff]/20 text-[#0099ff]" :
+                                      model.tier === "pro" ? "bg-purple-500/10 text-purple-600" :
+                                        "bg-orange-500/10 text-orange-600"
+                                  )}>
+                                    {model.tier.toUpperCase()}
+                                  </Badge>
+                                )}
+                              </div>
+                              {isLocked && <Lock className="w-3 h-3 text-zinc-400 shrink-0" />}
+                            </DropdownMenuItem>
+                          )
+                        })}
+                      </div>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+
+                  {/* Dummy container for ref to keep the code fully safe and compatible */}
+                  <div className="hidden" ref={cloneDropdownRef} />
 
                   {/* Business button removed from here, now in Plus menu */}
                   {menuMode === "main" ? (
@@ -2885,107 +3288,6 @@ Please perform a deep ONLINE SCAN to resolve this issue:
             />
 
             <div className="flex items-center gap-px">
-              {/* Standalone Enhance Prompt Button */}
-              {mounted && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      type="button"
-                      className="h-7 px-2.5 border-none text-[12px] bg-white dark:bg-[#2C2C30] shadow-none rounded-md text-foreground ml-2 hover:bg-muted transition-colors cursor-pointer border"
-                      disabled={isLoading || isViewer}
-                      variant="ghost"
-                      size="sm"
-                    >
-                      <div className="flex items-center w-full">
-                        <Cpu className="w-4 h-4 mr-1.5 flex-shrink-0" />
-                        <span className="truncate max-w-[120px] font-bold">
-                          {currentModel.label}
-                        </span>
-                        {currentModel.id === 'claude-opus-4.6-fast' && (
-                          <span className="ml-auto text-[9px] font-bold text-blue-600 bg-blue-500/10 px-1 rounded uppercase tracking-tighter shadow-sm border border-blue-500/20">teams+</span>
-                        )}
-                      </div>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-52 max-h-[400px] overflow-y-auto bg-card border border-border shadow-md z-[100]">
-                    <TooltipProvider>
-                      {MODEL_OPTIONS.map((model) => {
-                        const tier = balanceData?.subscriptionTier || "none";
-                        const isLocked = (model.id === "claude-opus-4.6-fast" && tier !== "teams") ||
-                          (model.id === "gpt-5" && !["pro", "teams"].includes(tier));
-
-                        return (
-                          <Tooltip key={model.id}>
-                            <TooltipTrigger asChild>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  if (model.soon) return;
-                                  if (model.id === "claude-opus-4.6-fast" && tier !== "teams") {
-                                    alert("Falbor 2.0 Max is exclusive to Teams subscribers.");
-                                    return;
-                                  }
-                                  if (model.id === "gpt-5" && tier !== "pro" && tier !== "teams") {
-                                    alert("Falbor 1.0 Pro is exclusive to Pro subscribers.");
-                                    return;
-                                  }
-                                  handleModelSelect(model.id);
-                                }}
-                                className={cn(
-                                  "flex items-center gap-2 cursor-pointer hover:bg-[#e7e7e7] dark:hover:bg-[#2C2C30] p-2",
-                                  selectedModel === model.id && "bg-[#e7e7e7] dark:bg-[#2C2C30]",
-                                  (model.soon || isLocked) && "opacity-60 grayscale-[0.5] cursor-not-allowed"
-                                )}
-                              >
-                                <div className="w-8 h-8 rounded-sm overflow-hidden flex-shrink-0 border border-border/50 bg-muted/30 p-1 flex items-center justify-center">
-                                  <img src={model.iconUrl || "/placeholder.svg"} alt="" className="w-full h-full object-contain" />
-                                </div>
-                                <div className="flex flex-col items-start gap-0.5 flex-1 overflow-hidden ml-1">
-                                  <div className="flex items-center gap-1.5 w-full">
-                                    <span className="text-[13px] font-bold truncate">
-                                      {model.label}
-                                    </span>
-                                    {isLocked && <Lock className="w-3 h-3 text-gray-700 flex-shrink-0" />}
-                                  </div>
-                                  {model.description && (
-                                    <span className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
-                                      {model.description}
-                                    </span>
-                                  )}
-                                </div>
-                                {model.isPremium && !hasSubscription && !isLocked && (
-                                  <Lock className="w-3 h-3 ml-auto text-gray-700" />
-                                )}
-                                {model.soon && (
-                                  <span className="ml-1 text-[10px] font-bold text-gray-700 bg-gray-50 px-1 border border-gray-200 rounded uppercase tracking-tighter shadow-sm">Soon</span>
-                                )}
-                              </DropdownMenuItem>
-                            </TooltipTrigger>
-                            {model.description && (
-                              <TooltipContent side="right" className="max-w-[220px] text-xs p-3">
-                                <p className="mb-2 text-white/90">{model.description}</p>
-                                {model.subModels && model.subModels.length > 0 && (
-                                  <div className="flex flex-col gap-1.5">
-                                    {model.subModels.map((sub) => (
-                                      <div key={sub.id} className="flex items-center gap-1.5">
-                                        <div className="w-3.5 h-3.5 rounded-full overflow-hidden flex-shrink-0">
-                                          <img src={sub.iconUrl} alt={sub.label} className="w-full h-full object-cover" />
-                                        </div>
-                                        <span className="text-[11px] text-white/90">
-                                          {sub.label}
-                                        </span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </TooltipContent>
-                            )}
-                          </Tooltip>
-                        );
-                      })}
-                    </TooltipProvider>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
               <div className="flex items-center gap-1.5 ml-1">
                 {/* Database Toggle and Hover panel removed from here, now in Plus menu */}
               </div>
@@ -3013,7 +3315,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
 
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <button className="px-1.5 h-full hover:bg-muted/70 transition-all text-foreground cursor-pointer flex items-center justify-center flex-1">
+                      <button suppressHydrationWarning className="px-1.5 h-full hover:bg-muted/70 transition-all text-foreground cursor-pointer flex items-center justify-center flex-1">
                         <ChevronDown className="w-3.5 h-3.5" />
                       </button>
                     </DropdownMenuTrigger>
@@ -3053,7 +3355,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
                           ((!message.trim() && uploadedFiles.length === 0 && pastedContents.length === 0 && !selectedImage) ||
                             !isAuthenticated || isViewer)) ? "cursor-not-allowed opacity-50" : "cursor-pointer"
                       )}
-                      disabled={isLoading || isDailyLimitReached || isViewer}
+                      disabled={isLoading || isDailyLimitReached || isBalanceDepleted || isViewer}
                     >
                       {effectiveIsLoading || isProvisioning ? (
                         <div className="w-3 h-3 border-2 border-[#0099ff] border-t-[#0099ff]/30 rounded-full animate-spin" />
@@ -3081,40 +3383,40 @@ Please perform a deep ONLINE SCAN to resolve this issue:
         </form>
 
         {/* Upgrade Banner & Daily Limit Indicator */}
-        {!hasSubscription && (
-          <div className="relative mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] z-[-10] bg-muted backdrop-blur-sm flex items-center justify-between">            <div className="flex flex-col gap-0.5 ml-2">
-            <p className="text-[13px] text-zinc-600 font-medium">
-              {isDailyLimitReached
-                ? `Credits renew in ${formatTime(dailyResetTimer)}`
-                : `You have`} {5 - (balanceData?.dailyMessageCount || 0)} messages left for today.
-            </p>
-            {!isDailyLimitReached && (
-              <div className="flex items-center gap-1.5">
-                {/* <div className="flex gap-0.5">
-                    {[1, 2, 3, 4, 5].map((i) => (
-                      <div
-                        key={i}
-                        className={cn(
-                          "w-3 h-1 rounded-full",
-                          i <= (balanceData?.dailyMessageCount || 0) ? "bg-zinc-400" : "bg-zinc-200"
-                        )}
-                      />
-                    ))}
-                  </div> */}
+        <AnimatePresence>
+          {!hasSubscription && (
+            <motion.div
+              initial={{ y: -30, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
+              className="relative mt-[-9px] pt-4 pb-2 px-1 rounded-b-[12px] z-[-10] bg-[#EBEBEB] backdrop-blur-sm flex items-center justify-between w-[96%] max-w-[700px] mx-auto"
+            >
+              <div className="flex flex-col gap-0.5 ml-2">
+                <p className="text-[13px] text-zinc-600 font-medium">
+                  {isBalanceDepleted
+                    ? `Out of credits. Please upgrade or top up.`
+                    : isDailyLimitReached
+                      ? `Daily quota reached. Resets in ${formatTime(dailyResetTimer)}`
+                      : `Balance $${((balanceData?.balance || 0) / 100).toFixed(2)} • ${Math.max(0, 5 - (balanceData?.dailyMessageCount || 0))} messages left today`}
+                </p>
+                {!isBalanceDepleted && !isDailyLimitReached && (
+                  <div className="flex items-center gap-1.5">
+                    {/* Add any low balance warnings here if needed */}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-            <Link href="/pricing">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-[12px] bg-[#0099ff]/20 text-[#0099ff] mr-1 flex items-center gap-1.5"
-              >
-                Upgrade Plan
-              </Button>
-            </Link>
-          </div>
-        )}
+              <Link href="/pricing">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-[13px] text-foreground/80 mr-1 flex items-center gap-1.5"
+                >
+                  Upgrade Plan
+                </Button>
+              </Link>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Translation Modal */}
@@ -3529,6 +3831,7 @@ Please perform a deep ONLINE SCAN to resolve this issue:
           </div>
         </DialogContent>
       </Dialog>
+      <GithubCloneDialog open={showGithubCloneModal} onOpenChange={setShowGithubCloneModal} />
     </div>
   )
 })

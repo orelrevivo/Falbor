@@ -69,149 +69,133 @@ export function PreviewToolbar({
 
     return (
         <TooltipProvider>
-            <div className="w-full flex items-center justify-center gap-4 px-2 relative">
-                <div className="flex items-center gap-3 w-full justify-center">
+            <div className="w-full flex items-center justify-center px-2">
+                <div
+                    className={cn(
+                        "flex items-center justify-between gap-2 px-4 py-1.5 w-[380px] bg-zinc-50 dark:bg-[#1E1E22] border border-[#dbd9d965] dark:border-none hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded-sm transition-all text-xs font-normal cursor-pointer select-none",
+                        isOpen && "bg-zinc-100 dark:bg-zinc-800"
+                    )}
+                >
+                    {/* Pages Dropdown */}
+                    <DropdownMenu onOpenChange={setIsOpen}>
+                        <DropdownMenuTrigger asChild>
+                            <button className="flex items-center gap-2 outline-none min-w-0 text-zinc-400 dark:text-zinc-300 text-xs font-medium">
+                                <FileText className="w-3.5 h-3.5 shrink-0" />
+                                <span className="truncate max-w-[80px]">{currentPath}</span>
+                            </button>
+                        </DropdownMenuTrigger>
 
-                    <div
-                        className={cn(
-                            "flex items-center rounded-full px-3 h-9 transition-all duration-200 grow max-w-7xl min-w-[500px]",
-                            "bg-[#F4F4F4] border border-gray-200 dark:bg-[#2C2C30] dark:border-[#2C2C30]",
-                            isOpen
-                                ? "border-[#0099ff] bg-white ring-2 ring-[#0099ff]/10 dark:bg-[#1E1E21] dark:border-[#0099ff]"
-                                : "hover:border-gray-300 dark:hover:border-white/20"
-                        )}
-                    >
+                        <DropdownMenuContent className="w-64 mt-1 shadow-2xl border-gray-100 rounded-xl p-1">
+                            {pages.map((page, index) => (
+                                <DropdownMenuItem
+                                    key={`${page}-${index}`}
+                                    className="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg cursor-pointer hover:bg-[#0099ff]/5 hover:text-[#0099ff]"
+                                    onClick={() => {
+                                        window.dispatchEvent(
+                                            new CustomEvent("preview-navigate", {
+                                                detail: { path: page }
+                                            })
+                                        )
+                                    }}
+                                >
+                                    <FileText className="w-3.5 h-3.5 opacity-60" />
+                                    {page}
+                                </DropdownMenuItem>
+                            ))}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
 
-                        {/* Pages Dropdown */}
-                        <DropdownMenu onOpenChange={setIsOpen}>
+                    {/* Right Actions */}
+                    <div className="flex items-center gap-0.5">
+                        {/* Refresh */}
+                        <button
+                            onClick={onRefresh}
+                            className="p-1 rounded-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                        >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Device Dropdown */}
+                        <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                                <button className="flex-1 flex items-center gap-2 px-3 h-full text-left outline-none min-w-0">
-                                    <span
-                                        className={cn(
-                                            "text-xs font-medium truncate transition-colors",
-                                            isOpen ? "text-[#0099ff]" : "text-gray-500 dark:text-white/70"
-                                        )}
-                                    >
-                                        {currentPath}
-                                    </span>
+                                <button className="p-1 rounded-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+                                    {selectedDevice.type === "desktop" ? (
+                                        <Monitor className="w-3.5 h-3.5" />
+                                    ) : selectedDevice.type === "tablet" ? (
+                                        <Tablet className="w-3.5 h-3.5" />
+                                    ) : (
+                                        <Smartphone className="w-3.5 h-3.5" />
+                                    )}
                                 </button>
                             </DropdownMenuTrigger>
 
-                            <DropdownMenuContent className="w-64 mt-1 shadow-2xl border-gray-100 rounded-xl p-1">
-
-                                {/* FIX: unique keys */}
-                                {pages.map((page, index) => (
+                            <DropdownMenuContent
+                                align="end"
+                                className="w-40 shadow-xl border-gray-100 rounded-xl p-1"
+                            >
+                                {DEVICE_PRESETS.map((device, index) => (
                                     <DropdownMenuItem
-                                        key={`${page}-${index}`}
-                                        className="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg cursor-pointer hover:bg-[#0099ff]/5 hover:text-[#0099ff]"
-                                        onClick={() => {
-                                            window.dispatchEvent(
-                                                new CustomEvent("preview-navigate", {
-                                                    detail: { path: page }
-                                                })
-                                            )
-                                        }}
+                                        key={`${device.name}-${index}`}
+                                        onClick={() => onDeviceChange(device)}
+                                        className="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg cursor-pointer"
                                     >
-                                        <FileText className="w-3.5 h-3.5 opacity-60" />
-                                        {page}
+                                        {device.type === "desktop" ? (
+                                            <Monitor className="w-4 h-4 opacity-50" />
+                                        ) : device.type === "tablet" ? (
+                                            <Tablet className="w-4 h-4 opacity-50" />
+                                        ) : (
+                                            <Smartphone className="w-4 h-4 opacity-50" />
+                                        )}
+                                        {device.name}
                                     </DropdownMenuItem>
                                 ))}
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        {/* Right Actions */}
-                        <div className="flex items-center gap-0.5 ml-1 pl-1 border-l border-gray-200 dark:border-white/10">
-
-                            {/* Refresh */}
-                            <button
-                                onClick={onRefresh}
-                                className="p-1.5 rounded-full text-gray-500 hover:text-[#0099ff] hover:bg-[#0099ff]/5 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10"
-                            >
-                                <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-
-                            {/* ✅ FIXED Device Dropdown */}
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button className="p-1.5 rounded-full text-gray-500 hover:text-[#0099ff] hover:bg-[#0099ff]/5 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10">
-                                        {selectedDevice.type === "desktop" ? (
-                                            <Monitor className="w-3.5 h-3.5" />
-                                        ) : selectedDevice.type === "tablet" ? (
-                                            <Tablet className="w-3.5 h-3.5" />
-                                        ) : (
-                                            <Smartphone className="w-3.5 h-3.5" />
-                                        )}
-                                    </button>
-                                </DropdownMenuTrigger>
-
-                                <DropdownMenuContent
-                                    align="end"
-                                    className="w-40 shadow-xl border-gray-100 rounded-xl p-1"
+                        {/* Fullscreen */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    onClick={onToggleFullScreen}
+                                    className="p-1 rounded-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
                                 >
-                                    {DEVICE_PRESETS.map((device, index) => (
-                                        <DropdownMenuItem
-                                            key={`${device.name}-${index}`}
-                                            onClick={() => onDeviceChange(device)}
-                                            className="flex items-center gap-2 px-2 py-1.5 text-xs rounded-lg cursor-pointer"
-                                        >
-                                            {device.type === "desktop" ? (
-                                                <Monitor className="w-4 h-4 opacity-50" />
-                                            ) : device.type === "tablet" ? (
-                                                <Tablet className="w-4 h-4 opacity-50" />
-                                            ) : (
-                                                <Smartphone className="w-4 h-4 opacity-50" />
-                                            )}
-                                            {device.name}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
+                                    <Maximize2 className="w-3.5 h-3.5" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Fullscreen</TooltipContent>
+                        </Tooltip>
 
-                            {/* Fullscreen */}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        onClick={onToggleFullScreen}
-                                        className="p-1.5 rounded-full text-gray-500 hover:text-[#0099ff] hover:bg-[#0099ff]/5 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10"
-                                    >
-                                        <Maximize2 className="w-3.5 h-3.5" />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent>Fullscreen</TooltipContent>
-                            </Tooltip>
+                        {/* Terminal */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    onClick={onToggleTerminal}
+                                    className="p-1 rounded-sm text-zinc-400 hover:text-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+                                >
+                                    <Terminal className="w-3.5 h-3.5" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Terminal</TooltipContent>
+                        </Tooltip>
 
-                            {/* Terminal */}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        onClick={onToggleTerminal}
-                                        className="p-1.5 rounded-full text-gray-500 hover:text-[#0099ff] hover:bg-[#0099ff]/5 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10"
-                                    >
-                                        <Terminal className="w-3.5 h-3.5" />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent>Terminal</TooltipContent>
-                            </Tooltip>
+                        {/* Auto Fix */}
+                        <Tooltip>
+                            <TooltipTrigger asChild>
+                                <button
+                                    onClick={() => setAutoFixEnabled(!autoFixEnabled)}
+                                    className={cn(
+                                        "p-1 rounded-sm transition-colors",
+                                        autoFixEnabled
+                                            ? "text-[#0099ff] dark:text-white"
+                                            : "text-zinc-400 hover:text-zinc-600 dark:text-zinc-400 dark:hover:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/10"
+                                    )}
+                                >
+                                    <Brain className="w-4 h-4" />
+                                </button>
+                            </TooltipTrigger>
+                            <TooltipContent>Auto Fix</TooltipContent>
+                        </Tooltip>
 
-                            {/* Auto Fix */}
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <button
-                                        onClick={() => setAutoFixEnabled(!autoFixEnabled)}
-                                        className={cn(
-                                            "p-1.5 rounded-full transition-all",
-                                            autoFixEnabled
-                                                ? "bg-[#0099ff]/20 text-[#0099ff] dark:bg-[#0099ff]/30 dark:text-white"
-                                                : "text-gray-500 hover:text-[#0099ff] hover:bg-[#0099ff]/5 dark:text-white/60 dark:hover:text-white dark:hover:bg-white/10"
-                                        )}
-                                    >
-                                        <Brain className="w-4 h-4" />
-                                    </button>
-                                </TooltipTrigger>
-                                <TooltipContent>Auto Fix</TooltipContent>
-                            </Tooltip>
-
-                        </div>
                     </div>
                 </div>
             </div>

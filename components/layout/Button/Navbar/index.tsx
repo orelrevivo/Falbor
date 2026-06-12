@@ -13,9 +13,9 @@ export default function DefaultDemo() {
     <div>
       <div style={{
         position: 'absolute',
-        top: '0.8%',
+        top: '10px',
         left: '50%',
-        transform: 'translate(-50%, -50%)',
+        transform: 'translateX(-50%)',
         width: '90%',
         zIndex: 9999,
         maxWidth: '1200px'

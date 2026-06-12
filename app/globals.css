@@ -156,23 +156,28 @@
 }
 
 .BackgroundStyle {
-  background-color: none;
+  background-color: transparent;
+  transition: none !important;
 }
 
 .BackgroundStyle:hover {
   background-color: #e7e5df;
+  transition: none !important;
 }
 
 .dark .BackgroundStyle:hover {
   background-color: #2C2C30;
+  transition: none !important;
 }
 
 .BackgroundStyleButton {
   background-color: #e7e5df;
+  transition: none !important;
 }
 
 .dark .BackgroundStyleButton {
   background-color: #1E1E21;
+  transition: none !important;
 }
 
 .no-scrollbar::-webkit-scrollbar {

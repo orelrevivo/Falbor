@@ -23,7 +23,7 @@ export function HomeTabs() {
   return (
     <div className="flex flex-col w-full">
       {/* The Main Container: Dark, rounded, and compact */}
-      <div className="flex flex-col p-1 bg-[#e7e5df] border border-[#e7e5df] dark:bg-muted/50 dark:border-border rounded-md min-w-[140px]">
+      <div className="flex flex-col p-1 bg-[#e7e5df] border border-[#e7e5df] dark:bg-muted/50 dark:border-none rounded-md min-w-[140px]">
 
         {/* Search / Super Security Button */}
         <button
